@@ -20,7 +20,7 @@ const anchorSubItems = [
 ];
 
 const taskSubItems = [
-  { to: "/tasks/cockpit", label: "仪表台", icon: LayoutDashboard },
+  { to: "/tasks/cockpit", label: "全局仪表台", icon: LayoutDashboard },
   { to: "/tasks/dashboard", label: "我的待办", icon: ListTodo },
 ];
 
