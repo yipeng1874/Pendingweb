@@ -1,0 +1,629 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model AnchorRegistrationApplication {
+  id              String            @id @default(uuid())
+  userId          String            @map("user_id")
+  anchorNickname  String            @map("anchor_nickname")
+  targetHallOrgId String            @map("target_hall_org_id")
+  douyinNo        String?           @map("douyin_no")
+  douyinUid       String            @map("douyin_uid")
+  status          ApplicationStatus @default(pending)
+  submittedAt     DateTime          @default(now()) @map("submitted_at")
+  reviewedBy      String?           @map("reviewed_by")
+  reviewedAt      DateTime?         @map("reviewed_at")
+  hall            OrgUnit           @relation(fields: [targetHallOrgId], references: [id])
+
+  @@index([userId])
+  @@index([targetHallOrgId])
+  @@map("anchor_registration_applications")
+}
+
+model User {
+  id                     String                   @id @default(uuid())
+  phone                  String                   @unique
+  nickname               String
+  passwordHash           String                   @map("password_hash")
+  avatarUrl              String?                  @map("avatar_url")
+  feishuOpenId           String?                  @unique @map("feishu_open_id")
+  feishuUnionId          String?                  @unique @map("feishu_union_id")
+  feishuConfigId         String?                  @map("feishu_config_id")
+  feishuName             String?                  @map("feishu_name")
+  feishuAvatarUrl        String?                  @map("feishu_avatar_url")
+  feishuBoundAt          DateTime?                @map("feishu_bound_at")
+  status                 UserStatus               @default(active)
+  mustChangePassword     Boolean                  @default(true) @map("must_change_password")
+  lastLoginAt            DateTime?                @map("last_login_at")
+  createdBy              String?                  @map("created_by")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  taskRecords            TaskRecord[]
+  identities             UserIdentity[]
+  visibleTaskRecordLinks TaskRecordIdentityLink[]
+  feishuConfig           FeishuEnterpriseConfig?  @relation(fields: [feishuConfigId], references: [id])
+
+  @@index([feishuConfigId])
+  @@map("users")
+}
+
+model OrgUnit {
+  id                             String                          @id @default(uuid())
+  orgCode                        String                          @unique @map("org_code")
+  orgType                        OrgType                         @map("org_type")
+  name                           String
+  parentId                       String?                         @map("parent_id")
+  path                           String
+  depth                          Int                             @default(1)
+  principalName                  String?                         @map("principal_name")
+  contactPhone                   String?                         @map("contact_phone")
+  douyinNo                       String?                         @unique @map("douyin_no")
+  douyinUid                      String?                         @unique @map("douyin_uid")
+  brokerName                     String?                         @map("broker_name")
+  isVirtual                      Boolean                         @default(false) @map("is_virtual")
+  remark                         String?                         @db.Text
+  status                         OrgStatus                       @default(active)
+  createdAt                      DateTime                        @default(now()) @map("created_at")
+  updatedAt                      DateTime                        @updatedAt @map("updated_at")
+  anchorProfiles                 AnchorProfile[]
+  anchorRegistrationApplications AnchorRegistrationApplication[]
+  identities                     UserIdentity[]
+  taskAssignmentTargets          TaskAssignmentTarget[]
+  taskAssignmentExclusions       TaskAssignmentExclusion[]
+  subjectTaskRecords             TaskRecord[]
+  visibleTaskRecordLinks         TaskRecordIdentityLink[]
+  feishuBaseConfigs              FeishuEnterpriseConfig[]        @relation("FeishuBaseOrg")
+  feishuTeamConfigs              FeishuEnterpriseConfig[]        @relation("FeishuTeamOrg")
+  dailyNotifySchedules           DailyNotifySchedule[]
+
+  @@index([parentId])
+  @@index([path])
+  @@map("org_units")
+}
+
+model FeishuEnterpriseConfig {
+  id           String    @id @default(uuid())
+  name         String
+  appId        String    @map("app_id")
+  appSecret    String    @map("app_secret")
+  baseOrgId    String    @map("base_org_id")
+  teamOrgId    String    @map("team_org_id")
+  status       OrgStatus @default(active)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  baseOrg      OrgUnit   @relation("FeishuBaseOrg", fields: [baseOrgId], references: [id])
+  teamOrg      OrgUnit   @relation("FeishuTeamOrg", fields: [teamOrgId], references: [id])
+  boundUsers   User[]
+
+  @@index([baseOrgId])
+  @@index([teamOrgId])
+  @@unique([teamOrgId, name])
+  @@unique([appId])
+  @@map("feishu_enterprise_configs")
+}
+
+model DailyNotifySchedule {
+  id                String   @id @default(uuid())
+  baseOrgId         String   @unique @map("base_org_id")
+  enabled           Boolean  @default(false)
+  intervalHours     Int      @default(3) @map("interval_hours")
+  prefix            String   @default("来自系统提醒")
+  lastTriggeredSlot String?  @map("last_triggered_slot")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  baseOrg           OrgUnit  @relation(fields: [baseOrgId], references: [id])
+
+  @@index([enabled, intervalHours])
+  @@map("daily_notify_schedules")
+}
+
+model AnchorProfile {
+  id                       String                    @id @default(uuid())
+  douyinUid                String                    @unique @map("douyin_uid")
+  douyinNo                 String?                   @map("douyin_no")
+  nickname                 String
+  hallOrgId                String                    @map("hall_org_id")
+  boundUserId              String?                   @map("bound_user_id")
+  source                   String                    @default("manual_import")
+  status                   AnchorStatus              @default(unbound)
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  hallOrg                  OrgUnit                   @relation(fields: [hallOrgId], references: [id])
+  identities               UserIdentity[]
+  taskAssignmentExclusions TaskAssignmentExclusion[]
+
+  @@index([hallOrgId])
+  @@index([douyinNo])
+  @@map("anchor_profiles")
+}
+
+model Role {
+  code        String           @id
+  name        String
+  description String?
+  status      String           @default("active")
+  permissions RolePermission[]
+  identities  UserIdentity[]
+
+  @@map("roles")
+}
+
+model Permission {
+  code        String           @id
+  name        String
+  module      String
+  description String?
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleCode       String     @map("role_code")
+  permissionCode String     @map("permission_code")
+  permission     Permission @relation(fields: [permissionCode], references: [code])
+  role           Role       @relation(fields: [roleCode], references: [code])
+
+  @@id([roleCode, permissionCode])
+  @@index([permissionCode], map: "role_permissions_permission_code_fkey")
+  @@map("role_permissions")
+}
+
+model UserIdentity {
+  id                     String                   @id @default(uuid())
+  userId                 String                   @map("user_id")
+  roleCode               String                   @map("role_code")
+  orgId                  String?                  @map("org_id")
+  anchorProfileId        String?                  @map("anchor_profile_id")
+  scopePath              String?                  @map("scope_path")
+  status                 IdentityStatus           @default(active)
+  grantedBy              String?                  @map("granted_by")
+  grantedAt              DateTime                 @default(now()) @map("granted_at")
+  expiredAt              DateTime?                @map("expired_at")
+  lastSwitchedAt         DateTime?                @map("last_switched_at")
+  anchorProfile          AnchorProfile?           @relation(fields: [anchorProfileId], references: [id])
+  org                    OrgUnit?                 @relation(fields: [orgId], references: [id])
+  role                   Role                     @relation(fields: [roleCode], references: [code])
+  user                   User                     @relation(fields: [userId], references: [id])
+  visibleTaskRecordLinks TaskRecordIdentityLink[]
+
+  @@unique([userId, roleCode, orgId, anchorProfileId])
+  @@index([userId])
+  @@index([scopePath])
+  @@index([anchorProfileId], map: "user_identities_anchor_profile_id_fkey")
+  @@index([orgId], map: "user_identities_org_id_fkey")
+  @@index([roleCode], map: "user_identities_role_code_fkey")
+  @@map("user_identities")
+}
+
+model AuditLog {
+  id                 String   @id @default(uuid())
+  operatorUserId     String   @map("operator_user_id")
+  operatorIdentityId String   @map("operator_identity_id")
+  action             String
+  targetType         String   @map("target_type")
+  targetId           String?  @map("target_id")
+  detailJson         Json?    @map("detail_json")
+  ip                 String?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([operatorUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model TaskTemplate {
+  id          String                 @id @default(uuid())
+  title       String
+  description String?                @db.Text
+  category    TaskCategory
+  orgId       String                 @map("org_id")
+  createdBy   String                 @map("created_by")
+  version     Int                    @default(1)
+  status      TaskTemplateStatus     @default(draft)
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  assignments TaskAssignment[]
+  items       TaskItem[]
+  snapshots   TaskTemplateSnapshot[]
+
+  @@index([orgId])
+  @@index([category])
+  @@map("task_templates")
+}
+
+model TaskItem {
+  id          String           @id @default(uuid())
+  templateId  String           @map("template_id")
+  sortOrder   Int              @map("sort_order")
+  itemType    TaskItemType     @map("item_type")
+  title       String
+  isRequired  Boolean          @default(true) @map("is_required")
+  linkUrl     String?          @map("link_url")
+  options     TaskItemOption[]
+  itemRecords TaskItemRecord[]
+  template    TaskTemplate     @relation(fields: [templateId], references: [id])
+
+  @@index([templateId])
+  @@map("task_items")
+}
+
+model TaskItemOption {
+  id         String   @id @default(uuid())
+  taskItemId String   @map("task_item_id")
+  sortOrder  Int      @map("sort_order")
+  label      String
+  taskItem   TaskItem @relation(fields: [taskItemId], references: [id])
+
+  @@index([taskItemId])
+  @@map("task_item_options")
+}
+
+model TaskTemplateSnapshot {
+  id           String       @id @default(uuid())
+  templateId   String       @map("template_id")
+  version      Int
+  snapshotJson Json         @map("snapshot_json")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  template     TaskTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([templateId, version])
+  @@map("task_template_snapshots")
+}
+
+model TaskAssignment {
+  id                     String                    @id @default(uuid())
+  templateId             String                    @map("template_id")
+  templateVersion        Int?                      @map("template_version")
+  category               TaskCategory
+  status                 TaskAssignmentStatus      @default(active)
+  effectMode             TaskEffectMode?           @map("effect_mode")
+  effectiveAt            DateTime?                 @map("effective_at")
+  publishedAt            DateTime?                 @map("published_at")
+  endedAt                DateTime?                 @map("ended_at")
+  deletedAt              DateTime?                 @map("deleted_at")
+  ownerScopePath         String?                   @map("owner_scope_path")
+  targetRoleType         String                    @map("target_role_type")
+  targetAdminLevels      Json?                     @map("target_admin_levels")
+  targetRoleCodes        Json?                     @map("target_role_codes")
+  targetUserIds          Json?                     @map("target_user_ids")
+  temporaryMode          TemporaryTaskMode?        @map("temporary_mode")
+  temporarySubjectOrgType OrgType?                 @map("temporary_subject_org_type")
+  createdByIdentityId    String?                   @map("created_by_identity_id")
+  deadlineAt             DateTime?                 @map("deadline_at")
+  deadlinePolicy         String?                   @map("deadline_policy")
+  isActive               Boolean                   @default(true) @map("is_active")
+  createdBy              String                    @map("created_by")
+  createdByOrgId         String                    @map("created_by_org_id")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  exclusions             TaskAssignmentExclusion[]
+  targets                TaskAssignmentTarget[]
+  template               TaskTemplate              @relation(fields: [templateId], references: [id])
+  records                TaskRecord[]
+
+  @@index([templateId])
+  @@index([createdAt])
+  @@index([category, status, effectiveAt])
+  @@index([ownerScopePath, category, status])
+  @@index([createdBy, category, status])
+  @@index([temporaryMode, category])
+  @@map("task_assignments")
+}
+
+model TaskAssignmentTarget {
+  id              String         @id @default(uuid())
+  assignmentId    String         @map("assignment_id")
+  orgId           String         @map("org_id")
+  orgPathSnapshot String         @map("org_path_snapshot")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  assignment      TaskAssignment @relation(fields: [assignmentId], references: [id])
+  org             OrgUnit        @relation(fields: [orgId], references: [id])
+
+  @@index([assignmentId])
+  @@index([orgId])
+  @@map("task_assignment_targets")
+}
+
+model TaskAssignmentExclusion {
+  id              String                      @id @default(uuid())
+  assignmentId    String                      @map("assignment_id")
+  exclusionType   TaskAssignmentExclusionType @map("exclusion_type")
+  orgId           String?                     @map("org_id")
+  orgPathSnapshot String?                     @map("org_path_snapshot")
+  anchorProfileId String?                     @map("anchor_profile_id")
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  anchorProfile   AnchorProfile?              @relation(fields: [anchorProfileId], references: [id])
+  assignment      TaskAssignment              @relation(fields: [assignmentId], references: [id])
+  org             OrgUnit?                    @relation(fields: [orgId], references: [id])
+
+  @@index([assignmentId])
+  @@index([assignmentId, exclusionType])
+  @@index([orgId])
+  @@index([anchorProfileId])
+  @@map("task_assignment_exclusions")
+}
+
+model TaskRecord {
+  id                     String                     @id @default(uuid())
+  assignmentId           String                     @map("assignment_id")
+  userId                 String?                    @map("user_id")
+  identityId             String?                    @map("identity_id")
+  subjectType            TaskRecordSubjectType      @default(USER) @map("subject_type")
+  subjectKey             String                     @map("subject_key")
+  subjectUserId          String?                    @map("subject_user_id")
+  subjectOrgId           String?                    @map("subject_org_id")
+  subjectName            String?                    @map("subject_name")
+  subjectOrgType         OrgType?                   @map("subject_org_type")
+  templateVersion        Int                        @map("template_version")
+  recordDate             String?                    @map("record_date")
+  deadlineAt             DateTime                   @map("deadline_at")
+  status                 TaskRecordStatus           @default(pending)
+  totalItems             Int                        @default(0) @map("total_items")
+  doneItems              Int                        @default(0) @map("done_items")
+  submittedAt            DateTime?                  @map("submitted_at")
+  lastSubmittedByUserId  String?                    @map("last_submitted_by_user_id")
+  lastSubmittedByIdentityId String?                 @map("last_submitted_by_identity_id")
+  lastSubmittedAt        DateTime?                  @map("last_submitted_at")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  exemption              TaskExemption?
+  itemRecords            TaskItemRecord[]
+  visibleIdentityLinks   TaskRecordIdentityLink[]
+  assignment             TaskAssignment             @relation(fields: [assignmentId], references: [id])
+  user                   User?                      @relation(fields: [userId], references: [id])
+  subjectOrg             OrgUnit?                   @relation(fields: [subjectOrgId], references: [id])
+
+  @@unique([assignmentId, subjectKey, recordDate])
+  @@index([userId])
+  @@index([subjectUserId])
+  @@index([subjectOrgId])
+  @@index([assignmentId])
+  @@index([recordDate])
+  @@map("task_records")
+}
+
+model TaskRecordIdentityLink {
+  id              String       @id @default(uuid())
+  taskRecordId    String       @map("task_record_id")
+  identityId      String       @map("identity_id")
+  userId          String       @map("user_id")
+  roleCode        String       @map("role_code")
+  orgId           String?      @map("org_id")
+  anchorProfileId String?      @map("anchor_profile_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  org             OrgUnit?     @relation(fields: [orgId], references: [id])
+  identity        UserIdentity @relation(fields: [identityId], references: [id])
+  taskRecord      TaskRecord   @relation(fields: [taskRecordId], references: [id])
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@unique([taskRecordId, identityId])
+  @@index([taskRecordId])
+  @@index([identityId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("task_record_identity_links")
+}
+
+model TaskItemRecord {
+  id                    String               @id @default(uuid())
+  taskRecordId          String               @map("task_record_id")
+  taskItemId            String               @map("task_item_id")
+  status                TaskItemRecordStatus @default(pending)
+  answerText            String?              @map("answer_text") @db.Text
+  answerOptions         Json?                @map("answer_options")
+  isLinkConfirmed       Boolean              @default(false) @map("is_link_confirmed")
+  doneAt                DateTime?            @map("done_at")
+  completedByUserId     String?              @map("completed_by_user_id")
+  completedByIdentityId String?              @map("completed_by_identity_id")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  attachments           TaskItemAttachment[]
+  taskItem              TaskItem             @relation(fields: [taskItemId], references: [id])
+  taskRecord            TaskRecord           @relation(fields: [taskRecordId], references: [id])
+
+  @@unique([taskRecordId, taskItemId])
+  @@index([taskRecordId])
+  @@index([taskItemId], map: "task_item_records_task_item_id_fkey")
+  @@map("task_item_records")
+}
+
+model TaskItemAttachment {
+  id               String         @id @default(uuid())
+  taskItemRecordId String         @map("task_item_record_id")
+  fileName         String         @map("file_name")
+  fileUrl          String         @map("file_url")
+  fileSize         Int            @map("file_size")
+  mimeType         String         @map("mime_type")
+  uploadedBy       String         @map("uploaded_by")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  taskItemRecord   TaskItemRecord @relation(fields: [taskItemRecordId], references: [id])
+
+  @@index([taskItemRecordId])
+  @@map("task_item_attachments")
+}
+
+model TaskExemption {
+  id           String          @id @default(uuid())
+  taskRecordId String          @unique @map("task_record_id")
+  userId       String          @map("user_id")
+  reason       String          @db.Text
+  status       ExemptionStatus @default(pending)
+  reviewedBy   String?         @map("reviewed_by")
+  reviewedAt   DateTime?       @map("reviewed_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  taskRecord   TaskRecord      @relation(fields: [taskRecordId], references: [id])
+
+  @@index([userId])
+  @@map("task_exemptions")
+}
+
+model PersonalReminder {
+  id          String              @id @default(uuid())
+  userId      String              @map("user_id")
+  title       String
+  note        String?             @db.Text
+  remindAt    DateTime?           @map("remind_at")
+  remindEnd   DateTime?           @map("remind_end")
+  remindStart DateTime?           @map("remind_start")
+  repeatType  ReminderRepeatType? @map("repeat_type")
+  isImportant Boolean             @default(false) @map("is_important")
+  status      ReminderStatus      @default(active)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("personal_reminders")
+}
+
+enum UserStatus {
+  active
+  disabled
+  locked
+}
+
+enum OrgType {
+  HQ
+  BASE
+  TEAM
+  HALL
+}
+
+enum OrgStatus {
+  active
+  paused
+}
+
+enum IdentityStatus {
+  active
+  disabled
+  expired
+}
+
+enum AnchorStatus {
+  unbound
+  bound
+  inactive
+}
+
+enum ApplicationStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+enum TaskCategory {
+  DAILY
+  TEMPORARY
+}
+
+enum TaskTemplateStatus {
+  draft
+  published
+  archived
+}
+
+enum TaskAssignmentStatus {
+  draft
+  scheduled
+  active
+  ended
+  deleted
+}
+
+enum TaskEffectMode {
+  immediate
+  next_midnight
+}
+
+enum TaskAssignmentExclusionType {
+  ORG
+  ANCHOR
+}
+
+enum TemporaryTaskMode {
+  ACCOUNT
+  ANCHOR
+  MANAGER
+}
+
+enum TaskRecordSubjectType {
+  USER
+  ORG
+}
+
+enum TaskItemType {
+  QA
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  FILL_BLANK
+  LINK
+  ATTACHMENT
+}
+
+enum TaskRecordStatus {
+  pending
+  in_progress
+  submitted
+  overdue
+}
+
+// 临时任务自动催办：用户级统一配置（一人一行）
+model TemporaryNotifySchedule {
+  id              String   @id @default(uuid())
+  identityId      String   @unique @map("identity_id")
+  enabled         Boolean  @default(false)
+  prefix          String   @default("来自系统提醒")
+  tier1DailyCount Int      @default(2) @map("tier1_daily_count") // ≤1天
+  tier2DailyCount Int      @default(1) @map("tier2_daily_count") // 2-3天
+  tier3DailyCount Int      @default(1) @map("tier3_daily_count") // 4-7天
+  tier4DailyCount Int      @default(0) @map("tier4_daily_count") // 8-15天
+  tier5DailyCount Int      @default(0) @map("tier5_daily_count") // >15天
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("temporary_notify_schedules")
+}
+
+// 临时任务自动催办：防重流水（每条任务每个时间槽只触发一次）
+model TemporaryNotifyTriggerLog {
+  id           String   @id @default(uuid())
+  assignmentId String   @map("assignment_id")
+  slotKey      String   @map("slot_key")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([assignmentId, slotKey])
+  @@index([assignmentId])
+  @@index([createdAt])
+  @@map("temporary_notify_trigger_logs")
+}
+
+enum TaskItemRecordStatus {
+  pending
+  done
+}
+
+enum ExemptionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ReminderStatus {
+  active
+  done
+}
+
+enum ReminderRepeatType {
+  once
+  daily
+  weekly
+  workday
+}

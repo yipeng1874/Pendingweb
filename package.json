@@ -1,0 +1,26 @@
+{
+  "name": "anchor-todo-system",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "caniuse-lite": "^1.0.30001792",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/runtime": "^7.29.2",
+    "@babel/types": "^7.29.0"
+  }
+}

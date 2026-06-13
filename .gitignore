@@ -1,0 +1,36 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+.cache/
+uploads/
+backend/uploads/
+frontend/dist/
+todo-h5/dist/
+
+# 内网穿透配置（含服务器地址和认证 token）
+内网穿透/
+
+# FRP 备份配置
+frpc-backup.toml
+
+# 数据库脚本（含硬编码密码）
+db-backup.bat
+db-restore.bat
+
+# 数据库备份文件
+db-backups/
+
+# 运行时数据（含真实用户信息）
+backend/data/
+
+# 本地参考文档
+飞书.txt
+飞书api/
+重定向.txt
+新建文本文档.txt
+1.doc

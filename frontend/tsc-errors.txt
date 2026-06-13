@@ -1,0 +1,141 @@
+src/features/anchors/components/AnchorAccountDrawer.tsx(189,17): error TS2322: Type '{ label: string; value: string; readOnly: boolean; onChange: (nickname: string) => void; }' is not assignable to type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+  Property 'readOnly' does not exist on type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+src/features/anchors/components/AnchorAccountDrawer.tsx(195,17): error TS2322: Type '{ label: string; value: string; readOnly: boolean; onChange: (douyinNo: string) => void; }' is not assignable to type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+  Property 'readOnly' does not exist on type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+src/features/anchors/components/AnchorAccountDrawer.tsx(201,17): error TS2322: Type '{ label: string; value: string; readOnly: boolean; onChange: (douyinUid: string) => void; }' is not assignable to type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+  Property 'readOnly' does not exist on type 'IntrinsicAttributes & { label: string; value: string; onChange: (value: string) => void; }'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(4,15): error TS2305: Module '"../../../types"' has no exported member 'DailyDashboardAnchorItemDetailResponse'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(4,55): error TS2305: Module '"../../../types"' has no exported member 'DailyDashboardHallDetailsResponse'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(4,90): error TS2305: Module '"../../../types"' has no exported member 'DailyDashboardOrgNode'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(4,113): error TS2305: Module '"../../../types"' has no exported member 'DailyDashboardResponse'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(4,137): error TS2305: Module '"../../../types"' has no exported member 'DailyDashboardTeamChildrenResponse'.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(118,48): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(202,37): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(271,48): error TS7006: Parameter 'taskItem' implicitly has an 'any' type.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(285,91): error TS7006: Parameter 'attachment' implicitly has an 'any' type.
+src/pages/tasks/dashboard/DailyTaskDashboardPage.tsx(506,32): error TS7006: Parameter 'node' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TaskDashboardPage.tsx(5,15): error TS2305: Module '"../../../types"' has no exported member 'PersonalReminder'.
+src/pages/tasks/dashboard/TaskDashboardPage.tsx(5,33): error TS2305: Module '"../../../types"' has no exported member 'TaskRecord'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(6,3): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(7,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardAnchorOrgNode'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(8,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardProgressFilter'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(9,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardRecordDetailResponse'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(10,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardRecordItem'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(11,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardRecordListResponse'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(12,3): error TS2305: Module '"../../../types"' has no exported member 'TemporaryDashboardSummaryResponse'.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(214,58): error TS7006: Parameter 'identity' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(226,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(244,52): error TS7006: Parameter 'attachment' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(339,54): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(761,54): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/tasks/dashboard/TemporaryTaskDashboardPage.tsx(865,50): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyExclusionSelector.tsx(211,27): error TS2345: Argument of type 'PaginatedResult<Anchor>' is not assignable to parameter of type 'SetStateAction<Anchor[]>'.
+src/pages/tasks/manage/components/DailyExclusionSelector.tsx(214,16): error TS2339: Property 'forEach' does not exist on type 'PaginatedResult<Anchor>'.
+src/pages/tasks/manage/components/DailyExclusionSelector.tsx(214,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyExclusionSelector.tsx(220,30): error TS2345: Argument of type '(current: Record<string, Anchor[]>) => { [x: string]: Anchor[] | PaginatedResult<Anchor>; }' is not assignable to parameter of type 'SetStateAction<Record<string, Anchor[]>>'.
+  Type '(current: Record<string, Anchor[]>) => { [x: string]: Anchor[] | PaginatedResult<Anchor>; }' is not assignable to type '(prevState: Record<string, Anchor[]>) => Record<string, Anchor[]>'.
+    Type '{ [x: string]: Anchor[] | PaginatedResult<Anchor>; }' is not assignable to type 'Record<string, Anchor[]>'.
+      'string' index signatures are incompatible.
+        Type 'Anchor[] | PaginatedResult<Anchor>' is not assignable to type 'Anchor[]'.
+          Type 'PaginatedResult<Anchor>' is missing the following properties from type 'Anchor[]': length, pop, push, concat, and 29 more.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(4,15): error TS2305: Module '"../../../../types"' has no exported member 'DailyPublishPreview'.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(4,45): error TS2305: Module '"../../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(4,61): error TS2724: '"../../../../types"' has no exported member named 'TaskAssignmentExclusion'. Did you mean 'TaskAssignmentExclusionType'?
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(212,76): error TS2367: This comparison appears to be unintentional because the types '"draft"' and '"archived"' have no overlap.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(247,65): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(247,123): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(248,75): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(248,146): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(464,29): error TS2339: Property 'toggleActive' does not exist on type '{ list: (params?: string | AssignmentListParams | undefined) => Promise<TaskAssignment[]>; getById: (id: string, params?: ScopeParams | undefined) => Promise<...>; ... 11 more ...; reopen: (id: string, scopeOrgId?: string | undefined) => Promise<...>; }'.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(464,88): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(501,29): error TS2339: Property 'archive' does not exist on type '{ list: (params?: TemplateListParams | undefined) => Promise<TaskTemplate[]>; getById: (id: string, params?: ScopeParams | undefined) => Promise<...>; create: (data: { ...; }) => Promise<...>; update: (id: string, data: unknown, params?: ScopeParams | undefined) => Promise<...>; delete: (id: string, params?: ScopePa...'.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(501,70): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/pages/tasks/manage/components/DailyTaskWizard.tsx(893,77): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(7,34): error TS2724: '"../../../../types"' has no exported member named 'TaskAssignmentExclusion'. Did you mean 'TaskAssignmentExclusionType'?
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(7,73): error TS2305: Module '"../../../../types"' has no exported member 'TemporaryPublishPreview'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(28,51): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(29,50): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(30,168): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(33,49): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(123,49): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(325,88): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(358,96): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(407,86): error TS2367: This comparison appears to be unintentional because the types '"draft"' and '"archived"' have no overlap.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(408,66): error TS2367: This comparison appears to be unintentional because the types '"draft"' and '"published"' have no overlap.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(516,59): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(520,65): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(520,123): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(521,75): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(521,146): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(569,80): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(593,26): error TS7006: Parameter 'current' implicitly has an 'any' type.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(598,75): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(792,25): error TS2367: This comparison appears to be unintentional because the types '"draft"' and '"published"' have no overlap.
+src/pages/tasks/manage/components/TemporaryIssuePanel.tsx(799,27): error TS2339: Property 'archive' does not exist on type '{ list: (params?: TemplateListParams | undefined) => Promise<TaskTemplate[]>; getById: (id: string, params?: ScopeParams | undefined) => Promise<...>; create: (data: { ...; }) => Promise<...>; update: (id: string, data: unknown, params?: ScopeParams | undefined) => Promise<...>; delete: (id: string, params?: ScopePa...'.
+src/pages/tasks/manage/DailyIssuePage.tsx(4,34): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/ProgressReportPage.tsx(5,15): error TS2305: Module '"../../../types"' has no exported member 'AssignmentDailyReportItem'.
+src/pages/tasks/manage/ProgressReportPage.tsx(5,42): error TS2305: Module '"../../../types"' has no exported member 'AssignmentProgressReport'.
+src/pages/tasks/manage/ProgressReportPage.tsx(5,68): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/ProgressReportPage.tsx(75,76): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/tasks/manage/ProgressReportPage.tsx(75,160): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/tasks/manage/ProgressReportPage.tsx(76,56): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TemporaryTaskMode, { label: string; badge: string; title: string; desc: string; summary: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(90,156): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TemporaryTaskMode, { label: string; badge: string; title: string; desc: string; summary: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(110,177): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(110,243): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(195,44): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/pages/tasks/manage/ProgressReportPage.tsx(197,45): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TaskRecordSubjectType, { label: string; badge: string; hint: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(201,286): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(202,328): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/manage/ProgressReportPage.tsx(202,373): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/manage/TaskAssignmentManagePage.tsx(5,34): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/TaskAssignmentManagePage.tsx(34,58): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/TaskAssignmentManagePage.tsx(35,61): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/manage/TaskAssignmentManagePage.tsx(267,49): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TemporaryTaskMode, { label: string; badge: string; title: string; desc: string; summary: string; }>'.
+src/pages/tasks/manage/TaskIssuePage.tsx(5,34): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/TaskIssuePage.tsx(235,13): error TS2322: Type '{ key: string; templates: TaskTemplate[]; orgs: OrgUnit[]; currentOrgId: string | undefined; managementOrgId: string; managementScopePath: string | undefined; managementOrgName: string | undefined; ... 4 more ...; onIssued: () => void; }' is not assignable to type 'IntrinsicAttributes & Props & { managementOrgId?: string | undefined; managementScopePath?: string | undefined; managementOrgName?: string | undefined; }'.
+  Property 'recentPublished' does not exist on type 'IntrinsicAttributes & Props & { managementOrgId?: string | undefined; managementScopePath?: string | undefined; managementOrgName?: string | undefined; }'.
+src/pages/tasks/manage/TemplateBuilderPage.tsx(7,34): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/TemporaryIssuePage.tsx(4,34): error TS2305: Module '"../../../types"' has no exported member 'TaskAssignment'.
+src/pages/tasks/manage/TemporaryIssuePage.tsx(235,11): error TS2322: Type '(scopeOrgId: string, offset?: number, limit?: number) => Promise<{ items: TaskTemplate[]; hasMore: boolean; }>' is not assignable to type '(scopeOrgId: string, offset?: number | undefined, limit?: number | undefined) => Promise<TaskTemplate[]>'.
+  Type 'Promise<{ items: TaskTemplate[]; hasMore: boolean; }>' is not assignable to type 'Promise<TaskTemplate[]>'.
+    Type '{ items: TaskTemplate[]; hasMore: boolean; }' is missing the following properties from type 'TaskTemplate[]': length, pop, push, concat, and 29 more.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(17,25): error TS2305: Module '"../../../types"' has no exported member 'TaskItemRecord'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(17,41): error TS2305: Module '"../../../types"' has no exported member 'TaskRecord'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(103,24): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(103,78): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(279,52): error TS7006: Parameter 'attachment' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(311,23): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TaskRecordSubjectType, { label: string; badge: string; hint: string; }>'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(314,52): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(315,42): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(318,49): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(319,42): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(322,59): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<TemporaryTaskMode, { label: string; badge: string; title: string; desc: string; summary: string; }>'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(325,51): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(394,142): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(394,187): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<"HQ" | "BASE" | "TEAM" | "HALL", { label: string; badge: string; text: string; size: string; }>'.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(435,38): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(436,94): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(454,39): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/pages/tasks/my-todos/TaskRecordCard.tsx(455,98): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/pages/tasks/reminder/components/ReminderTodoCard.tsx(4,15): error TS2305: Module '"../../../../types"' has no exported member 'PersonalReminder'.
+src/pages/tasks/reminder/ReminderPage.tsx(4,15): error TS2305: Module '"../../../types"' has no exported member 'PersonalReminder'.
+src/services/task.ts(2,3): error TS2305: Module '"../types"' has no exported member 'AssignmentDailyReportItem'.
+src/services/task.ts(3,3): error TS2305: Module '"../types"' has no exported member 'AssignmentProgressReport'.
+src/services/task.ts(4,3): error TS2305: Module '"../types"' has no exported member 'DailyPublishPreview'.
+src/services/task.ts(5,3): error TS2305: Module '"../types"' has no exported member 'PersonalReminder'.
+src/services/task.ts(6,3): error TS2305: Module '"../types"' has no exported member 'TaskAssignment'.
+src/services/task.ts(8,3): error TS2724: '"../types"' has no exported member named 'TaskExemption'. Did you mean 'TaskItemOption'?
+src/services/task.ts(9,3): error TS2305: Module '"../types"' has no exported member 'TaskItemRecord'.
+src/services/task.ts(10,3): error TS2305: Module '"../types"' has no exported member 'TaskRecord'.
+src/services/task.ts(12,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardAssignmentListResponse'.
+src/services/task.ts(13,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardAnchorHallNodeResponse'.
+src/services/task.ts(14,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardAnchorTeamNodeResponse'.
+src/services/task.ts(15,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardProgressFilter'.
+src/services/task.ts(16,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardRecordDetailResponse'.
+src/services/task.ts(17,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardRecordListResponse'.
+src/services/task.ts(18,3): error TS2305: Module '"../types"' has no exported member 'TemporaryDashboardSummaryResponse'.
+src/services/task.ts(19,3): error TS2305: Module '"../types"' has no exported member 'TemporaryPublishPreview'.
+src/services/task.ts(223,39): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'DailyDashboardResponse'.
+src/services/task.ts(230,39): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'DailyDashboardTeamChildrenResponse'.
+src/services/task.ts(237,39): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'DailyDashboardHallDetailsResponse'.
+src/services/task.ts(244,39): error TS2694: Namespace '"D:/Pendingweb/frontend/src/types"' has no exported member 'DailyDashboardAnchorItemDetailResponse'.

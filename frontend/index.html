@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1677ff" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="待办" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>主播待办系统</title>
+    <!--
+      飞书 JS-SDK：在飞书 App 内加载后提供 window.tt 对象
+      普通浏览器访问时此脚本加载失败不影响正常使用
+    -->
+    <script src="https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.30.js" onerror="console.warn('飞书 SDK 未加载（非飞书环境）')"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

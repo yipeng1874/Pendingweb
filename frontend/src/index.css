@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #1f2329;
+  background:
+    radial-gradient(circle at top left, rgba(82, 126, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f9fd 0%, #f5f8fc 36%, #f3f6fb 100%);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --feishu-blue: #4c72ff;
+  --feishu-blue-strong: #3b63f6;
+  --feishu-pale: #eef4ff;
+  --feishu-bg: #f5f8fc;
+  --feishu-surface: rgba(255, 255, 255, 0.9);
+  --feishu-border: rgba(148, 163, 184, 0.18);
+  --feishu-text: #1f2329;
+  --feishu-subtle: #86909c;
+  --feishu-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
+  --feishu-shadow-md: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --feishu-shadow-lg: 0 24px 70px rgba(15, 23, 42, 0.12);
+  --feishu-radius-lg: 24px;
+  --feishu-radius-md: 18px;
+  --feishu-radius-sm: 12px;
+}
+
+html {
+  background: #f3f6fb;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(76, 114, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, #f7f9fd 0%, #f4f7fb 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(76, 114, 255, 0.16);
+  color: #1f2329;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+input, textarea, select {
+  color: #1f2329;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #98a2b3;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.42);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.56);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+@layer base {
+  body {
+    @apply text-[14px] leading-6;
+  }
+}
+
+@layer components {
+  .feishu-card {
+    @apply rounded-[24px] border border-white/70 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl;
+  }
+
+  .feishu-panel {
+    @apply rounded-[28px] border border-white/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.10)] backdrop-blur-xl;
+  }
+
+  .feishu-input {
+    @apply h-12 w-full rounded-[16px] border border-slate-200 bg-slate-50 px-4 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400;
+  }
+
+  .feishu-input:focus {
+    @apply border-feishu-blue bg-white shadow-[0_0_0_4px_rgba(76,114,255,0.10)];
+  }
+
+  .feishu-button-primary {
+    @apply inline-flex h-12 items-center justify-center rounded-[16px] bg-feishu-blue px-5 text-[14px] font-semibold text-white shadow-[0_12px_28px_rgba(76,114,255,0.22)] transition-all duration-200 hover:bg-[#3b63f6] hover:shadow-[0_14px_32px_rgba(76,114,255,0.28)] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none;
+  }
+
+  .feishu-button-secondary {
+    @apply inline-flex h-12 items-center justify-center rounded-[16px] border border-slate-200 bg-white px-5 text-[14px] font-medium text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900;
+  }
+
+  .feishu-badge {
+    @apply inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.03)];
+  }
+}
