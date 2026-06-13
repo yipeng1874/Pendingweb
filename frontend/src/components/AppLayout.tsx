@@ -377,7 +377,7 @@ export function AppLayout() {
           </button>
           <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-gradient-to-br from-feishu-blue to-[#7B9DFF] text-[18px] font-semibold text-white shadow-[0_14px_30px_rgba(76,114,255,0.24)]">管</div>
           <div className="leading-tight">
-            <p className="text-[15px] font-semibold tracking-[-0.02em] text-slate-950">公会组织管理系统</p>
+            <p className="text-[15px] font-semibold tracking-[-0.02em] text-slate-950">千广组织协同成长平台</p>
             <p className="text-[12px] text-slate-500">聚焦组织、账号与主播管理</p>
           </div>
         </div>
