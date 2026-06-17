@@ -143,8 +143,8 @@ export function DailyNotifyScheduleModal({ open, scopeOrgId, scopeOrgName, taskD
             <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
               <Clock3 size={14} />飞书定时通知配置
             </div>
-            <h3 className="mt-3 text-xl font-semibold text-slate-900">{resolvedScopeName} · 日常任务自动通知</h3>
-            <p className="mt-1 text-sm text-slate-500">配置后系统会按设定频率自动提醒仍未完成日常任务的人员。</p>
+            <h3 className="mt-3 text-xl font-semibold text-slate-900">{resolvedScopeName} · 主播日常任务自动通知</h3>
+            <p className="mt-1 text-sm text-slate-500">配置后系统会按设定频率自动提醒仍未完成主播日常任务的人员。</p>
           </div>
           <button
             type="button"

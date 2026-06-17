@@ -25,13 +25,13 @@ const taskSubItems = [
 ];
 
 const taskBoardSubItems = [
-  { to: "/tasks/dashboard/daily-board", label: "日常任务看板", icon: ClipboardCheck },
+  { to: "/tasks/dashboard/daily-board", label: "主播日常任务看板", icon: ClipboardCheck },
   { to: "/tasks/dashboard/temporary-board", label: "临时任务看板", icon: CalendarClock },
   { to: "/tasks/dashboard/workflow-board", label: "协同任务看板", icon: GitBranch },
 ];
 
 const issueSubItems = [
-  { to: "/tasks/templates/daily-library", label: "日常任务", icon: ClipboardCheck },
+  { to: "/tasks/templates/daily-library", label: "主播日常任务", icon: ClipboardCheck },
   { to: "/tasks/issue/temporary", label: "临时任务", icon: CalendarClock },
   { to: "/tasks/collaboration/workflow", label: "协同任务", icon: GitBranch },
 ];

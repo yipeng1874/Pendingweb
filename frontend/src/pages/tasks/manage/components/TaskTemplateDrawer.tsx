@@ -228,7 +228,7 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{drawerTitle}</h3>
-            <p className="mt-1 text-xs text-slate-400">{category === "DAILY" ? "用于日常任务三步向导的表单草稿。" : "用于临时任务发放的表单草稿。"}</p>
+            <p className="mt-1 text-xs text-slate-400">{category === "DAILY" ? "用于主播日常任务三步向导的表单草稿。" : "用于临时任务发放的表单草稿。"}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-2xl p-2 text-slate-400 transition hover:bg-slate-100">
             <X size={18} />

@@ -79,7 +79,7 @@ export function ProgressReportPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">进度报表</h1>
-        <p className="mt-1 text-sm text-slate-500">区分账号主体与组织主体，查看临时任务或日常任务的完成情况。</p>
+        <p className="mt-1 text-sm text-slate-500">区分账号主体与组织主体，查看临时任务或主播日常任务的完成情况。</p>
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
@@ -105,12 +105,12 @@ export function ProgressReportPage() {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">{selectedAssignment.category === "DAILY" ? "日常任务" : "临时任务"}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">{selectedAssignment.category === "DAILY" ? "主播日常任务" : "临时任务"}</span>
                 {tempMode && <span className={`rounded-full px-2 py-1 text-xs font-medium ${tempMode.badge}`}>{tempMode.label}</span>}
                 {selectedAssignment.temporaryMode === "MANAGER" && selectedAssignment.temporarySubjectOrgType && <span className={`rounded-full px-2 py-1 text-xs font-medium ${orgTypeMeta[selectedAssignment.temporarySubjectOrgType].badge}`}>{orgTypeMeta[selectedAssignment.temporarySubjectOrgType].label}主体</span>}
               </div>
               <h2 className="mt-3 text-2xl font-bold text-slate-900">{selectedAssignment.template?.title ?? "未命名任务"}</h2>
-              <p className="mt-2 text-sm leading-7 text-slate-500">{selectedAssignment.category === "DAILY" ? "日常任务默认按账号主体统计完成情况，按任务日期汇总时会在次日16:00正式封单。" : `本次临时任务按${selectedAssignment.temporaryMode === "MANAGER" ? `${orgTypeMeta[(selectedAssignment.temporarySubjectOrgType as "TEAM" | "HALL" | null) ?? "TEAM"].label}主体` : "账号主体"}统计进度，同时保留可见身份与实际提交时间。`}</p>
+              <p className="mt-2 text-sm leading-7 text-slate-500">{selectedAssignment.category === "DAILY" ? "主播日常任务默认按账号主体统计完成情况，按任务日期汇总时会在次日16:00正式封单。" : `本次临时任务按${selectedAssignment.temporaryMode === "MANAGER" ? `${orgTypeMeta[(selectedAssignment.temporarySubjectOrgType as "TEAM" | "HALL" | null) ?? "TEAM"].label}主体` : "账号主体"}统计进度，同时保留可见身份与实际提交时间。`}</p>
               <div className="mt-4 grid gap-4 md:grid-cols-4">
                 <div className="rounded-2xl bg-emerald-50 p-4"><div className="mb-2 flex items-center gap-2 text-emerald-600"><CheckCircle2 size={14} />已完成</div><p className="text-2xl font-bold text-emerald-700">{report.submitted}</p><p className="mt-1 text-xs text-emerald-600">共 {report.total} 个主体</p></div>
                 <div className="rounded-2xl bg-orange-50 p-4"><div className="mb-2 flex items-center gap-2 text-orange-600"><Clock size={14} />进行中</div><p className="text-2xl font-bold text-orange-600">{report.inProgress}</p><p className="mt-1 text-xs text-orange-500">待继续推进</p></div>

@@ -67,14 +67,14 @@ const templateCategoryMeta: Record<TaskCategory, {
 }> = {
   DAILY: {
     route: "/tasks/templates/daily",
-    pageTitle: "日常任务库",
-    pageDesc: "统一管理基地的日常任务草稿、待生效任务、生效中任务与历史结束任务。",
-    switchTitle: "日常任务（融通版）",
-    switchDesc: "面向基地融通版日常协同，适合长期复用的标准化任务。",
-    createLabel: "新建日常模板",
-    emptyText: "当前还没有日常任务模板，点击右上角新建即可开始维护。",
-    fixedTypeLabel: "日常任务（融通版）",
-    fixedTypeDesc: "当前模板库只维护融通版日常任务模板；模板内容始终按草稿维护，真正投放以任务发放为准。",
+    pageTitle: "主播日常任务库",
+    pageDesc: "统一管理基地的主播日常任务草稿、待生效任务、生效中任务与历史结束任务。",
+    switchTitle: "主播日常任务（融通版）",
+    switchDesc: "面向基地融通版主播日常协同，适合长期复用的标准化任务。",
+    createLabel: "新建主播日常模板",
+    emptyText: "当前还没有主播日常任务模板，点击右上角新建即可开始维护。",
+    fixedTypeLabel: "主播日常任务（融通版）",
+    fixedTypeDesc: "当前模板库只维护融通版主播日常任务模板；模板内容始终按草稿维护，真正投放以任务发放为准。",
   },
   TEMPORARY: {
     route: "/tasks/templates/temporary",
@@ -377,7 +377,7 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
 
   async function handleEndAssignment(assignment: TaskAssignment) {
     if (assignment.status !== "active" && assignment.status !== "scheduled") return;
-    const confirmed = window.confirm(`确认结束任务「${assignment.template?.title ?? "未命名日常任务"}」吗？结束后将不再作为当前日常任务生效。`);
+    const confirmed = window.confirm(`确认结束任务「${assignment.template?.title ?? "未命名主播日常任务"}」吗？结束后将不再作为当前主播日常任务生效。`);
     if (!confirmed) return;
     const result = await assignmentApi.close(assignment.id, selectedScopeOrgId || undefined).catch((error) => {
       window.alert(error instanceof Error ? error.message : "结束任务失败");
@@ -427,7 +427,7 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
           </div>
           <div className={`mt-4 rounded-2xl px-4 py-3 text-sm ${selectedScopeOrg ? "border border-blue-100 bg-blue-50 text-blue-700" : "border border-amber-100 bg-amber-50 text-amber-700"}`}>
             {selectedScopeOrg
-              ? `当前已切换到“${selectedScopeOrg.name}”基地模板库，下面展示的是该基地的历史日常模板。`
+              ? `当前已切换到"${selectedScopeOrg.name}"基地模板库，下面展示的是该基地的历史日常模板。`
               : "请先选择基地，再查看并维护该基地的日常模板。"}
           </div>
         </section>
@@ -449,8 +449,8 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
         {category === "DAILY"
-          ? <>当前页面已升级为独立的 <span className="font-medium">日常任务库</span>；同一页面内统一查看 <span className="font-medium">草稿</span>、<span className="font-medium">待生效</span>、<span className="font-medium">生效中</span>、<span className="font-medium">已结束</span> 四类日常任务资产，其中草稿仅展示从未发布过的任务。</>
-          : <>当前页面已是独立的 <span className="font-medium">{categoryMeta.fixedTypeLabel}</span> 模板库；左侧菜单负责切换“日常任务”和“临时任务”。模板会按使用情况分成两类：<span className="font-medium">草稿</span> 表示从未被发放使用，<span className="font-medium">已发布</span> 表示至少被正式发放过一次。</>}
+          ? <>当前页面已升级为独立的 <span className="font-medium">主播日常任务库</span>；同一页面内统一查看 <span className="font-medium">草稿</span>、<span className="font-medium">待生效</span>、<span className="font-medium">生效中</span>、<span className="font-medium">已结束</span> 四类主播日常任务资产，其中草稿仅展示从未发布过的任务。</>
+          : <>当前页面已是独立的 <span className="font-medium">{categoryMeta.fixedTypeLabel}</span> 模板库；左侧菜单负责切换"主播日常任务"和"临时任务"。模板会按使用情况分成两类：<span className="font-medium">草稿</span> 表示从未被发放使用，<span className="font-medium">已发布</span> 表示至少被正式发放过一次。</>}
       </div>
 
       {loading ? (
@@ -481,7 +481,7 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sm.cls}`}>{sm.text}</span>
                             <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">草稿</span>
                             <span className="text-xs text-slate-400">v{t.version}</span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">日常任务</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">主播日常任务</span>
                           </div>
                           <p className="font-semibold text-slate-900">{t.title}</p>
                           {t.description && <p className="mt-1 truncate text-sm text-slate-500">{t.description}</p>}
@@ -502,8 +502,8 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
 
           {[
             { key: "scheduled", title: "待生效", desc: "已确认发放，等待次日 00:00 自动接管。", rows: scheduledAssignments },
-            { key: "active", title: "生效中", desc: "当前正在执行的日常任务。", rows: activeAssignments },
-            { key: "ended", title: "已结束", desc: "已结束或已删除的历史日常任务。", rows: endedAssignments },
+            { key: "active", title: "生效中", desc: "当前正在执行的主播日常任务。", rows: activeAssignments },
+            { key: "ended", title: "已结束", desc: "已结束或已删除的历史主播日常任务。", rows: endedAssignments },
           ].map((group) => (
             <section key={group.key} className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -526,7 +526,7 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
                               <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">{assignment.effectMode === "immediate" ? "立即生效" : "次日凌晨生效"}</span>
                               <span className="text-xs text-slate-400">v{assignment.templateVersion ?? assignment.template?.version ?? 1}</span>
                             </div>
-                            <p className="font-semibold text-slate-900">{assignment.template?.title ?? "未命名日常任务"}</p>
+                            <p className="font-semibold text-slate-900">{assignment.template?.title ?? "未命名主播日常任务"}</p>
                             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                               <span>正式发放：{assignment.publishedAt ? new Date(assignment.publishedAt).toLocaleString("zh-CN") : "未记录"}</span>
                               <span>生效时间：{assignment.effectiveAt ? new Date(assignment.effectiveAt).toLocaleString("zh-CN") : "未记录"}</span>
@@ -624,7 +624,7 @@ export function TemplateBuilderPage({ category }: { category: TaskCategory }) {
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">表单详情</h3>
-                <p className="mt-1 text-xs text-slate-400">查看当前日常任务表单的标题、说明与子任务结构</p>
+                <p className="mt-1 text-xs text-slate-400">查看当前主播日常任务表单的标题、说明与子任务结构</p>
               </div>
               <button type="button" onClick={() => setViewingTemplate(null)} className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"><X size={18} /></button>
             </div>

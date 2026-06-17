@@ -259,7 +259,7 @@ export function DailyTaskWizard({
         setKnownExcludedAnchors(extractKnownExcludedAnchors(assignment.exclusions));
         setEffectMode(assignment.effectMode ?? "next_midnight");
         setStep(1);
-        setNotice("已恢复上次未发放的日常任务草稿，请确认或更改任务表单后继续。");
+        setNotice("已恢复上次未发放的主播日常任务草稿，请确认或更改任务表单后继续。");
       })
       .catch(console.error);
   }, [initialAssignmentId]);
@@ -351,7 +351,7 @@ export function DailyTaskWizard({
     if (!result) return null;
     setDraftAssignmentId(result.id);
     setKnownExcludedAnchors((current) => ({ ...current, ...extractKnownExcludedAnchors(result.exclusions) }));
-    setNotice(isNewDraft ? "已创建当前日常任务发放草稿，后续保存都会持续更新这一份。" : "当前日常任务发放草稿已更新，未执行发放前都不会影响主播端。");
+    setNotice(isNewDraft ? "已创建当前主播日常任务发放草稿，后续保存都会持续更新这一份。" : "当前主播日常任务发放草稿已更新，未执行发放前都不会影响主播端。");
 
     if (step === 3) {
       void loadPublishPreview(result.id);
@@ -388,11 +388,11 @@ export function DailyTaskWizard({
     setIssuing(true);
     const published = await assignmentApi.publishDailyDraft(pendingPublishAssignmentId, effectMode, managementOrgId).catch((error) => {
       if (error instanceof Error && error.message.includes("DAILY_SCHEDULED_EXISTS")) {
-        window.alert("当前基地已有待生效日常任务，请先删除待生效任务后再发布新的日常任务。");
+        window.alert("当前基地已有待生效主播日常任务，请先删除待生效任务后再发布新的主播日常任务。");
         return null;
       }
       console.error(error);
-      window.alert(error instanceof Error ? error.message : "日常任务发放失败");
+      window.alert(error instanceof Error ? error.message : "主播日常任务发放失败");
       return null;
     });
     setIssuing(false);
@@ -401,8 +401,8 @@ export function DailyTaskWizard({
     setPendingPublishAssignmentId("");
     setNotice(
       effectMode === "immediate"
-        ? "新的日常任务已立即生效；同级旧任务已自动结束，重叠范围会按最后发布任务执行。"
-        : "新的日常任务已排入次日凌晨生效队列；到时同级旧任务会自动结束，重叠范围会切换到这次发布。"
+        ? "新的主播日常任务已立即生效；同级旧任务已自动结束，重叠范围会按最后发布任务执行。"
+        : "新的主播日常任务已排入次日凌晨生效队列；到时同级旧任务会自动结束，重叠范围会切换到这次发布。"
     );
     await onReload();
     onIssued();
@@ -410,7 +410,7 @@ export function DailyTaskWizard({
 
 
   async function handleDeleteDraft() {
-    if (!draftAssignmentId || !window.confirm("确认删除当前日常任务草稿？删除后需要重新发起。")) return;
+    if (!draftAssignmentId || !window.confirm("确认删除当前主播日常任务草稿？删除后需要重新发起。")) return;
     await assignmentApi.delete(draftAssignmentId).catch(console.error);
     setDraftAssignmentId("");
     setExcludedOrgIds([]);
@@ -514,7 +514,7 @@ export function DailyTaskWizard({
     if (!managementOrgId) return;
     const isScheduled = assignment.status === "scheduled";
     const actionLabel = isScheduled ? "删除待生效任务" : "结束任务";
-    const confirmed = window.confirm(`确认${actionLabel}「${assignment.template?.title ?? "未命名日常任务"}」吗？`);
+    const confirmed = window.confirm(`确认${actionLabel}「${assignment.template?.title ?? "未命名主播日常任务"}」吗？`);
     if (!confirmed) return;
     const result = isScheduled
       ? await assignmentApi.delete(assignment.id, scopeParams).catch((error) => {
@@ -536,7 +536,7 @@ export function DailyTaskWizard({
       setSelectedTemplateId((result as { templateId?: string })?.templateId ?? "");
       setNotice("待生效任务已取消，并已退回一份模板草稿；覆盖范围、生效方式和排除设置已清除，可在第一步继续编辑后重新发布。");
     } else {
-      setNotice("当前生效中的日常任务已结束。");
+      setNotice("当前生效中的主播日常任务已结束。");
     }
     await onReload();
   }
@@ -597,7 +597,7 @@ export function DailyTaskWizard({
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">确认发送日常任务通知</h3>
+                <h3 className="text-lg font-semibold text-slate-900">确认发送主播日常任务通知</h3>
                 <p className="mt-1 text-sm text-slate-500">发送前请确认本次待通知人数与文案前缀。</p>
               </div>
               <button
@@ -678,8 +678,8 @@ export function DailyTaskWizard({
         <section className="space-y-5 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="text-xl font-semibold text-slate-900">第一步：选择日常任务</h3>
-              <p className="mt-1 text-sm text-slate-500">日常任务严格区分为草稿、待生效、生效中、已结束四类；只有草稿可以继续进入发布流程。</p>
+              <h3 className="text-xl font-semibold text-slate-900">第一步：选择主播日常任务</h3>
+              <p className="mt-1 text-sm text-slate-500">主播日常任务严格区分为草稿、待生效、生效中、已结束四类；只有草稿可以继续进入发布流程。</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -710,7 +710,7 @@ export function DailyTaskWizard({
                   disabled={!managementOrgId}
                   className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ClipboardCheck size={15} />新建日常任务草稿
+                  <ClipboardCheck size={15} />新建主播日常任务草稿
                 </button>
               )}
             </div>
@@ -782,7 +782,7 @@ export function DailyTaskWizard({
                     <>
                       {scheduledPage.map((assignment) => (
                         <div key={assignment.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
-                          <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名日常任务"}</p>
+                          <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名主播日常任务"}</p>
                           <p className="mt-2 text-xs text-slate-400">生效时间：{assignment.effectiveAt ? new Date(assignment.effectiveAt).toLocaleString("zh-CN") : "未记录"}</p>
                           <div className="mt-3 flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1">
                             {assignment.template && <button type="button" onClick={() => void handleViewTemplate(assignment.template as TaskTemplate, assignment.id)} disabled={viewingTemplateId === assignment.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">{viewingTemplateId === assignment.id ? <><Loader2 size={12} className="animate-spin" />加载中...</> : <><Eye size={12} />查看内容</>}</button>}
@@ -816,7 +816,7 @@ export function DailyTaskWizard({
                     <>
                       {activePage.map((assignment) => (
                         <div key={assignment.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
-                          <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名日常任务"}</p>
+                          <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名主播日常任务"}</p>
                           <p className="mt-2 text-xs text-slate-400">生效时间：{assignment.effectiveAt ? new Date(assignment.effectiveAt).toLocaleString("zh-CN") : "未记录"}</p>
                           <div className="mt-3 flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1">
                             {assignment.template && <button type="button" onClick={() => void handleViewTemplate(assignment.template as TaskTemplate, assignment.id)} disabled={viewingTemplateId === assignment.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">{viewingTemplateId === assignment.id ? <><Loader2 size={12} className="animate-spin" />加载中...</> : <><Eye size={12} />查看内容</>}</button>}
@@ -852,7 +852,7 @@ export function DailyTaskWizard({
                   <>
                     {endedPage.map((assignment) => (
                       <div key={assignment.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
-                        <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名日常任务"}</p>
+                        <p className="font-semibold text-slate-900 line-clamp-2">{assignment.template?.title ?? "未命名主播日常任务"}</p>
                         <p className="mt-2 text-xs text-slate-400">结束时间：{assignment.endedAt ? new Date(assignment.endedAt).toLocaleString("zh-CN") : "未记录"}</p>
                         <div className="mt-3 flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1">
                           {assignment.template && <button type="button" onClick={() => void handleViewTemplate(assignment.template as TaskTemplate, assignment.id)} disabled={viewingTemplateId === assignment.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">{viewingTemplateId === assignment.id ? <><Loader2 size={12} className="animate-spin" />加载中...</> : <><Eye size={12} />查看内容</>}</button>}
@@ -953,11 +953,11 @@ export function DailyTaskWizard({
           <div className="space-y-5 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
             <div>
               <h3 className="text-xl font-semibold text-slate-900">第三步：执行发放</h3>
-              <p className="mt-1 text-sm text-slate-500">发放后会形成正式日常任务；若与其他正式任务范围重叠，主播端会按最后发布的任务执行，同级旧任务会自动结束。</p>
+              <p className="mt-1 text-sm text-slate-500">发放后会形成正式主播日常任务；若与其他正式任务范围重叠，主播端会按最后发布的任务执行，同级旧任务会自动结束。</p>
             </div>
 
             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              发布前请重点确认右侧排除名单和覆盖提醒；确认发放后，重叠主播会切换到这次发布的日常任务。
+              发布前请重点确认右侧排除名单和覆盖提醒；确认发放后，重叠主播会切换到这次发布的主播日常任务。
             </div>
 
 
@@ -1073,7 +1073,7 @@ export function DailyTaskWizard({
                 </div>
               ) : (
                 <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
-                  {previewing ? "正在计算这次发布会覆盖哪些正式任务..." : "当前没有发现会被覆盖的正式日常任务。"}
+                  {previewing ? "正在计算这次发布会覆盖哪些正式任务..." : "当前没有发现会被覆盖的正式主播日常任务。"}
                 </div>
               )}
             </div>
@@ -1117,7 +1117,7 @@ export function DailyTaskWizard({
             </div>
 
             <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
-              新的正式日常任务生效后，重叠主播会按最新发布任务执行；同级旧任务会自动结束，不需要人工收尾。
+              新的正式主播日常任务生效后，重叠主播会按最新发布任务执行；同级旧任务会自动结束，不需要人工收尾。
             </div>
 
 
@@ -1129,7 +1129,7 @@ export function DailyTaskWizard({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-8">
           <div className="max-h-full w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-100 px-6 py-5">
-              <p className="text-lg font-semibold text-slate-900">二次确认：发放正式日常任务</p>
+              <p className="text-lg font-semibold text-slate-900">二次确认：发放正式主播日常任务</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">请强制阅读以下内容，避免表单、生效方式或排除名单配置出错。倒计时结束后才能确认发放。</p>
             </div>
             <div className="max-h-[62vh] space-y-4 overflow-y-auto px-6 py-5">

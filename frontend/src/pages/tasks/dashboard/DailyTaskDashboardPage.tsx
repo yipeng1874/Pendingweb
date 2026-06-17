@@ -411,7 +411,7 @@ export function DailyTaskDashboardPage() {
     const [orgTree, dashboard] = await Promise.all([
       fetchOrgTree().catch(() => [] as OrgUnit[]),
       reportApi.getDailyDashboard((forceDate ?? taskDate) || undefined, requestBaseOrgId || undefined).catch((err) => {
-        setError(err instanceof Error ? err.message : "日常任务看板加载失败");
+        setError(err instanceof Error ? err.message : "主播日常任务看板加载失败");
         return null;
       }),
     ]);
@@ -515,7 +515,7 @@ export function DailyTaskDashboardPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-4 xl:flex-nowrap">
           <div className="shrink-0">
-            <h1 className="text-[28px] font-bold tracking-[-0.02em] text-slate-900">日常任务看板</h1>
+            <h1 className="text-[28px] font-bold tracking-[-0.02em] text-slate-900">主播日常任务看板</h1>
           </div>
 
           <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
@@ -594,7 +594,7 @@ export function DailyTaskDashboardPage() {
           <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">确认发送日常任务通知</h3>
+                <h3 className="text-lg font-semibold text-slate-900">确认发送主播日常任务通知</h3>
                 <p className="mt-1 text-xs text-slate-400">发送前再确认本次待通知人数与文案前缀</p>
               </div>
               <button
@@ -669,7 +669,7 @@ export function DailyTaskDashboardPage() {
 
       {loading ? (
         <div className="rounded-3xl bg-white py-16 text-center text-sm text-slate-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-          <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" />日常任务看板加载中...</span>
+          <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" />主播日常任务看板加载中...</span>
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>

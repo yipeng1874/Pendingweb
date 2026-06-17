@@ -151,7 +151,7 @@ export function TaskIssuePage() {
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-2">
         {([
-          { key: "DAILY", title: "日常任务", desc: "切到哪个基地，就维护哪个基地当前这套日常任务与草稿。", icon: <ClipboardCheck size={18} /> },
+          { key: "DAILY", title: "主播日常任务", desc: "切到哪个基地，就维护哪个基地当前这套主播日常任务与草稿。", icon: <ClipboardCheck size={18} /> },
           { key: "TEMPORARY", title: "临时任务", desc: "适合临时通知或活动安排，继续按组织范围和截止时间发放。", icon: <Clock3 size={18} /> },
         ] as const).map((item) => {
           const active = category === item.key;
@@ -179,7 +179,7 @@ export function TaskIssuePage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">选择管理基地</h2>
-              <p className="mt-1 text-sm text-slate-500">切到哪个基地，下面的日常任务向导就会直接在该基地范围内保存草稿并执行发放。</p>
+              <p className="mt-1 text-sm text-slate-500">切到哪个基地，下面的主播日常任务向导就会直接在该基地范围内保存草稿并执行发放。</p>
             </div>
             <button
               type="button"
@@ -210,9 +210,9 @@ export function TaskIssuePage() {
 
           <div className={`rounded-2xl px-4 py-3 text-sm ${selectedScopeOrg ? "border border-blue-100 bg-blue-50 text-blue-700" : "border border-amber-100 bg-amber-50 text-amber-700"}`}>
             {selectedScopeOrg
-              ? `当前已切换到“${selectedScopeOrg.name}”基地，下面的向导会直接按这个基地范围处理日常任务。`
+              ? `当前已切换到"${selectedScopeOrg.name}"基地，下面的向导会直接按这个基地范围处理主播日常任务。`
               : requiresBaseSelection
-                ? "请先选择一个基地，再继续制作和发布该基地的日常任务。"
+                ? "请先选择一个基地，再继续制作和发布该基地的主播日常任务。"
                 : "当前身份暂未落到具体基地，选定后再继续发放。"}
           </div>
         </section>

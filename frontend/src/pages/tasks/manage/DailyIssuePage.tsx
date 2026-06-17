@@ -179,7 +179,7 @@ export function DailyIssuePage() {
       {loading ? (
         <div className="rounded-3xl bg-white py-16 text-center text-sm text-slate-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">任务发放配置加载中...</div>
       ) : !canManageDaily ? (
-        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">日常任务仅允许总公司与基地管理身份维护，请先切换身份。</div>
+        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">主播日常任务仅允许总公司与基地管理身份维护，请先切换身份。</div>
       ) : selectedScopeOrgId ? (
         <DailyTaskWizard
           key={selectedScopeOrgId}
@@ -217,7 +217,7 @@ export function DailyIssuePage() {
             </div>
 
             {/* 标题 */}
-            <h3 className="mt-5 text-xl font-bold text-slate-900 tracking-tight">日常任务协同中心</h3>
+            <h3 className="mt-5 text-xl font-bold text-slate-900 tracking-tight">主播日常任务协同中心</h3>
 
             {/* 激励语 */}
             <p className="mt-2 text-sm text-slate-400 text-center max-w-sm leading-relaxed">

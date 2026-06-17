@@ -197,7 +197,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.cls}`}>{statusMeta.label}</span>
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">日常任务</span>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">主播日常任务</span>
               <span className="text-xs text-slate-400">v{assignment.templateVersion ?? assignment.template?.version ?? 1}</span>
             </div>
             <p className="mt-2 text-lg font-semibold text-slate-900">{assignment.template?.title ?? "未命名任务"}</p>
@@ -367,7 +367,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
         <div className="grid gap-3 md:grid-cols-3">
           {([
             { key: "scheduled", title: "待生效", desc: "次日凌晨自动接管" },
-            { key: "active", title: "正式任务", desc: "当前生效中的日常任务" },
+            { key: "active", title: "正式任务", desc: "当前生效中的主播日常任务" },
             { key: "history", title: "历史任务", desc: "已结束或已删除" },
           ] as const).map((item) => (
             <div key={item.key} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
@@ -380,14 +380,14 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
 
         {!hasDailyAssignments ? (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
-            当前没有已发布的日常任务，可从“日常任务”发布页创建或继续处理草稿。
+            当前没有已发布的主播日常任务，可从"主播日常任务"发布页创建或继续处理草稿。
           </div>
         ) : (
           <>
             {dailyGroups.active.length > 0 && <div className="space-y-4">{dailyGroups.active.map((assignment) => renderDailyCard(assignment, true))}</div>}
             {dailyGroups.scheduled.length > 0 && (
               <div className="space-y-4">
-                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm text-cyan-700">这些任务已经完成发放确认，但会等到指定时间再接管正式日常任务。</div>
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm text-cyan-700">这些任务已经完成发放确认，但会等到指定时间再接管正式主播日常任务。</div>
                 {dailyGroups.scheduled.map((assignment) => renderDailyCard(assignment))}
               </div>
             )}
@@ -423,7 +423,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
 
         {!hasTemporaryAssignments ? (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
-            当前没有已发布的临时任务，可从“临时任务”发布页创建或继续处理你的草稿。
+            当前没有已发布的临时任务，可从"临时任务"发布页创建或继续处理你的草稿。
           </div>
         ) : (
           <>
@@ -449,7 +449,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
   const issueQuery = selectedScopeOrgId ? `?scopeOrgId=${selectedScopeOrgId}` : "";
   const scopeSelectorTitle = tab === "DAILY" ? "选择管理基地" : "按基地筛选（可选）";
   const scopeSelectorDesc = tab === "DAILY"
-    ? "总部进入日常任务管理时先选基地，基地管理默认聚焦自己的基地；下面列表会按选中的基地视角汇总已发布任务。"
+    ? "总部进入主播日常任务管理时先选基地，基地管理默认聚焦自己的基地；下面列表会按选中的基地视角汇总已发布任务。"
     : "临时任务默认按当前身份范围展示；如需聚焦某个基地，可在这里进一步筛选。";
   const scopeSelectorLabel = tab === "DAILY" ? "当前管理基地" : "筛选基地（不选则查看当前身份范围）";
   const currentScopeName = currentIdentity?.org?.name ?? "当前基地";
@@ -467,7 +467,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">已发布任务管理</h1>
-          <p className="mt-1 text-sm text-slate-500">这里只查看已发布的日常任务与临时任务；草稿请到对应发布页继续处理，模板草稿请到模板库维护。</p>
+          <p className="mt-1 text-sm text-slate-500">这里只查看已发布的主播日常任务与临时任务；草稿请到对应发布页继续处理，模板草稿请到模板库维护。</p>
         </div>
         {canManageAssignments && (
           <button
@@ -506,7 +506,7 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
         </div>
         <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
           {selectedScopeOrg
-            ? `当前列表已切换到“${selectedScopeOrg.name}”的已发布任务视角。`
+            ? `当前列表已切换到"${selectedScopeOrg.name}"的已发布任务视角。`
             : tab === "DAILY"
               ? "选定基地后，列表会切到该基地的已发布任务范围。"
               : "当前按你的身份范围查看临时任务；如需聚焦某个基地，可在上方切换。"}
@@ -518,14 +518,14 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
       )}
 
       {tab === "DAILY" && !canManageDaily && (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">日常任务管理权限仅开放给总公司与基地管理身份；当前身份不可进入该业务。</div>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">主播日常任务管理权限仅开放给总公司与基地管理身份；当前身份不可进入该业务。</div>
       )}
 
       {notice && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">{notice}</div>}
 
       <div className="grid gap-3 md:grid-cols-2">
         {([
-          { key: "DAILY", title: "日常任务管理", desc: "重点查看待生效、正式执行中与历史日常任务。" },
+          { key: "DAILY", title: "主播日常任务管理", desc: "重点查看待生效、正式执行中与历史主播日常任务。" },
           { key: "TEMPORARY", title: "临时任务管理", desc: "重点查看进行中与历史临时任务，草稿回发布页处理。" },
         ] as const).map((item) => (
           <button
@@ -554,9 +554,9 @@ export function TaskAssignmentManagePage({ initialTab = "DAILY" }: { initialTab?
           </span>
         </div>
       ) : tab === "DAILY" && !canManageDaily ? (
-        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">当前身份不能管理日常任务，请切换为总公司或基地管理身份后重试。</div>
+        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">当前身份不能管理主播日常任务，请切换为总公司或基地管理身份后重试。</div>
       ) : requiresBaseSelection && !selectedScopeOrgId ? (
-        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">请先选择一个基地，再查看该基地的日常任务列表。</div>
+        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-6 py-16 text-center text-sm text-amber-700">请先选择一个基地，再查看该基地的主播日常任务列表。</div>
       ) : (
         <div className="space-y-6 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">{tab === "DAILY" ? renderDailySection() : renderTemporarySection()}</div>
       )}

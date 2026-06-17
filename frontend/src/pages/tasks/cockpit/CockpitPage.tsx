@@ -242,7 +242,7 @@ export function CockpitPage() {
         }
 
         const groups = [
-          { key: "daily", label: "日常任务", icon: <CheckCircle2 size={15} />, records: daily, color: "#3b82f6", bg: "bg-blue-50", text: "text-blue-600", bar: "from-blue-400 to-blue-600" },
+          { key: "daily", label: "主播日常任务", icon: <CheckCircle2 size={15} />, records: daily, color: "#3b82f6", bg: "bg-blue-50", text: "text-blue-600", bar: "from-blue-400 to-blue-600" },
           { key: "account", label: "触达式", icon: <Send size={15} />, records: tmpAccount, color: "#06b6d4", bg: "bg-sky-50", text: "text-sky-600", bar: "from-sky-400 to-sky-600" },
           { key: "anchor", label: "主播式", icon: <UserRound size={15} />, records: tmpAnchor, color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-600", bar: "from-emerald-400 to-emerald-500" },
           { key: "manager", label: "管理式", icon: <Users2 size={15} />, records: tmpManager, color: "#8b5cf6", bg: "bg-violet-50", text: "text-violet-600", bar: "from-violet-400 to-violet-600" },
@@ -335,7 +335,7 @@ export function CockpitPage() {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-feishu-blue" />
               <span className="text-[14px] font-semibold text-slate-700">
-                {dashboard ? `${dashboard.baseOrg.name}今日日常任务概览` : "今日日常任务概览"}
+                {dashboard ? `${dashboard.baseOrg.name}今日主播日常任务概览` : "今日主播日常任务概览"}
               </span>
               {dashboard && (
                 <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 tabular-nums">

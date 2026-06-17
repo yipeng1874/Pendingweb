@@ -442,14 +442,14 @@ export function TaskDashboardPage() {
         <div className="grid items-start gap-3 xl:grid-cols-3">
           <TaskDashboardSection
             icon={<CheckCircle2 size={18} />}
-            title="日常任务"
-            description={dailyRecordView === "today" ? "展示今天这 1 条日常任务；未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨日未完成任务，可在今天 16:00 前补录。"}
+            title="主播日常任务"
+            description={dailyRecordView === "today" ? "展示今天这 1 条主播日常任务；未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨日未完成任务，可在今天 16:00 前补录。"}
             count={visibleDailyRecords.length}
             pendingCount={countPendingRecords(visibleDailyRecords)}
             urgentCount={countUrgentRecords(visibleDailyRecords)}
             overdueCount={countOverdueRecords(visibleDailyRecords)}
             tone="bg-blue-50 text-blue-600"
-            emptyText={dailyRecordView === "today" ? "今日暂无日常任务" : "当前没有昨日逾期补录任务"}
+            emptyText={dailyRecordView === "today" ? "今日暂无主播日常任务" : "当前没有昨日逾期补录任务"}
             variant="column"
             hideDescription
             hideStats
@@ -486,7 +486,7 @@ export function TaskDashboardPage() {
           >
             {dailyRecordView === "overdue" && visibleDailyRecords.length > 0 && (
               <div className="rounded-2xl border border-red-100 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-600">
-                这里展示昨天未完成的日常任务，最迟今天 16:00 停止收集；到点后将不可再补录。
+                这里展示昨天未完成的主播日常任务，最迟今天 16:00 停止收集；到点后将不可再补录。
               </div>
             )}
 

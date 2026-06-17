@@ -127,7 +127,7 @@ export function TodoListPage() {
             <div className="segmented" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <button className={`btn ${primaryTab === "daily" ? "btn-primary" : "btn-ghost"}`} onClick={() => setPrimaryTab("daily")}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <span>日常任务</span>
+                  <span>主播日常任务</span>
                   <span className={`tab-badge ${primaryTab === "daily" ? "tab-badge-active" : "tab-badge-muted"}`}>{dailyRecords.length}</span>
                 </span>
               </button>

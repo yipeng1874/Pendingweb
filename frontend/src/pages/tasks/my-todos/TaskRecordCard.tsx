@@ -534,7 +534,7 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                 {!compact && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${status.cls}`}>{status.text}</span>}
-                {!compact && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{record.assignment?.category === "DAILY" ? "日常任务" : "临时任务"}</span>}
+                {!compact && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{record.assignment?.category === "DAILY" ? "主播日常任务" : "临时任务"}</span>}
                 {tempModeMeta && !compact && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tempModeMeta.badge}`}>{tempModeMeta.label}</span>}
                 {!compact && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${subjectMeta.badge}`}>{subjectMeta.label}</span>}
                 {record.subjectType === "ORG" && record.subjectOrgType && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${orgTypeMeta[record.subjectOrgType].badge}`}>{orgTypeMeta[record.subjectOrgType].label}</span>}
@@ -678,7 +678,7 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
           )}
           {record.status !== "submitted" && incompleteRequiredItems.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              还有 {incompleteRequiredItems.length} 项必填子任务未完成，暂不可提交{record.assignment?.category === "DAILY" ? "日常任务" : "任务"}。
+              还有 {incompleteRequiredItems.length} 项必填子任务未完成，暂不可提交{record.assignment?.category === "DAILY" ? "主播日常任务" : "任务"}。
             </div>
           )}
           {canSubmitRecord && <button type="button" onClick={() => void handleSubmitRecord()} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium text-white transition ${record.status === "overdue" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}><Send size={14} />{record.status === "overdue" ? "提交补录" : "提交任务"}</button>}
