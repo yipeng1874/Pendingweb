@@ -95,7 +95,7 @@ export function HallDailyDashboardPage() {
   async function load(forceDate?: string) {
     setLoading(true);
     setError("");
-    const result = await reportApi.getHallDailyDashboard(forceDate ?? taskDate || undefined).catch((err: Error) => {
+    const result = await reportApi.getHallDailyDashboard((forceDate ?? taskDate) || undefined).catch((err: Error) => {
       setError(err.message || "厅管日常任务看板加载失败");
       return null;
     });
