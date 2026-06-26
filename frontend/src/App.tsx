@@ -26,6 +26,7 @@ const ProgressReportPage = lazy(() => import("./pages/tasks/manage/ProgressRepor
 const CockpitPage = lazy(() => import("./pages/tasks/cockpit/CockpitPage").then((m) => ({ default: m.CockpitPage })));
 const WorkflowTaskPage = lazy(() => import("./pages/tasks/collaboration/WorkflowTaskPage").then((m) => ({ default: m.WorkflowTaskPage })));
 const WorkflowBoardPage = lazy(() => import("./pages/tasks/dashboard/WorkflowBoardPage").then((m) => ({ default: m.WorkflowBoardPage })));
+const HallDailyDashboardPage = lazy(() => import("./pages/tasks/dashboard/HallDailyDashboardPage").then((m) => ({ default: m.HallDailyDashboardPage })));
 
 function Protected() {
   const token = useAuthStore((state) => state.token);
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/tasks/cockpit" element={<CockpitPage />} />
           <Route path="/tasks/dashboard" element={<TaskDashboardPage />} />
           <Route path="/tasks/dashboard/daily-board" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"]} permissions={["task:report:view"]}><DailyTaskDashboardPage /></RoleProtected>} />
+          <Route path="/tasks/dashboard/hall-daily-board" element={<RoleProtected roles={["HALL_MANAGER"]} permissions={["task:report:view"]}><HallDailyDashboardPage /></RoleProtected>} />
           <Route path="/tasks/dashboard/temporary-board" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]}><TemporaryTaskDashboardPage /></RoleProtected>} />
           <Route path="/tasks/dashboard/workflow-board" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"]}><WorkflowBoardPage /></RoleProtected>} />
           <Route path="/tasks/reminders" element={<ReminderPage />} />

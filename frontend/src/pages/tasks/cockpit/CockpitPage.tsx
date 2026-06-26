@@ -180,7 +180,7 @@ export function CockpitPage() {
     }
     loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDashboard, currentIdentity?.orgId]);
+  }, [showDashboard, currentIdentity?.id]);
 
   // DEV_ADMIN / HQ_ADMIN 选完基地后加载
   useEffect(() => {
@@ -255,7 +255,7 @@ export function CockpitPage() {
     if (needsBaseSelect) return;
     loadRangeStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDashboard, currentIdentity?.orgId]);
+  }, [showDashboard, currentIdentity?.id]);
 
   useEffect(() => {
     if (!needsBaseSelect || !selectedBaseOrgId) return;

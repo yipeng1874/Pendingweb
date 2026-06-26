@@ -1828,6 +1828,130 @@ reportRoutes.get("/tasks/report/temporary-dashboard/records/:recordId/detail", p
   });
 });
 
+// ── 厅管日常任务看板 ──────────────────────────────────────────────────────────
+reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:report:view"), async (req: any, res: any) => {
+  const roleCode = req.identity?.roleCode;
+  if (!canViewDailyDashboard(roleCode)) {
+    return fail(res, "HALL_DAILY_DASHBOARD_FORBIDDEN", "当前身份无权查看厅管日常任务看板", 403);
+  }
+  if (roleCode !== "HALL_MANAGER") {
+    return fail(res, "HALL_DAILY_DASHBOARD_ROLE_REQUIRED", "厅管日常任务看板仅厅管角色可查看", 403);
+  }
+
+  const taskDate = t(req.query.taskDate) || formatBeijingDate(new Date());
+  const hallOrgId = req.identity?.orgId as string | undefined;
+  if (!hallOrgId) {
+    return fail(res, "HALL_ORG_NOT_FOUND", "当前厅管身份未绑定直播厅", 400);
+  }
+
+  const hall = await prisma.orgUnit.findFirst({
+    where: { id: hallOrgId, status: "active", orgType: "HALL" },
+    select: { id: true, name: true, path: true, parentId: true },
+  });
+  if (!hall) return fail(res, "HALL_NOT_FOUND", "当前直播厅不存在或已停用", 404);
+
+  const now = new Date();
+  const today = formatBeijingDate(now);
+  const { canSupplementYesterday } = getDailyTaskContext(now);
+  const phase = taskDate === today
+    ? (now.getTime() <= getDailyTaskDayEnd(taskDate).getTime() ? "in_progress" : "supplement")
+    : (now.getTime() < getDailyTaskSupplementDeadline(taskDate).getTime() ? "supplement" : "closed");
+
+  // 查找当天该厅的所有活跃/已结束 HallTaskRecord（含日期范围内有效的任务）
+  const records = await prisma.hallTaskRecord.findMany({
+    where: {
+      hallOrgId,
+      recordDate: taskDate,
+      assignment: {
+        status: { in: ["active", "ended"] },
+      },
+    },
+    include: {
+      assignment: {
+        include: {
+          template: {
+            include: {
+              items: {
+                orderBy: { sortOrder: "asc" },
+                select: { id: true, title: true, itemType: true, isRequired: true, sortOrder: true, linkUrl: true },
+              },
+            },
+          },
+          targets: { select: { hallOrgId: true } },
+        },
+      },
+      itemRecords: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          taskItemId: true,
+          status: true,
+          answerText: true,
+          answerOptions: true,
+          isLinkConfirmed: true,
+          doneAt: true,
+          doneBy: true,
+        },
+      },
+      hallOrg: { select: { id: true, name: true } },
+    },
+    orderBy: { recordDate: "desc" },
+  });
+
+  // 取最新的一条有效 record（active assignment 优先）
+  const activeRecord = records.find((r) => r.assignment.status === "active") ?? records[0] ?? null;
+
+  const summary = {
+    status: activeRecord?.status ?? null,
+    totalItems: activeRecord?.totalItems ?? 0,
+    doneItems: activeRecord?.doneItems ?? 0,
+    submittedAt: activeRecord?.submittedAt?.toISOString() ?? null,
+    completionRate: activeRecord?.totalItems
+      ? Math.round((activeRecord.doneItems / activeRecord.totalItems) * 100)
+      : 0,
+  };
+
+  return ok(res, {
+    taskDate,
+    phase,
+    hall: { id: hall.id, name: hall.name },
+    viewer: { roleCode, orgId: hallOrgId },
+    quickRanges: {
+      today,
+      yesterday: addBeijingDays(today, -1),
+      canSupplementYesterday,
+    },
+    summary,
+    record: activeRecord
+      ? {
+          id: activeRecord.id,
+          assignmentId: activeRecord.assignmentId,
+          status: activeRecord.status,
+          totalItems: activeRecord.totalItems,
+          doneItems: activeRecord.doneItems,
+          submittedAt: activeRecord.submittedAt?.toISOString() ?? null,
+          templateTitle: activeRecord.assignment.template?.title ?? null,
+          items: (activeRecord.assignment.template?.items ?? []).map((item) => {
+            const ir = activeRecord.itemRecords.find((r) => r.taskItemId === item.id);
+            return {
+              taskItemId: item.id,
+              title: item.title,
+              itemType: item.itemType,
+              isRequired: item.isRequired,
+              sortOrder: item.sortOrder,
+              linkUrl: item.linkUrl ?? null,
+              done: ir?.status === "done",
+              doneAt: ir?.doneAt?.toISOString() ?? null,
+              answerText: ir?.answerText ?? null,
+              answerOptions: Array.isArray(ir?.answerOptions) ? ir.answerOptions : null,
+              isLinkConfirmed: ir?.isLinkConfirmed ?? false,
+            };
+          }),
+        }
+      : null,
+  });
+});
+
 reportRoutes.get("/tasks/report/summary", permissionRequired("task:report:view"), async (req: any, res: any) => {
   const scopePath = req.identity?.scopePath;
   const roleCode = req.identity?.roleCode;

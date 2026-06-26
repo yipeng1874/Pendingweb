@@ -533,6 +533,12 @@ export const reportApi = {
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     return api.get<import("../types").DailyRangeStatsResponse>(`/tasks/report/daily-range-stats?${params.toString()}`);
   },
+  getHallDailyDashboard: (taskDate?: string) => {
+    const params = new URLSearchParams();
+    if (taskDate) params.set("taskDate", taskDate);
+    const q = params.toString();
+    return api.get<import("../types").HallDailyDashboardResponse>(`/tasks/report/hall-daily-dashboard${q ? `?${q}` : ""}`);
+  },
 };
 
 // ---------- 主播汇总 ----------

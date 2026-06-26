@@ -464,6 +464,43 @@ export interface DailyRangeStatsResponse {
   teams: DailyRangeStatsTeam[];
 }
 
+export interface HallDailyDashboardResponse {
+  taskDate: string;
+  phase: "in_progress" | "supplement" | "closed";
+  hall: { id: string; name: string };
+  viewer: { roleCode: string; orgId: string };
+  quickRanges: { today: string; yesterday: string; canSupplementYesterday: boolean };
+  summary: {
+    status: "pending" | "in_progress" | "submitted" | "overdue" | null;
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    completionRate: number;
+  };
+  record: {
+    id: string;
+    assignmentId: string;
+    status: "pending" | "in_progress" | "submitted" | "overdue";
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    templateTitle: string | null;
+    items: Array<{
+      taskItemId: string;
+      title: string;
+      itemType: string;
+      isRequired: boolean;
+      sortOrder: number;
+      linkUrl: string | null;
+      done: boolean;
+      doneAt: string | null;
+      answerText: string | null;
+      answerOptions: string[] | null;
+      isLinkConfirmed: boolean;
+    }>;
+  } | null;
+}
+
 export interface DailyDashboardAnchorItemDetailResponse {
   taskDate: string;
   baseOrg: { id: string; name: string; orgType: string };

@@ -26,6 +26,7 @@ const taskSubItems = [
 
 const taskBoardSubItems = [
   { to: "/tasks/dashboard/daily-board", label: "主播日常任务看板", icon: ClipboardCheck },
+  { to: "/tasks/dashboard/hall-daily-board", label: "厅管日常任务看板", icon: Building2 },
   { to: "/tasks/dashboard/temporary-board", label: "临时任务看板", icon: CalendarClock },
   { to: "/tasks/dashboard/workflow-board", label: "协同任务看板", icon: GitBranch },
 ];
@@ -221,6 +222,10 @@ function TaskBoardNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean;
   const visibleItems = taskBoardSubItems.filter((item) => {
     if (item.to === "/tasks/dashboard/daily-board") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(currentRoleCode))
+        && (permissions.includes("*") || permissions.includes("task:report:view"));
+    }
+    if (item.to === "/tasks/dashboard/hall-daily-board") {
+      return Boolean(currentRoleCode && currentRoleCode === "HALL_MANAGER")
         && (permissions.includes("*") || permissions.includes("task:report:view"));
     }
     if (item.to === "/tasks/dashboard/temporary-board") {
