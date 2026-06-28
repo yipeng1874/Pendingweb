@@ -14,6 +14,7 @@ export const ExportTaskController = {
         keyword: text(req.body.keyword),
         orgId,
         status: text(req.body.status),
+        viewMode: text(req.body.viewMode) || "current",
         scopePath: req.identity?.scopePath,
         roleCode: req.identity?.roleCode,
       });

@@ -34,6 +34,46 @@ function createAnchorBusinessError(code: string, message: string) {
   return error;
 }
 
+function buildMigrationSuffix(now = new Date()) {
+  const year = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
+  return `back-${year}${month}${day}-${hours}${minutes}${seconds}${milliseconds}`;
+}
+
+function appendMigrationSuffix(value: string | null | undefined, suffix: string) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? `${normalized}${suffix}` : normalized;
+}
+
+function isHistoricalMigratedProfile(profile?: { nickname?: string | null; status?: string | null }) {
+  return Boolean(profile && profile.status === "inactive" && /back-\d{6,8}(?:-\d{9})?$/i.test(String(profile.nickname ?? "").trim()));
+}
+
+function buildProfileViewFilter(viewMode?: string): Prisma.AnchorProfileWhereInput {
+  if (viewMode === "history") {
+    return {
+      AND: [
+        { status: "inactive" },
+        { nickname: { contains: "back-" } },
+      ],
+    };
+  }
+
+  return {
+    NOT: {
+      AND: [
+        { status: "inactive" },
+        { nickname: { contains: "back-" } },
+      ],
+    },
+  };
+}
+
 function isAnchorUniqueConstraintError(error: unknown, field?: "douyinNo" | "douyinUid") {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return false;
   const targets = Array.isArray(error.meta?.target)
@@ -338,7 +378,7 @@ export const AnchorService = {
     });
   },
 
-  async getProfiles(input: { keyword: string; hallOrgId: string; orgId?: string; status: string; scopePath?: string; roleCode?: string; page?: number; pageSize?: number }) {
+  async getProfiles(input: { keyword: string; hallOrgId: string; orgId?: string; status: string; scopePath?: string; roleCode?: string; viewMode?: string; page?: number; pageSize?: number }) {
     const normalizedKeyword = input.keyword.trim();
     const selectedOrg = input.orgId
       ? await prisma.orgUnit.findUnique({ where: { id: input.orgId }, select: { id: true, path: true, orgType: true } })
@@ -361,6 +401,7 @@ export const AnchorService = {
     }
     const where: Prisma.AnchorProfileWhereInput = {
       ...hallFilter,
+      ...buildProfileViewFilter(input.viewMode),
       ...(input.hallOrgId ? { hallOrgId: input.hallOrgId } : {}),
       ...(input.status ? { status: input.status as "unbound" | "bound" | "inactive" } : {}),
       ...(normalizedKeyword
@@ -408,7 +449,7 @@ export const AnchorService = {
     };
   },
 
-  async exportProfiles(input: { keyword: string; orgId?: string; status: string; scopePath?: string; roleCode?: string }) {
+  async exportProfiles(input: { keyword: string; orgId?: string; status: string; scopePath?: string; roleCode?: string; viewMode?: string }) {
     const MAX_EXPORT = 5000;
     const normalizedKeyword = input.keyword.trim();
     const selectedOrg = input.orgId
@@ -430,6 +471,7 @@ export const AnchorService = {
 
     const where: Prisma.AnchorProfileWhereInput = {
       ...hallFilter,
+      ...buildProfileViewFilter(input.viewMode),
       ...(input.status ? { status: input.status as "unbound" | "bound" | "inactive" } : {}),
       ...(normalizedKeyword
         ? {
@@ -489,6 +531,7 @@ export const AnchorService = {
       const boundUser = profile.identities[0]?.user ?? null;
 
       return {
+        identityType:  isHistoricalMigratedProfile(profile) ? "历史身份" : "当前身份",
         baseName:      baseMap.get(baseCode) ?? "",
         baseCode,
         teamName:      teamMap.get(teamCode) ?? "",
@@ -499,6 +542,7 @@ export const AnchorService = {
         phone:         boundUser?.phone ?? "",
         douyinNo:      profile.douyinNo ?? "",
         douyinUid:     profile.douyinUid,
+        profileStatus: profile.status,
       };
     });
   },
@@ -555,12 +599,8 @@ export const AnchorService = {
       if (!nextNickname) throw createAnchorBusinessError("ANCHOR_PROFILE_NICKNAME_REQUIRED", "主播昵称不能为空");
       if (!nextDouyinUid) throw createAnchorBusinessError("ANCHOR_PROFILE_DOUYIN_UID_REQUIRED", "抖音 UID 不能为空");
       if (!nextHallOrgId) throw createAnchorBusinessError("HALL_NOT_FOUND", "归属厅不存在");
-
-      let nextHallPath: string | null | undefined;
       if (nextHallOrgId !== current.hallOrgId) {
-        const hall = await tx.orgUnit.findFirst({ where: { id: nextHallOrgId, orgType: "HALL", status: "active" }, select: { path: true } });
-        if (!hall) throw createAnchorBusinessError("HALL_NOT_FOUND", "归属厅不存在或已停用");
-        nextHallPath = hall.path;
+        throw createAnchorBusinessError("ANCHOR_PROFILE_MIGRATION_REQUIRED", "跨厅迁移请使用专用迁移流程，不能直接修改归属厅");
       }
 
       const identityChanged = nextDouyinNo !== current.douyinNo || nextDouyinUid !== current.douyinUid;
@@ -600,22 +640,6 @@ export const AnchorService = {
         await tx.user.update({ where: { id: updated.boundUserId }, data: { nickname: nextNickname } });
       }
 
-      if (nextHallOrgId !== current.hallOrgId) {
-        await tx.userIdentity.updateMany({
-          where: { anchorProfileId: updated.id, roleCode: "ANCHOR" },
-          data: { orgId: nextHallOrgId, scopePath: nextHallPath },
-        });
-        await tx.taskRecord.updateMany({
-          where: {
-            OR: [
-              ...(updated.boundUserId ? [{ subjectUserId: updated.boundUserId }, { userId: updated.boundUserId }] : []),
-              ...(current.douyinUid ? [{ subjectKey: current.douyinUid }] : []),
-            ],
-          },
-          data: { subjectOrgId: nextHallOrgId },
-        });
-      }
-
       if (data.nickname || data.douyinNo || data.douyinUid) {
         if (current.douyinUid && updated.douyinUid && current.douyinUid !== updated.douyinUid) {
           await tx.taskRecord.updateMany({ where: { subjectKey: current.douyinUid }, data: { subjectKey: updated.douyinUid } });
@@ -633,18 +657,135 @@ export const AnchorService = {
     });
   },
 
+  async migrateProfile(id: string, input: { targetHallOrgId: string; reason?: string; operatorUserId?: string }) {
+    const targetHallOrgId = String(input.targetHallOrgId ?? "").trim();
+    if (!targetHallOrgId) throw createAnchorBusinessError("HALL_NOT_FOUND", "目标归属厅不能为空");
+
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.anchorProfile.findUnique({ where: { id } });
+      if (!current) throw createAnchorBusinessError("ANCHOR_PROFILE_NOT_FOUND", "主播档案不存在");
+      if (!current.boundUserId) throw createAnchorBusinessError("ANCHOR_PROFILE_MIGRATION_UNBOUND", "未绑定账号的主播档案不支持迁移");
+      if (current.hallOrgId === targetHallOrgId) throw createAnchorBusinessError("ANCHOR_PROFILE_MIGRATION_SAME_HALL", "目标归属厅与当前归属厅一致，无需迁移");
+
+      const [targetHall, currentAnchorIdentity, existingActiveAnchorIdentities] = await Promise.all([
+        tx.orgUnit.findFirst({ where: { id: targetHallOrgId, orgType: "HALL", status: "active" }, select: { id: true, path: true } }),
+        tx.userIdentity.findFirst({
+          where: { userId: current.boundUserId, roleCode: "ANCHOR", anchorProfileId: current.id, status: "active" },
+          select: { id: true },
+        }),
+        tx.userIdentity.findMany({
+          where: { userId: current.boundUserId, roleCode: "ANCHOR", status: "active" },
+          select: { id: true, anchorProfileId: true, orgId: true },
+        }),
+      ]);
+
+      if (!targetHall) throw createAnchorBusinessError("HALL_NOT_FOUND", "目标归属厅不存在或已停用");
+      if (!currentAnchorIdentity) throw createAnchorBusinessError("ANCHOR_PROFILE_MIGRATION_IDENTITY_REQUIRED", "当前主播身份未启用，无法迁移");
+      if (existingActiveAnchorIdentities.some((identity) => identity.anchorProfileId !== current.id)) {
+        throw createAnchorBusinessError("ANCHOR_PROFILE_ACTIVE_IDENTITY_CONFLICT", "该账号存在其他启用中的主播身份，请先处理后再迁移");
+      }
+
+      await assertNoAnchorRegistrationConflict({
+        phone: null,
+        douyinNo: current.douyinNo,
+        douyinUid: current.douyinUid,
+        excludeProfileId: current.id,
+        excludeApplicationUserId: current.boundUserId,
+      });
+
+      const suffix = buildMigrationSuffix();
+      const archivedNickname = appendMigrationSuffix(current.nickname, suffix);
+      const archivedDouyinNo = appendMigrationSuffix(current.douyinNo, suffix);
+      const archivedDouyinUid = appendMigrationSuffix(current.douyinUid, suffix);
+
+      try {
+        await tx.anchorProfile.update({
+          where: { id: current.id },
+          data: {
+            nickname: archivedNickname,
+            douyinNo: archivedDouyinNo || null,
+            douyinUid: archivedDouyinUid,
+            status: "inactive",
+          },
+        });
+      } catch (error) {
+        if (isAnchorUniqueConstraintError(error, "douyinNo")) {
+          throw createAnchorBusinessError("DOUYIN_NO_EXISTS", buildAnchorConflictMessage({ douyinNo: archivedDouyinNo }));
+        }
+        if (isAnchorUniqueConstraintError(error, "douyinUid")) {
+          throw createAnchorBusinessError("DOUYIN_UID_EXISTS", buildAnchorConflictMessage({ douyinUid: archivedDouyinUid }));
+        }
+        throw error;
+      }
+
+      await tx.userIdentity.updateMany({
+        where: { userId: current.boundUserId, roleCode: "ANCHOR", anchorProfileId: current.id },
+        data: { status: "disabled", expiredAt: new Date() },
+      });
+
+      const nextProfile = await tx.anchorProfile.create({
+        data: {
+          nickname: current.nickname,
+          douyinNo: current.douyinNo,
+          douyinUid: current.douyinUid,
+          hallOrgId: targetHallOrgId,
+          boundUserId: current.boundUserId,
+          source: current.source,
+          status: "bound",
+        },
+      });
+
+      const nextIdentity = await tx.userIdentity.create({
+        data: {
+          userId: current.boundUserId,
+          roleCode: "ANCHOR",
+          orgId: targetHallOrgId,
+          anchorProfileId: nextProfile.id,
+          scopePath: targetHall.path,
+          status: "active",
+          grantedBy: input.operatorUserId ?? null,
+        },
+      });
+
+      await tx.user.update({ where: { id: current.boundUserId }, data: { nickname: current.nickname, status: "active" } });
+
+      return {
+        archivedProfileId: current.id,
+        archivedIdentityId: currentAnchorIdentity.id,
+        profile: nextProfile,
+        identity: nextIdentity,
+        targetHallOrgId,
+        reason: input.reason?.trim() || null,
+      };
+    });
+  },
+
   async toggleProfileStatus(profile: any, enable: boolean) {
     return prisma.$transaction(async (tx) => {
       if (enable) {
+        if (isHistoricalMigratedProfile(profile)) {
+          throw createAnchorBusinessError("ANCHOR_PROFILE_HISTORICAL_ENABLE_FORBIDDEN", "历史迁移档案不允许直接启用，如需回到原厅请重新发起迁移");
+        }
         const hall = await tx.orgUnit.findUnique({ where: { id: profile.hallOrgId } });
         if (profile.boundUserId) {
+          const otherActiveAnchorIdentity = await tx.userIdentity.findFirst({
+            where: {
+              userId: profile.boundUserId,
+              roleCode: "ANCHOR",
+              status: "active",
+              anchorProfileId: { not: profile.id },
+            },
+            select: { id: true },
+          });
+          if (otherActiveAnchorIdentity) {
+            throw createAnchorBusinessError("ANCHOR_PROFILE_ACTIVE_IDENTITY_CONFLICT", "该账号已存在其他启用中的主播身份，不能重复启用");
+          }
           await tx.user.update({ where: { id: profile.boundUserId }, data: { status: "active" } });
           await tx.userIdentity.updateMany({ where: { userId: profile.boundUserId, anchorProfileId: profile.id, roleCode: "ANCHOR" }, data: { status: "active", expiredAt: null, scopePath: hall?.path } });
         }
         return tx.anchorProfile.update({ where: { id: profile.id }, data: { status: profile.boundUserId ? "bound" : "unbound" } });
       } else {
         await tx.userIdentity.updateMany({ where: { anchorProfileId: profile.id, roleCode: "ANCHOR" }, data: { status: "disabled", expiredAt: new Date() } });
-        if (profile.boundUserId) await tx.user.update({ where: { id: profile.boundUserId }, data: { status: "disabled" } });
         return tx.anchorProfile.update({ where: { id: profile.id }, data: { status: "inactive" } });
       }
     });

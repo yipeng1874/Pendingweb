@@ -21,8 +21,8 @@ function formatDateForFilename(date: Date) {
 }
 
 function buildCsvContent(rows: Array<Record<string, string>>) {
-  const headers = ["基地名称", "基地代码", "团队名称", "团队代码", "厅名称", "厅UID", "主播昵称", "手机号", "抖音号", "抖音UID"];
-  const keys = ["baseName", "baseCode", "teamName", "teamCode", "hallName", "hallDouyinUid", "nickname", "phone", "douyinNo", "douyinUid"];
+  const headers = ["身份分类", "状态", "基地名称", "基地代码", "团队名称", "团队代码", "厅名称", "厅UID", "主播昵称", "手机号", "抖音号", "抖音UID"];
+  const keys = ["identityType", "profileStatus", "baseName", "baseCode", "teamName", "teamCode", "hallName", "hallDouyinUid", "nickname", "phone", "douyinNo", "douyinUid"];
   const escapeCell = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [
     headers.map(escapeCell).join(","),
@@ -78,6 +78,7 @@ async function runTask(taskId: string) {
       keyword: string;
       orgId?: string;
       status: string;
+      viewMode?: string;
       scopePath?: string;
       roleCode?: string;
     };
@@ -114,6 +115,7 @@ export const ExportTaskService = {
     keyword: string;
     orgId?: string;
     status: string;
+    viewMode?: string;
     scopePath?: string;
     roleCode?: string;
   }) {
@@ -148,6 +150,7 @@ export const ExportTaskService = {
           keyword: input.keyword,
           orgId: input.orgId,
           status: input.status,
+          viewMode: input.viewMode ?? "current",
           scopePath: input.scopePath,
           roleCode: input.roleCode,
         },

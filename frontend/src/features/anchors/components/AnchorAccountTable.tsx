@@ -1,6 +1,10 @@
 import type { Anchor } from "../types";
 import { statusClass, statusLabel } from "../constants";
 
+function isHistoricalProfile(anchor: Anchor) {
+  return anchor.status === "inactive" && /back-\d{6,8}(?:-\d{9})?$/i.test(anchor.nickname);
+}
+
 interface AnchorAccountTableProps {
   anchors: Anchor[];
   activeAnchorId: string;
@@ -34,7 +38,16 @@ export function AnchorAccountTable({ anchors, activeAnchorId, setActiveAnchorId,
                     isActive ? "bg-feishu-pale/60" : "bg-white hover:bg-slate-50"
                   }`}
                 >
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">{anchor.nickname}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span>{anchor.nickname}</span>
+                      {isHistoricalProfile(anchor) && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          历史身份
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{anchor.boundUser?.phone || "未绑定账号"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{anchor.douyinNo || "未登记"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-500">{anchor.douyinUid}</td>

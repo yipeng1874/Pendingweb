@@ -16,6 +16,7 @@ export function useAnchorAccounts() {
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
+  const [viewMode, setViewMode] = useState<"current" | "history">("current");
   const [editing, setEditing] = useState<Anchor>();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -29,7 +30,7 @@ export function useAnchorAccounts() {
 
   useEffect(() => {
     void load();
-  }, [anchorPage, keyword, status, selectedOrgId]);
+  }, [anchorPage, keyword, status, selectedOrgId, viewMode]);
 
   const orgTree = useMemo(() => buildOrgTree(orgs), [orgs]);
   const selectedOrg = useMemo(() => orgs.find((item) => item.id === selectedOrgId), [orgs, selectedOrgId]);
@@ -85,6 +86,7 @@ export function useAnchorAccounts() {
       };
       if (keyword) params.keyword = keyword;
       if (status) params.status = status;
+      params.viewMode = viewMode;
 
       const profilePromise = anchorApi.getProfiles(params);
       const appPromise = canReviewApplications
@@ -114,11 +116,30 @@ export function useAnchorAccounts() {
     }
   }
 
-  async function saveProfile() {
+  async function saveProfile(originalAnchor?: Anchor) {
     if (!editing) return false;
+    const hallChanged = Boolean(originalAnchor && originalAnchor.hallOrgId !== editing.hallOrgId);
+    const successText = hallChanged ? "主播身份迁移已完成" : "主播资料已保存";
+
+    if (hallChanged) {
+      const confirmed = window.confirm(
+        `确认将主播「${originalAnchor?.nickname || editing.nickname}」迁移到新归属厅吗？\n\n` +
+        `迁移后将执行以下操作：\n` +
+        `1. 旧主播身份封存并停用\n` +
+        `2. 历史任务继续保留在原厅\n` +
+        `3. 新厅创建新的当前主播身份\n` +
+        `4. 迁移后新任务归属新厅`
+      );
+      if (!confirmed) return false;
+    }
+
     return run(async () => {
+      if (hallChanged) {
+        await anchorApi.migrateProfile(editing.id, { targetHallOrgId: editing.hallOrgId });
+        return;
+      }
       await anchorApi.updateProfile(editing.id, editing);
-    }, "主播资料已保存");
+    }, successText);
   }
 
   async function removeProfile(anchor: Anchor) {
@@ -148,6 +169,11 @@ export function useAnchorAccounts() {
     status,
     setStatus: (value: string) => {
       setStatus(value);
+      setAnchorPage(1);
+    },
+    viewMode,
+    setViewMode: (value: "current" | "history") => {
+      setViewMode(value);
       setAnchorPage(1);
     },
     editing,

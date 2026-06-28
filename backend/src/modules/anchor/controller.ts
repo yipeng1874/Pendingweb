@@ -60,6 +60,7 @@ export const AnchorController = {
       hallOrgId: text(req.query.hallOrgId),
       orgId: text(req.query.orgId) || undefined,
       status: text(req.query.status),
+      viewMode: text(req.query.viewMode) || "current",
       scopePath: req.identity?.scopePath,
       roleCode: req.identity?.roleCode,
       page: Number(req.query.page),
@@ -73,6 +74,7 @@ export const AnchorController = {
       keyword:   text(req.query.keyword),
       orgId:     text(req.query.orgId) || undefined,
       status:    text(req.query.status),
+      viewMode:  text(req.query.viewMode) || "current",
       scopePath: req.identity?.scopePath,
       roleCode:  req.identity?.roleCode,
     });
@@ -125,7 +127,38 @@ export const AnchorController = {
       if (["DOUYIN_NO_EXISTS", "DOUYIN_UID_EXISTS"].includes(error?.code)) {
         return fail(res, error.code, error.message, 409);
       }
-      if (["ANCHOR_PROFILE_NICKNAME_REQUIRED", "ANCHOR_PROFILE_DOUYIN_UID_REQUIRED", "HALL_NOT_FOUND"].includes(error?.code)) {
+      if (["ANCHOR_PROFILE_NICKNAME_REQUIRED", "ANCHOR_PROFILE_DOUYIN_UID_REQUIRED", "HALL_NOT_FOUND", "ANCHOR_PROFILE_MIGRATION_REQUIRED"].includes(error?.code)) {
+        return fail(res, error.code, error.message, 400);
+      }
+      if (error?.code === "ANCHOR_PROFILE_NOT_FOUND") {
+        return fail(res, error.code, error.message, 404);
+      }
+      throw error;
+    }
+  },
+
+  async migrateProfile(req: any, res: any) {
+    const targetHallOrgId = text(req.body.targetHallOrgId);
+    if (!targetHallOrgId) return fail(res, "HALL_NOT_FOUND", "请选择目标归属厅", 400);
+
+    try {
+      const result = await AnchorService.migrateProfile(req.params.id, {
+        targetHallOrgId,
+        reason: text(req.body.reason) || undefined,
+        operatorUserId: req.userId,
+      });
+      return ok(res, result);
+    } catch (error: any) {
+      if (["DOUYIN_NO_EXISTS", "DOUYIN_UID_EXISTS"].includes(error?.code)) {
+        return fail(res, error.code, error.message, 409);
+      }
+      if ([
+        "HALL_NOT_FOUND",
+        "ANCHOR_PROFILE_MIGRATION_UNBOUND",
+        "ANCHOR_PROFILE_MIGRATION_SAME_HALL",
+        "ANCHOR_PROFILE_MIGRATION_IDENTITY_REQUIRED",
+        "ANCHOR_PROFILE_ACTIVE_IDENTITY_CONFLICT",
+      ].includes(error?.code)) {
         return fail(res, error.code, error.message, 400);
       }
       if (error?.code === "ANCHOR_PROFILE_NOT_FOUND") {
@@ -146,8 +179,15 @@ export const AnchorController = {
   async enableProfile(req: any, res: any) {
     const profile = await prisma.anchorProfile.findUnique({ where: { id: req.params.id } });
     if (!profile) return fail(res, "ANCHOR_PROFILE_NOT_FOUND", "主播档案不存在", 404);
-    const updated = await AnchorService.toggleProfileStatus(profile, true);
-    return ok(res, updated);
+    try {
+      const updated = await AnchorService.toggleProfileStatus(profile, true);
+      return ok(res, updated);
+    } catch (error: any) {
+      if (["ANCHOR_PROFILE_HISTORICAL_ENABLE_FORBIDDEN", "ANCHOR_PROFILE_ACTIVE_IDENTITY_CONFLICT"].includes(error?.code)) {
+        return fail(res, error.code, error.message, 400);
+      }
+      throw error;
+    }
   },
 
   async deleteProfile(req: any, res: any) {

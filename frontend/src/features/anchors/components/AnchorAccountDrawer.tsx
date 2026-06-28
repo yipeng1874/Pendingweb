@@ -21,6 +21,10 @@ interface AnchorAccountDrawerProps {
   onResetPassword: (() => void) | undefined;
 }
 
+function isHistoricalProfile(anchor?: AnchorProfile) {
+  return Boolean(anchor && anchor.status === "inactive" && /back-\d{6,8}(?:-\d{9})?$/i.test(anchor.nickname));
+}
+
 // ─── 级联选择子组件 ──────────────────────────────────────────────────────────
 interface CascadeHallPickerProps {
   orgs: OrgUnit[];
@@ -171,6 +175,9 @@ export function AnchorAccountDrawer({
 }: AnchorAccountDrawerProps) {
   if (!anchor || !editing) return null;
 
+  const hallChanged = anchor.hallOrgId !== editing.hallOrgId;
+  const historicalProfile = isHistoricalProfile(anchor);
+
   return (
     <>
       {/* 遮罩 */}
@@ -181,7 +188,14 @@ export function AnchorAccountDrawer({
         {/* 顶栏 */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">{anchor.nickname}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-900">{anchor.nickname}</h3>
+              {historicalProfile && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  历史主播身份
+                </span>
+              )}
+            </div>
             <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs ${statusClass[anchor.status]}`}>
               {statusLabel[anchor.status]}
             </span>
@@ -201,6 +215,7 @@ export function AnchorAccountDrawer({
           <div className="rounded-2xl bg-slate-50 p-4 space-y-2 text-sm text-slate-600">
             <p><span className="text-slate-400 mr-2">手机号</span>{anchor.boundUser?.phone || "未绑定账号"}</p>
             <p><span className="text-slate-400 mr-2">绑定账号</span>{anchor.boundUserId ? "已绑定" : "未绑定"}</p>
+            <p><span className="text-slate-400 mr-2">身份类型</span>{historicalProfile ? "历史主播身份（只保留原厅历史数据）" : "当前主播身份"}</p>
           </div>
 
           {/* 编辑表单 */}
@@ -241,14 +256,21 @@ export function AnchorAccountDrawer({
                 当前身份仅可查看主播账号信息，不能修改资料或执行账号操作。
               </div>
             ) : (
-              <div className="mt-4 flex justify-end">
-                <button
-                  className="rounded-2xl bg-feishu-blue px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition"
-                  onClick={onSave}
-                >
-                  保存资料
-                </button>
-              </div>
+              <>
+                {anchor.hallOrgId !== editing.hallOrgId && (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    变更归属厅将触发主播身份迁移：旧主播身份会封存停用，历史任务保留在原厅，新厅将创建新的当前主播身份。
+                  </div>
+                )}
+                <div className="mt-4 flex justify-end">
+                  <button
+                    className="rounded-2xl bg-feishu-blue px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition"
+                    onClick={onSave}
+                  >
+                    {anchor.hallOrgId !== editing.hallOrgId ? "确认迁移" : "保存资料"}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -257,12 +279,18 @@ export function AnchorAccountDrawer({
         {!readOnly && (
           <div className="border-t border-slate-100 px-6 py-4 flex flex-wrap gap-2">
             {anchor.status === "inactive" ? (
-              <button
-                className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-100 transition"
-                onClick={onEnable}
-              >
-                启用账号
-              </button>
+              historicalProfile ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+                  历史迁移档案不可直接启用，如需回到原厅请重新发起迁移。
+                </div>
+              ) : (
+                <button
+                  className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-100 transition"
+                  onClick={onEnable}
+                >
+                  启用账号
+                </button>
+              )
             ) : (
               <button
                 className="rounded-2xl bg-red-50 px-4 py-2 text-sm text-red-600 hover:bg-red-100 transition"

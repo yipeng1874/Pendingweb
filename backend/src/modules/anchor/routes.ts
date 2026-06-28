@@ -21,6 +21,7 @@ anchorRoutes.get("/anchors/profiles/export", permissionRequired("anchor:view"), 
 anchorRoutes.get("/anchors/profiles/:id", permissionRequired("anchor:view"), AnchorController.getProfileDetail);
 anchorRoutes.post("/anchors/profiles", permissionRequired("anchor:profile:create"), AnchorController.createProfile);
 anchorRoutes.patch("/anchors/profiles/:id", permissionRequired("anchor:profile:create"), AnchorController.updateProfile);
+anchorRoutes.post("/anchors/profiles/:id/migrate", permissionRequired("anchor:profile:bind"), AnchorController.migrateProfile);
 anchorRoutes.post("/anchors/profiles/:id/disable", permissionRequired("anchor:profile:bind"), AnchorController.disableProfile);
 anchorRoutes.post("/anchors/profiles/:id/enable", permissionRequired("anchor:profile:bind"), AnchorController.enableProfile);
 anchorRoutes.delete("/anchors/profiles/:id", permissionRequired("anchor:profile:bind"), AnchorController.deleteProfile);

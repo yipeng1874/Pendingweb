@@ -5,6 +5,8 @@ interface AnchorAccountFiltersProps {
   setKeyword: (val: string) => void;
   status: string;
   setStatus: (val: string) => void;
+  viewMode: "current" | "history";
+  setViewMode: (val: "current" | "history") => void;
   onRefresh: () => void;
   onExport: () => void;
   onOpenExportTasks: () => void;
@@ -18,6 +20,8 @@ export function AnchorAccountFilters({
   setKeyword,
   status,
   setStatus,
+  viewMode,
+  setViewMode,
   onRefresh,
   onExport,
   onOpenExportTasks,
@@ -26,7 +30,24 @@ export function AnchorAccountFilters({
   pendingExportCount = 0,
 }: AnchorAccountFiltersProps) {
   return (
-    <div className="grid gap-3 md:grid-cols-[220px_140px_auto_auto_auto]">
+    <div className="space-y-3">
+      <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setViewMode("current")}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${viewMode === "current" ? "bg-feishu-blue text-white" : "text-slate-600 hover:bg-slate-50"}`}
+        >
+          当前身份
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("history")}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${viewMode === "history" ? "bg-feishu-blue text-white" : "text-slate-600 hover:bg-slate-50"}`}
+        >
+          历史身份
+        </button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-[220px_140px_auto_auto_auto]">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
         <input
@@ -74,6 +95,7 @@ export function AnchorAccountFilters({
           </span>
         )}
       </button>
+      </div>
     </div>
   );
 }

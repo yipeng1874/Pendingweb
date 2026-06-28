@@ -42,6 +42,8 @@ export function AnchorAccountsPage() {
     setKeyword,
     status,
     setStatus,
+    viewMode,
+    setViewMode,
     editing,
     setEditing,
     message,
@@ -185,6 +187,7 @@ export function AnchorAccountsPage() {
         orgId: selectedOrgId,
         ...(keyword ? { keyword } : {}),
         ...(status ? { status } : {}),
+        viewMode,
       });
       setToast({ text: '导出任务已提交，点击「导出记录」可查看进度并下载', type: "success" });
       // 立即刷新任务列表（此时应为 pending 状态）
@@ -259,13 +262,15 @@ export function AnchorAccountsPage() {
               <h2 className="text-2xl font-semibold text-slate-900">
                 {selectedOrg ? `${selectedOrg.name} 范围内的主播账号` : "请先选择组织"}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">{isReadOnly ? "左侧组织树决定查询范围；如需进一步缩小到某个厅，可使用归属厅筛选。当前身份为只读权限。" : "左侧组织树决定查询范围；如需进一步缩小到某个厅，可使用归属厅筛选。"}</p>
+              <p className="mt-1 text-sm text-slate-500">{viewMode === "history" ? "当前正在查看历史主播身份；该视图仅用于历史归属与迁移轨迹核对。" : isReadOnly ? "左侧组织树决定查询范围；如需进一步缩小到某个厅，可使用归属厅筛选。当前身份为只读权限。" : "左侧组织树决定查询范围；如需进一步缩小到某个厅，可使用归属厅筛选。"}</p>
             </div>
             <AnchorAccountFilters
               keyword={keyword}
               setKeyword={setKeyword}
               status={status}
               setStatus={setStatus}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
               onRefresh={load}
               onExport={handleExport}
               onOpenExportTasks={() => setShowExportModal(true)}
@@ -286,7 +291,7 @@ export function AnchorAccountsPage() {
               anchors={filteredAnchors}
               activeAnchorId={activeAnchorId}
               setActiveAnchorId={handleSelectAnchor}
-              emptyText={emptyText}
+              emptyText={viewMode === "history" ? "当前筛选条件下暂无历史主播身份" : emptyText}
             />
             <div className="flex items-center justify-between text-sm text-slate-500">
               <span>共 {anchorTotal} 条，当前第 {anchorPage} 页</span>
@@ -333,11 +338,11 @@ export function AnchorAccountsPage() {
           editing={editing}
           orgs={orgs}
           matchedApp={activeAnchor.boundUserId ? detailsByUserId.get(activeAnchor.boundUserId) : undefined}
-          readOnly={isReadOnly}
+          readOnly={isReadOnly || viewMode === "history"}
           onClose={closeDrawer}
           onChange={setEditing}
           onSave={async () => {
-            const saved = await saveProfile();
+            const saved = await saveProfile(activeAnchor);
             if (saved) closeDrawer();
           }}
           onDisable={() => { run(async () => { await anchorApi.disableProfile(activeAnchor.id); }, "主播账号已停用"); closeDrawer(); }}

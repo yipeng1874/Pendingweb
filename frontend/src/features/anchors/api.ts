@@ -24,16 +24,18 @@ export const anchorApi = {
   exportProfiles: (params: Record<string, string>) => {
     const qs = new URLSearchParams(params).toString();
     return api.get<Array<{
+      identityType: string;
       baseName: string; baseCode: string;
       teamName: string; teamCode: string;
       hallName: string; hallDouyinUid: string;
       nickname: string; phone: string;
       douyinNo: string; douyinUid: string;
+      profileStatus: string;
     }>>(`/anchors/profiles/export${qs ? `?${qs}` : ""}`);
   },
 
   // 异步导出任务
-  createExportTask: (params: { orgId: string; keyword?: string; status?: string }) =>
+  createExportTask: (params: { orgId: string; keyword?: string; status?: string; viewMode?: "current" | "history" }) =>
     api.post<{ taskId: string; expiresAt: string }>("/anchors/export-tasks", params),
 
   listExportTasks: () =>
@@ -76,6 +78,9 @@ export const anchorApi = {
   getApplicationDetail: (id: string) => api.get<AnchorApplication>(`/anchors/applications/${id}`),
 
   updateProfile: (id: string, data: Partial<Anchor>) => api.patch<Anchor>(`/anchors/profiles/${id}`, data),
+
+  migrateProfile: (id: string, data: { targetHallOrgId: string; reason?: string }) =>
+    api.post<{ archivedProfileId: string; archivedIdentityId: string; profile: Anchor; identity: { id: string; orgId: string; anchorProfileId: string } }>(`/anchors/profiles/${id}/migrate`, data),
 
   deleteProfile: (id: string) => api.delete<{ deleted: boolean }>(`/anchors/profiles/${id}`),
 
