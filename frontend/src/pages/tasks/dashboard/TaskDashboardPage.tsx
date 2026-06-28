@@ -98,13 +98,22 @@ function countPendingRecords(records: TaskRecord[]) {
   return records.filter(isRecordPending).length;
 }
 
-function getTodayRecordDate() {
+function getBeijingRecordDate(offsetDays = 0) {
   const now = new Date();
   const beijingNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  beijingNow.setUTCDate(beijingNow.getUTCDate() + offsetDays);
   const year = beijingNow.getUTCFullYear();
   const month = String(beijingNow.getUTCMonth() + 1).padStart(2, "0");
   const day = String(beijingNow.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function getTodayRecordDate() {
+  return getBeijingRecordDate(0);
+}
+
+function getYesterdayRecordDate() {
+  return getBeijingRecordDate(-1);
 }
 
 function countTodayFocusedDailyRecords(records: TaskRecord[]) {
@@ -294,13 +303,28 @@ export function TaskDashboardPage() {
     void load();
   }, [currentIdentity?.id]);
 
+  const todayRecordDate = useMemo(() => getTodayRecordDate(), []);
+  const yesterdayRecordDate = useMemo(() => getYesterdayRecordDate(), []);
+
   const dailyRecords = useMemo(() => sortTaskRecords(records.filter((record) => record.assignment?.category === "DAILY")), [records]);
-  const dailyTodayRecords = useMemo(() => dailyRecords.filter((record) => record.status !== "overdue"), [dailyRecords]);
-  const dailyOverdueRecords = useMemo(() => dailyRecords.filter((record) => record.status === "overdue"), [dailyRecords]);
+  const dailyTodayRecords = useMemo(
+    () => dailyRecords.filter((record) => record.recordDate === todayRecordDate),
+    [dailyRecords, todayRecordDate]
+  );
+  const dailyOverdueRecords = useMemo(
+    () => dailyRecords.filter((record) => record.recordDate === yesterdayRecordDate && record.status === "overdue"),
+    [dailyRecords, yesterdayRecordDate]
+  );
   const visibleDailyRecords = dailyRecordView === "overdue" ? dailyOverdueRecords : dailyTodayRecords;
 
-  const hallDailyTodayRecords = useMemo(() => hallDailyRecords.filter((r) => r.status !== "overdue"), [hallDailyRecords]);
-  const hallDailyOverdueRecords = useMemo(() => hallDailyRecords.filter((r) => r.status === "overdue"), [hallDailyRecords]);
+  const hallDailyTodayRecords = useMemo(
+    () => hallDailyRecords.filter((record) => record.recordDate === todayRecordDate),
+    [hallDailyRecords, todayRecordDate]
+  );
+  const hallDailyOverdueRecords = useMemo(
+    () => hallDailyRecords.filter((record) => record.recordDate === yesterdayRecordDate && record.status === "overdue"),
+    [hallDailyRecords, yesterdayRecordDate]
+  );
   const visibleHallDailyRecords = hallDailyRecordView === "overdue" ? hallDailyOverdueRecords : hallDailyTodayRecords;
   // 有厅管日常任务数据时就显示该模块（支持 ANCHOR+HALL_MANAGER 双重身份融通）
   const isHallManagerIdentity = currentIdentity?.roleCode === "HALL_MANAGER" || hallDailyRecords.length > 0;
@@ -470,7 +494,7 @@ export function TaskDashboardPage() {
           <TaskDashboardSection
               icon={<Building2 size={18} />}
               title="厅管日常任务"
-              description={hallDailyRecordView === "today" ? "展示今日厅管日常任务，未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨日未完成任务，可在今天 16:00 前补录。"}
+              description={hallDailyRecordView === "today" ? "仅展示今天的厅管日常任务，未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨天逾期未完成的任务，可在今天 16:00 前补录。"}
               count={visibleHallDailyRecords.length}
               pendingCount={visibleHallDailyRecords.filter((r) => r.status !== "submitted").length}
               urgentCount={0}
@@ -530,7 +554,7 @@ export function TaskDashboardPage() {
           <TaskDashboardSection
             icon={<CheckCircle2 size={18} />}
             title="主播日常任务"
-            description={dailyRecordView === "today" ? "展示今天这 1 条主播日常任务；未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨日未完成任务，可在今天 16:00 前补录。"}
+            description={dailyRecordView === "today" ? "仅展示今天的主播日常任务，未完成部分会在 23:59 后转入昨日补录。" : "仅展示昨天逾期未完成的任务，可在今天 16:00 前补录。"}
             count={visibleDailyRecords.length}
             pendingCount={countPendingRecords(visibleDailyRecords)}
             urgentCount={countUrgentRecords(visibleDailyRecords)}
