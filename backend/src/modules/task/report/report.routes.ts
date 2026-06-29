@@ -341,7 +341,7 @@ async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: strin
         taskItemMetaMap.set(item.id, { title: item.title, isRequired: item.isRequired !== false });
       }
     }
-    const audience = await listAssignmentAudienceMembers(prisma, assignment as any);
+    const audience = await listAssignmentAudienceMembers(prisma, assignment as any, taskDate);
     for (const member of audience) {
       if (!member.hallOrgId || !member.hallOrgName || !member.hallOrgPath) continue;
       if (!(member.hallOrgPath === viewerScopePath || member.hallOrgPath.startsWith(`${viewerScopePath}/`) || viewerScopePath.startsWith(`${member.hallOrgPath}/`))) continue;
@@ -983,7 +983,7 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
   const resolvedSubjectKeys = new Set<string>();
 
   for (const assignment of assignments) {
-    const audience = await listAssignmentAudienceMembers(prisma, assignment as any);
+    const audience = await listAssignmentAudienceMembers(prisma, assignment as any, endDate);
     for (const member of audience) {
       if (!member.hallOrgId || !member.hallOrgName || !member.hallOrgPath) continue;
       if (!(member.hallOrgPath === viewerScopePath || member.hallOrgPath.startsWith(`${viewerScopePath}/`) || viewerScopePath.startsWith(`${member.hallOrgPath}/`))) continue;

@@ -238,7 +238,7 @@ async function buildDailyNotifyAudience(taskDate: string, baseOrg: { id: string;
 
   for (const assignment of assignments) {
     const requiredTotalItems = assignment.template?.items?.filter((item: any) => item.isRequired !== false).length ?? 0;
-    const audience = await listAssignmentAudienceMembers(prisma, assignment as any);
+    const audience = await listAssignmentAudienceMembers(prisma, assignment as any, normalizedDate);
     for (const member of audience) {
       // 与看板一致：同一 subjectKey 在当天只绑定到第一个 assignment，后续跳过
       if (resolvedSubjectKeys.has(member.subjectKey)) continue;

@@ -131,10 +131,10 @@ export function OrganizationPage() {
   const moveCandidates = useMemo(() => selected ? orgs.filter((org) => org.orgType === parentTypeMap[selected.orgType] && org.id !== selected.id && !org.path.startsWith(`${selected.path}/`)) : [], [orgs, selected]);
   const hasChildren = useMemo(() => new Set(orgs.map((org) => org.parentId).filter(Boolean)), [orgs]);
   const hasSelectedChildren = Boolean(selected && hasChildren.has(selected.id));
-  const canMoveSelected = Boolean(selected && selected.orgType !== "HQ" && moveCandidates.length > 0);
-  const canDeleteSelected = Boolean(selected && selected.orgType !== "HQ" && !hasSelectedChildren);
+const canMoveSelected = false;
+const canDeleteSelected = false;
   const showCreateChild = Boolean(childType);
-  const showBatchHalls = selected?.orgType === "TEAM";
+  const showBatchHalls = false;
   const showMoveOrDelete = canMoveSelected || canDeleteSelected;
   const activeOrgTree = useMemo(() => buildOrgTree(orgs.filter((o) => o.status !== "paused")), [orgs]);
   const pausedOrgTree = useMemo(() => {

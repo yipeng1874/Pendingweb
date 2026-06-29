@@ -1,4 +1,5 @@
 import { prisma } from "../../../shared/prisma.js";
+import { formatBeijingDate } from "../record/daily-record-time.utils.js";
 
 export const assignmentListInclude = {
   template: { select: { id: true, title: true, category: true, status: true, version: true } },
@@ -79,7 +80,7 @@ function parseTargetAdminLevels(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
-export async function listAssignmentAudienceMembers(db: any, assignment: AssignmentAudienceInput): Promise<AssignmentAudienceMember[]> {
+export async function listAssignmentAudienceMembers(db: any, assignment: AssignmentAudienceInput, taskDate?: string): Promise<AssignmentAudienceMember[]> {
   const audience: AssignmentAudienceMember[] = [];
   const seenIdentityIds = new Set<string>();
   const adminLevels = parseTargetAdminLevels(assignment.targetAdminLevels);
@@ -150,7 +151,122 @@ export async function listAssignmentAudienceMembers(db: any, assignment: Assignm
     }
   }
 
+  // ── 历史日期补充：迁移主播的 disabled 身份 ──────────────────────────
+  const isHistorical = taskDate && taskDate < formatBeijingDate(new Date());
+  if (isHistorical && assignment.targetRoleType === "ANCHOR") {
+    const supplement = await supplementMigratedAnchorAudience(db, assignment, taskDate!);
+    for (const member of supplement) {
+      if (seenIdentityIds.has(member.id)) continue;
+      if (isAssignmentOrgExcluded(member.scopePath ?? undefined, assignment.exclusions ?? [])) continue;
+      if (isAssignmentAnchorExcluded(member.anchorProfileId ?? undefined, assignment.exclusions ?? [])) continue;
+      seenIdentityIds.add(member.id);
+      // unshift: disabled 身份排在前面，后续按 subjectKey 去重时优先保留（归原厅）
+      audience.unshift(member);
+    }
+  }
+
   return audience;
+}
+
+// ── 补充迁移主播的历史受众 ─────────────────────────────────────────────────
+// 查询条件：status=disabled 的 ANCHOR 身份，且满足以下全部条件才补入：
+//   1. disabledByOrgPause=false — 排除组织暂停联动停用
+//   2. 同 userId 存在另一个 active ANCHOR 身份 — 排除手动停用（迁移独有特征）
+//   3. anchorProfile.status=inactive & nickname 含 "back-" — 双重确认档案被归档
+//   4. 该日期（taskDate）有实际 taskRecord — 有记录才补
+// 多次迁移去重：同 userId+taskDate 按 expiredAt ASC 保留最早（当天最初所在厅）
+async function supplementMigratedAnchorAudience(
+  db: any,
+  assignment: { id: string; targets: Array<{ orgPathSnapshot: string }> },
+  taskDate: string
+): Promise<AssignmentAudienceMember[]> {
+  const allMembers: AssignmentAudienceMember[] = [];
+
+  for (const target of assignment.targets ?? []) {
+    const identities = await db.userIdentity.findMany({
+      where: {
+        status: "disabled",
+        roleCode: "ANCHOR",
+        disabledByOrgPause: false,
+        scopePath: { startsWith: target.orgPathSnapshot },
+        user: {
+          status: "active",
+          identities: {
+            some: {
+              roleCode: "ANCHOR",
+              status: "active",
+            },
+          },
+        },
+        anchorProfile: {
+          status: "inactive",
+          nickname: { contains: "back-" },
+        },
+        visibleTaskRecordLinks: {
+          some: {
+            taskRecord: {
+              assignmentId: assignment.id,
+              recordDate: taskDate,
+            },
+          },
+        },
+      },
+      orderBy: { expiredAt: "asc" },
+      select: {
+        id: true,
+        userId: true,
+        scopePath: true,
+        anchorProfileId: true,
+        user: { select: { nickname: true } },
+        anchorProfile: {
+          select: {
+            id: true,
+            nickname: true,
+            hallOrgId: true,
+            hallOrg: {
+              select: { id: true, name: true, path: true, parentId: true },
+            },
+          },
+        },
+      },
+    });
+
+    // 多次迁移去重：同 userId+taskDate 保留 expiredAt 最早（当天最初所在厅）
+    const seen = new Set<string>();
+    for (const identity of identities) {
+      const key = `${identity.userId}:${taskDate}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      let teamOrgId: string | null = identity.anchorProfile?.hallOrg?.parentId ?? null;
+      let teamOrgName: string | null = null;
+      if (teamOrgId) {
+        const teamOrg = await db.orgUnit.findUnique({
+          where: { id: teamOrgId },
+          select: { id: true, name: true },
+        });
+        teamOrgName = teamOrg?.name ?? null;
+      }
+
+      // subjectName 取 user.nickname（迁移时恢复为原名），避免展示 "xxxback-0628-..."
+      allMembers.push({
+        id: identity.id,
+        userId: identity.userId,
+        scopePath: identity.scopePath,
+        anchorProfileId: identity.anchorProfileId,
+        subjectKey: `USER:${identity.userId}`,
+        subjectName: identity.user?.nickname ?? null,
+        nickname: identity.user?.nickname ?? null,
+        hallOrgId: identity.anchorProfile?.hallOrgId ?? null,
+        hallOrgName: identity.anchorProfile?.hallOrg?.name ?? null,
+        hallOrgPath: identity.anchorProfile?.hallOrg?.path ?? null,
+        teamOrgId,
+        teamOrgName,
+      });
+    }
+  }
+
+  return allMembers;
 }
 
 export function parseDateTime(value: string) {
