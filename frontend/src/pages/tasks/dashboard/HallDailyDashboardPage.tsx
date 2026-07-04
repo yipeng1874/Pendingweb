@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw } from "lucide-react";
 
 import type {
   HallDailyDashboardResponse,
@@ -324,78 +324,12 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
   );
 }
 
-// ── 管理员视图：厅详情弹窗 ───────────────────────────────────────────────────
-
-function HallDetailModal({
-  hall,
-  taskDate,
-  onClose,
-}: {
-  hall: HallDailyAdminHallRow;
-  taskDate: string;
-  onClose: () => void;
-}) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const statusMeta = getStatusMeta(hall.status);
-
-  // 点击遮罩关闭
-  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === overlayRef.current) onClose();
-  }
-
-  // ESC 关闭
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
-      onClick={handleOverlayClick}
-    >
-      <div className="relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        {/* 弹窗头部 */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">{hall.hallOrgName}</h3>
-              {hall.submittedAt && (
-                <p className="mt-0.5 text-xs text-slate-400">
-                  提交时间：{hall.submittedAt.slice(0, 16).replace("T", " ")}
-                </p>
-              )}
-            </div>
-            <span className={`shrink-0 rounded-full border px-3 py-0.5 text-xs font-semibold ${statusMeta.badgeCls}`}>
-              {hall.status ? `${hall.completionRate}% · ` : ""}{statusMeta.label}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        {/* 弹窗内容（可滚动） */}
-        <div className="overflow-y-auto px-6 py-4">
-          <HallDetailPanel hallOrgId={hall.hallOrgId} taskDate={taskDate} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 管理员视图：厅进度行 ─────────────────────────────────────────────────────
+// ── 管理员视图：厅进度行（内联展开）──────────────────────────────────────────
 
 function HallProgressRow({ hall, taskDate }: { hall: HallDailyAdminHallRow; taskDate: string }) {
-  const [modalOpen, setModalOpen] = useState(false);
   const statusMeta = getStatusMeta(hall.status);
 
-  // 未参与任务的厅：不可点击
+  // 未参与任务的厅
   if (!hall.hasTask) {
     return (
       <div className="rounded-xl border border-slate-100 bg-slate-50/60">
@@ -408,20 +342,17 @@ function HallProgressRow({ hall, taskDate }: { hall: HallDailyAdminHallRow; task
   }
 
   const rowBg =
-    hall.status === "submitted" ? "border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50/70" :
-    hall.status === "in_progress" ? "border-blue-100 bg-blue-50/30 hover:bg-blue-50/60" :
-    hall.status === "overdue" ? "border-red-100 bg-red-50/20 hover:bg-red-50/40" :
-    "border-slate-100 bg-white hover:bg-slate-50";
+    hall.status === "submitted" ? "border-emerald-100 bg-emerald-50/40" :
+    hall.status === "in_progress" ? "border-blue-100 bg-blue-50/30" :
+    hall.status === "overdue" ? "border-red-100 bg-red-50/20" :
+    "border-slate-100 bg-white";
 
   return (
-    <>
-      <button
-        type="button"
-        className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors ${rowBg}`}
-        onClick={() => setModalOpen(true)}
-      >
+    <div className={`rounded-xl border ${rowBg}`}>
+      {/* 厅标题行 */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-2.5">
-          <ChevronRight size={14} className="shrink-0 text-slate-400" />
+          <ChevronDown size={14} className="shrink-0 text-teal-500" />
           <span className="text-sm font-medium text-slate-800">{hall.hallOrgName}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -434,11 +365,12 @@ function HallProgressRow({ hall, taskDate }: { hall: HallDailyAdminHallRow; task
             {hall.status ? `${hall.completionRate}% · ` : ""}{statusMeta.label}
           </span>
         </div>
-      </button>
-      {modalOpen && (
-        <HallDetailModal hall={hall} taskDate={taskDate} onClose={() => setModalOpen(false)} />
-      )}
-    </>
+      </div>
+      {/* 任务详情（始终展开） */}
+      <div className="border-t border-slate-100 px-4 pb-3 pt-2">
+        <HallDetailPanel hallOrgId={hall.hallOrgId} taskDate={taskDate} />
+      </div>
+    </div>
   );
 }
 
@@ -542,7 +474,7 @@ function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; 
           ) : halls && halls.length === 0 ? (
             <div className="py-3 text-sm text-slate-400">该团队暂无直播厅。</div>
           ) : (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
               {[...(halls ?? [])]
                 .sort((a, b) => (b.hasTask ? 1 : 0) - (a.hasTask ? 1 : 0))
                 .map((hall) => (
@@ -740,7 +672,7 @@ function AdminView() {
 
           {/* 团队列表 */}
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-slate-800">团队进度（点击厅名查看详情）</h2>
+            <h2 className="text-lg font-semibold text-slate-800">团队进度（点击厅名展开详情）</h2>
             {data.teams.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center text-sm text-slate-400">
                 {taskDate} 该基地暂无团队数据。
