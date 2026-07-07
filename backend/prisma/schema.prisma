@@ -164,6 +164,7 @@ model AnchorDailySummary {
   dailyNew      Int      @default(0) @map("daily_new")
   operatorStats Json     @map("operator_stats")
   rawRowCount   Int      @map("raw_row_count")
+  rawAnchors    Json?    @map("raw_anchors")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

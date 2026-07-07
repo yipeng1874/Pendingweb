@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Users, RefreshCw, TrendingUp } from "lucide-react";
+import { Users, RefreshCw, TrendingUp, Filter } from "lucide-react";
 import { anchorSummaryApi, type AnchorTrendResponse, type AnchorTrendPoint, type AnchorDailySummary, type OperatorStat } from "../../../services/task";
 import { useIdentityStore } from "../../../stores/identityStore";
 import {
@@ -31,11 +31,22 @@ const CHART_COLORS = {
   dailyNew: "#f59e0b",
 };
 
+const PROBATION_OPTIONS = [
+  { label: "无试用期", value: 0 },
+  { label: "5 天", value: 5 },
+  { label: "10 天", value: 10 },
+  { label: "15 天", value: 15 },
+  { label: "20 天", value: 20 },
+  { label: "25 天", value: 25 },
+  { label: "30 天", value: 30 },
+];
+
 export function AnchorSummaryCard({ scopeOrgId }: Props) {
   const { currentIdentity } = useIdentityStore();
   const [trend, setTrend] = useState<AnchorTrendResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [probationDays, setProbationDays] = useState(0);
 
   // 运营明细弹窗状态
   const [operatorDialogOpen, setOperatorDialogOpen] = useState(false);
@@ -66,11 +77,12 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
     });
   };
 
-  const loadTrend = (sid?: string) => {
+  const loadTrend = (sid?: string, pd?: number) => {
     setLoading(true);
     setError(null);
+    const pdv = pd ?? probationDays;
     anchorSummaryApi
-      .getTrend(sid ?? scopeOrgId, 7)
+      .getTrend(sid ?? scopeOrgId, 7, pdv)
       .then((data) => setTrend(data))
       .catch((e) => setError(e?.message ?? "加载失败"))
       .finally(() => setLoading(false));
@@ -80,6 +92,12 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
     loadTrend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeOrgId]);
+
+  // 试用期切换时重新加载
+  useEffect(() => {
+    if (trend) loadTrend(undefined, probationDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [probationDays]);
 
   // 监听全局事件，从统一上传弹窗上传后刷新
   useEffect(() => {
@@ -112,10 +130,15 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
         within7Days: existing?.within7Days ?? 0,
         within20Days: existing?.within20Days ?? 0,
         dailyNew: existing?.dailyNew ?? 0,
+        probationDays: existing?.probationDays,
+        probationExcluded: existing?.probationExcluded,
       });
     }
     return result;
   }, [trend]);
+
+  // 最新日期的试用期排除人数
+  const latestProbationExcluded = trend?.latest?.probationExcluded ?? 0;
 
   return (
     <>
@@ -137,8 +160,26 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
             )}
           </div>
 
+          {/* 试用期选择器 */}
+          {latest && (
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              <Filter size={13} className="text-slate-400" />
+              <select
+                value={probationDays}
+                onChange={(e) => setProbationDays(Number(e.target.value))}
+                className="text-[12px] border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-600 outline-none focus:border-feishu-blue focus:ring-1 focus:ring-feishu-blue/20 cursor-pointer"
+              >
+                {PROBATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* 右侧操作区 */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {error && <span className="text-[11px] text-red-500 mr-1">{error}</span>}
 
             {latest && (
@@ -317,6 +358,17 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
         )}
 
         {/* ── 底部：运营明细已移至标题旁（节省高度） ── */}
+
+        {/* ── 试用期排除提示 ── */}
+        {probationDays > 0 && latestProbationExcluded > 0 && (
+          <div className="px-5 py-2 border-t border-amber-100 bg-amber-50/50 flex items-center gap-2">
+            <span className="text-[11px] text-amber-700">
+              试用期 {probationDays} 天内入职的{" "}
+              <strong className="text-amber-800">{latestProbationExcluded}</strong>{" "}
+              人未计入主播总数/线上/线下
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── 运营明细浮层（悬停显示，贴在悬停卡片左侧） ── */}

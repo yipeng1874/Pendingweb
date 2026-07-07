@@ -219,6 +219,9 @@ anchorSummaryRoutes.post(
 
     const operatorMap = new Map<string, OperatorStat>();
 
+    // 原始明细数据（每条主播的入职日期 + 类型），供前端动态试用期过滤
+    const rawAnchors: { joinDate: string | null; isOnline: boolean }[] = [];
+
     for (const row of rows) {
       const operatorName = String(row["所属运营"] ?? "").trim() || "未知运营";
       // 直接用"主播类型"字段判断线上/线下
@@ -233,6 +236,12 @@ anchorSummaryRoutes.post(
       } else {
         joinDate = parseExcelDate(rawDateVal);
       }
+
+      // 存原始明细
+      rawAnchors.push({
+        joinDate: joinDate ? joinDate.toISOString().slice(0, 10) : null,
+        isOnline,
+      });
 
       totalCount++;
       if (isOnline) onlineCount++;
@@ -294,6 +303,7 @@ anchorSummaryRoutes.post(
         dailyNew,
         operatorStats,
         rawRowCount: rows.length,
+        rawAnchors,
       },
       update: {
         baseOrgName: baseOrg.name,
@@ -307,6 +317,7 @@ anchorSummaryRoutes.post(
         dailyNew,
         operatorStats,
         rawRowCount: rows.length,
+        rawAnchors,
       },
     });
 
@@ -341,7 +352,7 @@ anchorSummaryRoutes.get(
   }
 );
 
-/** 趋势接口：GET /anchor-summary/trend?scopeOrgId=xxx&days=7 */
+/** 趋势接口：GET /anchor-summary/trend?scopeOrgId=xxx&days=7&probationDays=5 */
 anchorSummaryRoutes.get(
   "/anchor-summary/trend",
   permissionRequired("task:report:view"),
@@ -361,6 +372,8 @@ anchorSummaryRoutes.get(
     const rawDays = parseInt(req.query.days as string, 10);
     const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 90) : 7;
 
+    const probationDays = parseInt(req.query.probationDays as string, 10) || 0;
+
     // 取最近 N 天的数据（按 recordDate 降序再升序）
     const records = await prisma.anchorDailySummary.findMany({
       where: { baseOrgId: baseOrg.id },
@@ -372,36 +385,76 @@ anchorSummaryRoutes.get(
     records.reverse();
 
     // 最新一条作为 summary 信息
-    const latest = records.length > 0 ? records[records.length - 1] : null;
+    const latestRaw = records.length > 0 ? records[records.length - 1] : null;
+
+    // 动态试用期过滤：对每条 record 重算 totalCount / onlineCount / offlineCount
+    const points = records.map((r) => {
+      let filteredTotal = r.totalCount;
+      let filteredOnline = r.onlineCount;
+      let filteredOffline = r.offlineCount;
+      let probationExcluded = 0;
+
+      if (probationDays > 0 && r.rawAnchors) {
+        const anchors = r.rawAnchors as { joinDate: string | null; isOnline: boolean }[];
+        filteredTotal = 0;
+        filteredOnline = 0;
+        filteredOffline = 0;
+        const refDate = new Date(r.recordDate);
+
+        for (const a of anchors) {
+          // 试用期内：跳过
+          if (a.joinDate) {
+            const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
+            const diffDays = diffMs / 86400000;
+            if (diffDays >= 0 && diffDays < probationDays) {
+              probationExcluded++;
+              continue;
+            }
+          }
+          filteredTotal++;
+          if (a.isOnline) filteredOnline++;
+          else filteredOffline++;
+        }
+      }
+
+      return {
+        recordDate: r.recordDate,
+        totalCount: filteredTotal,
+        onlineCount: filteredOnline,
+        offlineCount: filteredOffline,
+        within7Days: r.within7Days,
+        within20Days: r.within20Days,
+        dailyNew: r.dailyNew,
+        probationDays: probationDays,
+        probationExcluded,
+      };
+    });
+
+    // latest 也用过滤后的最新一条
+    const latest = latestRaw ? points[points.length - 1] : null;
 
     return ok(res, {
       baseOrgId: baseOrg.id,
       baseOrgName: baseOrg.name,
-      points: records.map((r) => ({
-        recordDate: r.recordDate,
-        totalCount: r.totalCount,
-        onlineCount: r.onlineCount,
-        offlineCount: r.offlineCount,
-        within7Days: r.within7Days,
-        within20Days: r.within20Days,
-        dailyNew: r.dailyNew,
-      })),
-      latest: latest
+      points,
+      latest: latestRaw
         ? {
-            id: latest.id,
-            recordDate: latest.recordDate,
-            uploadedBy: latest.uploadedBy,
-            uploaderName: latest.uploaderName,
-            totalCount: latest.totalCount,
-            onlineCount: latest.onlineCount,
-            offlineCount: latest.offlineCount,
-            within7Days: latest.within7Days,
-            within20Days: latest.within20Days,
-            dailyNew: latest.dailyNew,
-            operatorStats: latest.operatorStats,
-            rawRowCount: latest.rawRowCount,
-            createdAt: latest.createdAt,
-            updatedAt: latest.updatedAt,
+            id: latestRaw.id,
+            recordDate: latestRaw.recordDate,
+            uploadedBy: latestRaw.uploadedBy,
+            uploaderName: latestRaw.uploaderName,
+            totalCount: latest?.totalCount ?? latestRaw.totalCount,
+            onlineCount: latest?.onlineCount ?? latestRaw.onlineCount,
+            offlineCount: latest?.offlineCount ?? latestRaw.offlineCount,
+            within7Days: latestRaw.within7Days,
+            within20Days: latestRaw.within20Days,
+            dailyNew: latestRaw.dailyNew,
+            operatorStats: latestRaw.operatorStats,
+            rawRowCount: latestRaw.rawRowCount,
+            createdAt: latestRaw.createdAt,
+            updatedAt: latestRaw.updatedAt,
+            probationDays: probationDays,
+            probationExcluded: latest?.probationExcluded ?? 0,
           }
         : null,
     });

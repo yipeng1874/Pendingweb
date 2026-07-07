@@ -609,6 +609,8 @@ export type AnchorDailySummary = {
   dailyNew: number;
   operatorStats: OperatorStat[];
   rawRowCount: number;
+  probationDays?: number;
+  probationExcluded?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -621,6 +623,8 @@ export type AnchorTrendPoint = {
   within7Days: number;
   within20Days: number;
   dailyNew: number;
+  probationDays?: number;
+  probationExcluded?: number;
 };
 
 export type AnchorTrendResponse = {
@@ -637,10 +641,11 @@ export const anchorSummaryApi = {
     const q = params.toString();
     return api.get<AnchorDailySummary | null>(`/anchor-summary/latest${q ? `?${q}` : ""}`);
   },
-  getTrend: (scopeOrgId?: string, days = 7) => {
+  getTrend: (scopeOrgId?: string, days = 7, probationDays = 0) => {
     const params = new URLSearchParams();
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     params.set("days", String(days));
+    if (probationDays > 0) params.set("probationDays", String(probationDays));
     const q = params.toString();
     return api.get<AnchorTrendResponse>(`/anchor-summary/trend?${q}`);
   },
