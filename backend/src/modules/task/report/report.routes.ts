@@ -937,13 +937,19 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
 
   const viewerScopePath = req.identity?.scopePath ?? baseOrg.path;
 
-  // 1. 取当前有效的 DAILY assignments（只读，不调用 reconcile）
+  // 1. 取日期范围内有效的 DAILY assignments（只读，不调用 reconcile）
+  // 与 loadDailyDashboardAudience 对齐：只统计在指定日期范围内实际生效的 assignment
   const assignments = await prisma.taskAssignment.findMany({
     where: {
       category: "DAILY",
       targets: { some: { orgId: baseOrg.id } },
       status: { in: ["scheduled", "active", "ended"] },
       deletedAt: null,
+      effectiveAt: { lte: getDailyTaskSupplementDeadline(endDate) },
+      OR: [
+        { endedAt: null },
+        { endedAt: { gte: getDailyTaskDayEnd(startDate) } },
+      ],
     },
     include: {
       targets: true,
@@ -1119,8 +1125,9 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
   }
 
   // 5. 计算各团队分母：该团队的 audience 人数 × dates.length
+  // audience 已经过日期范围过滤，只包含该时间段内实际有 assignment 的团队
   const teamAudienceCount = new Map<string, number>();
-  const teamOrgNameMap = new Map<string, string>(); // teamOrgId -> teamOrgName
+  const teamOrgNameMap = new Map<string, string>();
   for (const m of audienceMembers) {
     const teamOrgId = m.teamOrgId ?? baseOrg.id;
     const teamOrgName = m.teamOrgName ?? baseOrg.name;
@@ -1130,7 +1137,7 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
 
   const total = audienceMembers.length * dates.length;
 
-  // 补全所有在 audience 中出现的团队（即使没有任何 record，也要出现在列表里）
+  // 补全所有在 audience 中出现的团队（即使该日期范围内没有任何 record，也要显示）
   for (const [teamOrgId, teamOrgName] of teamOrgNameMap.entries()) {
     if (!teamStatMap.has(teamOrgId)) {
       teamStatMap.set(teamOrgId, { teamOrgId, teamOrgName, completed: 0, exemptions: 0 });
