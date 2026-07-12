@@ -252,7 +252,7 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-x-0 bottom-0 top-[72px] z-50 flex">
       <div className="flex-1 bg-slate-950/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex h-full w-[620px] flex-col overflow-hidden bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">

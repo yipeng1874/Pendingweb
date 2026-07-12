@@ -928,7 +928,7 @@ export function TemporaryIssuePanel({
                         setEditorReadOnly(false);
                         setEditorOpen(true);
                       }}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600 whitespace-nowrap"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-500 px-4 py-2 text-base font-semibold text-white transition hover:bg-blue-600 whitespace-nowrap"
                     >
                       <ClipboardPlus size={14} />新建临时表单
                     </button>

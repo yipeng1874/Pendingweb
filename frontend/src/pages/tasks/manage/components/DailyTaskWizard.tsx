@@ -717,7 +717,7 @@ export function DailyTaskWizard({
                       setEditorOpen(true);
                     }}
                     disabled={!managementOrgId}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500 px-4 py-2 text-base font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <ClipboardCheck size={14} />新建日常任务
                   </button>
