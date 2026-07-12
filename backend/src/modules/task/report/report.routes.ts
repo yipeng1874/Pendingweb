@@ -7,7 +7,7 @@ import { prisma } from "../../../shared/prisma.js";
 import { fail, ok } from "../../../shared/response.js";
 import { AssignmentService } from "../assignment/assignment.service.js";
 import { reconcileDailyAssignments, listAssignmentAudienceMembers } from "../assignment/daily-assignment.utils.js";
-import { addBeijingDays, formatBeijingDate, getDailyTaskContext, getDailyTaskDayEnd, getDailyTaskSupplementDeadline, resolveTaskRecordStatus } from "../record/daily-record-time.utils.js";
+import { addBeijingDays, formatBeijingDate, getDailyTaskContext, getDailyTaskDayEnd, getDailyTaskSupplementDeadline, isDailyRecordOverdue, resolveTaskRecordStatus } from "../record/daily-record-time.utils.js";
 
 type DailyDashboardOrgNode = {
   orgId: string;
@@ -62,6 +62,17 @@ function getEffectiveRecordStatus(record: any, now = new Date()) {
     },
     now
   );
+}
+
+function resolveHallDailyReportStatus(
+  record: { status: string; recordDate?: string | null; doneItems: number } | null | undefined,
+  taskDate: string,
+  now = new Date()
+): "submitted" | "in_progress" | "overdue" | "pending" | null {
+  if (!record) return null;
+  if (record.status === "submitted") return "submitted";
+  if (isDailyRecordOverdue(record.recordDate ?? taskDate, now)) return "overdue";
+  return record.doneItems > 0 ? "in_progress" : "pending";
 }
 
 function canViewDailyDashboard(roleCode?: string) {
@@ -1909,7 +1920,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:
   const activeRecord = records.find((r) => r.assignment.status === "active") ?? records[0] ?? null;
 
   const summary = {
-    status: activeRecord?.status ?? null,
+    status: resolveHallDailyReportStatus(activeRecord, taskDate, now),
     totalItems: activeRecord?.totalItems ?? 0,
     doneItems: activeRecord?.doneItems ?? 0,
     submittedAt: activeRecord?.submittedAt?.toISOString() ?? null,
@@ -1933,7 +1944,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:
       ? {
           id: activeRecord.id,
           assignmentId: activeRecord.assignmentId,
-          status: activeRecord.status,
+          status: resolveHallDailyReportStatus(activeRecord, taskDate, now),
           totalItems: activeRecord.totalItems,
           doneItems: activeRecord.doneItems,
           submittedAt: activeRecord.submittedAt?.toISOString() ?? null,
@@ -2087,13 +2098,14 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
 
     for (const hallId of teamAssignedHallIds) {
       const rec = hallRecordMap.get(hallId);
-      if (!rec) {
+      const displayStatus = resolveHallDailyReportStatus(rec, taskDate, now);
+      if (!displayStatus) {
         noRecordCount += 1;
-      } else if (rec.status === "submitted") {
+      } else if (displayStatus === "submitted") {
         submittedCount += 1;
-      } else if (rec.status === "in_progress") {
+      } else if (displayStatus === "in_progress") {
         inProgressCount += 1;
-      } else if (rec.status === "overdue") {
+      } else if (displayStatus === "overdue") {
         overdueCount += 1;
       } else {
         pendingCount += 1;
@@ -2157,7 +2169,8 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/teams/:teamOrgId/halls", pe
   }
 
   const { teamOrgId } = req.params;
-  const taskDate = t(req.query.taskDate) || formatBeijingDate(new Date());
+  const now = new Date();
+  const taskDate = t(req.query.taskDate) || formatBeijingDate(now);
 
   const team = await prisma.orgUnit.findFirst({
     where: { id: teamOrgId, status: "active", orgType: "TEAM" },
@@ -2230,7 +2243,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/teams/:teamOrgId/halls", pe
       hallOrgId: hall.id,
       hallOrgName: hall.name,
       hasTask,
-      status: rec?.status ?? null,
+      status: resolveHallDailyReportStatus(rec, taskDate, now),
       totalItems: rec?.totalItems ?? 0,
       doneItems: rec?.doneItems ?? 0,
       completionRate: rec?.totalItems ? Math.round((rec.doneItems / rec.totalItems) * 100) : 0,
@@ -2311,7 +2324,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/halls/:hallOrgId/detail", p
     }, null);
 
   const summary = {
-    status: activeRecord?.status ?? null,
+    status: resolveHallDailyReportStatus(activeRecord, taskDate, now),
     totalItems: activeRecord?.totalItems ?? 0,
     doneItems: activeRecord?.doneItems ?? 0,
     submittedAt: activeRecord?.submittedAt?.toISOString() ?? null,
@@ -2329,7 +2342,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/halls/:hallOrgId/detail", p
       ? {
           id: activeRecord.id,
           assignmentId: activeRecord.assignmentId,
-          status: activeRecord.status,
+          status: resolveHallDailyReportStatus(activeRecord, taskDate, now),
           totalItems: activeRecord.totalItems,
           doneItems: activeRecord.doneItems,
           submittedAt: activeRecord.submittedAt?.toISOString() ?? null,
