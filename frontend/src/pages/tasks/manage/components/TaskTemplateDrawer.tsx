@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlignLeft, CheckSquare, Circle, ExternalLink, FileImage, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { AlignLeft, CheckSquare, ChevronDown, Circle, ExternalLink, FileImage, GripVertical, Plus, Trash2, X } from "lucide-react";
 import type { TaskItemType, TaskTemplate } from "../../../../types";
 import { hallDailyApi, templateApi } from "../../../../services/task";
 import { isLearningLinkValid, normalizeLearningLink } from "../../../../shared/utils/learningLink";
@@ -149,6 +149,7 @@ function ItemEditor({ item, readOnly = false, onChange, onDelete }: { item: Draf
 export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, template, readOnly = false, onClose, onSaved, onSavedAndNext }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [descExpanded, setDescExpanded] = useState(false);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -255,15 +256,15 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
       <div className="flex-1 bg-slate-950/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex h-full w-[620px] flex-col overflow-hidden bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{drawerTitle}</h3>
-            <p className="mt-1 text-xs text-slate-400">
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words text-lg font-semibold text-slate-900">{drawerTitle}</h3>
+            <p className="mt-1 break-words text-xs text-slate-400">
               {category === "DAILY" ? "用于主播日常任务三步向导的表单草稿。"
                 : category === "HALL_DAILY" ? "用于厅管日常任务发放的表单草稿。"
                 : "用于临时任务发放的表单草稿。"}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-2xl p-2 text-slate-400 transition hover:bg-slate-100">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-2xl p-2 text-slate-400 transition hover:bg-slate-100">
             <X size={18} />
           </button>
         </div>
@@ -275,20 +276,38 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
               <input className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：主播日常直播工作手册" disabled={readOnly} />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">表单说明</label>
-              <textarea className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="例如：覆盖直播前准备、直播中配合和直播后复盘三段动作。" disabled={readOnly} />
+              <button
+                type="button"
+                onClick={() => setDescExpanded((prev) => !prev)}
+                disabled={readOnly}
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-slate-600">
+                  {description.trim()
+                    ? (
+                        <span className="text-slate-900">{description.slice(0, 40)}{description.length > 40 ? "…" : ""}</span>
+                      )
+                    : "添加表单说明（可选）"}
+                </span>
+                <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${descExpanded ? "rotate-180" : ""}`} />
+              </button>
+              {descExpanded && (
+                <div className="mt-2">
+                  <textarea className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="例如：覆盖直播前准备、直播中配合和直播后复盘三段动作。" disabled={readOnly} />
+                </div>
+              )}
             </div>
           </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-base font-semibold text-slate-900">表单题目</p>
-                <p className="text-xs text-slate-400">
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-base font-semibold text-slate-900">表单题目</p>
+                <p className="break-words text-xs text-slate-400">
                   {category === "HALL_DAILY" ? "请尽量让厅管在同一张任务表里完成完整的工作手册动作。" : "请尽量让主播在同一张任务表里完成完整的工作手册动作。"}
                 </p>
               </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">{items.length} 项</span>
+              <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">{items.length} 项</span>
             </div>
             {items.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400">先添加一项工作手册内容，例如“开播前检查封面与标题”。</div>

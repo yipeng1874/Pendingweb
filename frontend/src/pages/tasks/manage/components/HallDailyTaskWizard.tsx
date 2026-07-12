@@ -387,30 +387,32 @@ export function HallDailyTaskWizard({
   function renderStep1() {
     return (
       <section className="space-y-5 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-        {/* 标题区 + 右上角按钮 */}
+        {/* 标题区 */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-xl font-semibold text-slate-900">第一步：选择厅管日常任务</h3>
             <p className="mt-1 text-sm text-slate-500">厅管日常任务严格区分为模板草稿、待生效、生效中、已结束四类；只有模板草稿可以继续进入发布流程。</p>
           </div>
-          {canManageTemplates && (
-            <button
-              type="button"
-              onClick={() => { setTemplateDrawerTemplate(null); setTemplateDrawerOpen(true); }}
-              className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600"
-            >
-              <ClipboardCheck size={15} />新建模板草稿
-            </button>
-          )}
         </div>
 
         {/* 三栏看板 */}
         <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
           {/* ── 左栏：草稿 ── */}
           <section className="flex h-[620px] flex-col rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <h4 className="text-lg font-semibold text-slate-900">模板草稿</h4>
-              <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">{draftPage.length}</span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h4 className="text-lg font-semibold text-slate-900">模板草稿</h4>
+                <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">{draftPage.length}</span>
+              </div>
+              {canManageTemplates && (
+                <button
+                  type="button"
+                  onClick={() => { setTemplateDrawerTemplate(null); setTemplateDrawerOpen(true); }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
+                >
+                  <ClipboardCheck size={14} />新建日常任务
+                </button>
+              )}
             </div>
             <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
               {draftPage.length === 0 ? (

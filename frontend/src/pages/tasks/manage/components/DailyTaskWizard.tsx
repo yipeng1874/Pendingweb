@@ -698,29 +698,30 @@ export function DailyTaskWizard({
               >
                 <Clock3 size={15} />定时通知设置
               </button>
-              {canManageTemplates && (
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!managementOrgId) return;
-                    setEditingTemplate(null);
-                    setEditorOpen(true);
-                  }}
-                  disabled={!managementOrgId}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ClipboardCheck size={15} />新建主播日常任务草稿
-                </button>
-              )}
             </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
             <section className="flex h-[620px] flex-col rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <h4 className="text-lg font-semibold text-slate-900">草稿</h4>
-                <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">{draftTemplates.length}</span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <h4 className="text-lg font-semibold text-slate-900">草稿</h4>
+                  <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">{draftTemplates.length}</span>
+                </div>
+                {canManageTemplates && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!managementOrgId) return;
+                      setEditingTemplate(null);
+                      setEditorOpen(true);
+                    }}
+                    disabled={!managementOrgId}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ClipboardCheck size={14} />新建日常任务
+                  </button>
+                )}
               </div>
               <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
                 {draftTemplates.length === 0 ? (

@@ -908,24 +908,9 @@ export function TemporaryIssuePanel({
       {notice && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">{notice}</div>}
       {step === 1 && (
         <section className="space-y-5 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900">第一步：选择临时任务</h3>
-              <p className="mt-1 text-sm text-slate-500">草稿统一承接所有未发布任务；进行中任务会持续收集到截止时间，已结束任务可查看内容或复制为新的草稿。</p>
-            </div>
-            {canManageTemplates && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingTemplate(null);
-                  setEditorReadOnly(false);
-                  setEditorOpen(true);
-                }}
-                className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-600"
-              >
-                <ClipboardPlus size={15} />新建临时表单
-              </button>
-            )}
+          <div>
+            <h3 className="text-xl font-semibold text-slate-900">第一步：选择临时任务</h3>
+            <p className="mt-1 text-sm text-slate-500">草稿统一承接所有未发布任务；进行中任务会持续收集到截止时间，已结束任务可查看内容或复制为新的草稿。</p>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
@@ -933,9 +918,23 @@ export function TemporaryIssuePanel({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-lg font-semibold text-slate-900">草稿</h4>
-                  <p className="mt-1 text-sm text-slate-500">这里只保留临时任务表单草稿；新建和从历史任务复制出的内容都会以模板草稿副本的形式留在这里。</p>
                 </div>
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700">{draftTemplateRows.length}</span>
+                <div className="flex items-center gap-2">
+                  {canManageTemplates && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTemplate(null);
+                        setEditorReadOnly(false);
+                        setEditorOpen(true);
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600 whitespace-nowrap"
+                    >
+                      <ClipboardPlus size={14} />新建临时表单
+                    </button>
+                  )}
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700">{draftTemplateRows.length}</span>
+                </div>
               </div>
               <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
                 {draftHistoryRows.length === 0 ? (
@@ -1025,7 +1024,6 @@ export function TemporaryIssuePanel({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-lg font-semibold text-slate-900">进行中</h4>
-                  <p className="mt-1 text-sm text-slate-500">查看当前正在收集中的临时任务；到达截止时间后会自动终止，也可手动延迟或提前终止。</p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-700">{activeHistoryRows.length}</span>
               </div>
@@ -1107,7 +1105,6 @@ export function TemporaryIssuePanel({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-lg font-semibold text-slate-900">已结束</h4>
-                  <p className="mt-1 text-sm text-slate-500">查看已到截止时间自动终止或被人工终止的历史任务，必要时复制为新的草稿重新发起。</p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">{endedHistoryRows.length}</span>
               </div>
