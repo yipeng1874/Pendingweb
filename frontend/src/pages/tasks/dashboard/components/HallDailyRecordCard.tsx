@@ -130,12 +130,11 @@ function HallItemRow({
     }
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    if (fileRef.current) fileRef.current.value = "";
+  function addImageFiles(files: File[], sourceLabel = "图片") {
     for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
       if (file.size > 1048576) {
-        alert(`图片 ${file.name} 超过 1MB，已跳过`);
+        alert(`${sourceLabel} ${file.name || "剪贴板图片"} 超过 1MB，已跳过`);
         continue;
       }
       const previewUrl = URL.createObjectURL(file);
@@ -143,17 +142,41 @@ function HallItemRow({
     }
   }
 
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    addImageFiles(files);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
-    for (const file of files) {
-      if (file.size > 1048576) {
-        alert(`图片 ${file.name} 超过 1MB，已跳过`);
-        continue;
+    addImageFiles(Array.from(e.dataTransfer.files));
+  }
+
+  async function handlePasteButtonClick() {
+    if (!navigator.clipboard?.read) {
+      alert("当前浏览器不支持点击读取剪贴板图片，请使用拖拽或点击上传。");
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await clipboardItem.getType(imageType);
+        const ext = imageType.split("/")[1] || "png";
+        files.push(new File([blob], `clipboard-${Date.now()}.${ext}`, { type: imageType }));
       }
-      const previewUrl = URL.createObjectURL(file);
-      setLocalFiles((prev) => [...prev, { file, previewUrl }]);
+      if (files.length === 0) {
+        alert("剪贴板中没有可上传的图片，请先复制图片或截图后再点击粘贴。");
+        return;
+      }
+      addImageFiles(files, "粘贴图片");
+    } catch (error) {
+      console.error(error);
+      alert("读取剪贴板失败，请确认已复制图片，并允许浏览器访问剪贴板。");
     }
   }
 
@@ -349,15 +372,26 @@ function HallItemRow({
                           onClick={() => fileRef.current?.click()}
                           disabled={uploading}
                           className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-teal-400 hover:text-teal-500"
+                          title="点击选择图片"
                         >
                           <FileImage size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handlePasteButtonClick()}
+                          disabled={uploading}
+                          className="flex h-16 min-w-16 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-emerald-200 px-3 text-xs font-medium text-emerald-600 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-40"
+                          title="读取剪贴板中的图片"
+                        >
+                          <Paperclip size={16} />
+                          粘贴
                         </button>
                         {isDragOver && (
                           <div className="flex flex-1 items-center justify-center text-sm text-teal-400">松开鼠标以添加图片</div>
                         )}
                       </div>
                       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-                      <p className="text-xs text-slate-400">支持拖拽或点击上传，JPG / PNG / GIF / WebP，单张 ≤ 1MB</p>
+                      <p className="text-xs text-slate-400">支持点击“粘贴”读取剪贴板图片，也支持拖拽或点击上传，JPG / PNG / GIF / WebP，单张 ≤ 1MB</p>
                       {localFiles.length > 0 && (
                         <button
                           type="button"
