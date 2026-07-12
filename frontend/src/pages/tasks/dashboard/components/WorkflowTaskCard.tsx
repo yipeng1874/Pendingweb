@@ -305,10 +305,7 @@ function MyQuestionRow({
     }
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
+  async function uploadAttachmentFile(file: File) {
     setUploading(true);
     try {
       const result = await workflowTaskApi.uploadAttachment(file);
@@ -317,6 +314,41 @@ function MyQuestionRow({
       alert(err instanceof Error ? err.message : "上传失败");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await uploadAttachmentFile(file);
+  }
+
+  async function handlePasteImageClick() {
+    if (!navigator.clipboard?.read) {
+      alert("当前浏览器不支持点击读取剪贴板图片，请使用点击上传附件。");
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await clipboardItem.getType(imageType);
+        const ext = imageType.split("/")[1] || "png";
+        files.push(new File([blob], `clipboard-${Date.now()}.${ext}`, { type: imageType }));
+      }
+      if (files.length === 0) {
+        alert("剪贴板中没有可上传的图片，请先复制图片或截图后再点击粘贴图片。");
+        return;
+      }
+      for (const file of files) {
+        await uploadAttachmentFile(file);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("读取剪贴板失败，请确认已复制图片，并允许浏览器访问剪贴板。");
     }
   }
 
@@ -474,13 +506,21 @@ function MyQuestionRow({
               )}
               <input ref={fileInputRef} type="file" className="hidden"
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.mp4,.mov" onChange={handleFileChange} />
-              <button type="button" disabled={uploading}
-                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                className="flex items-center gap-1.5 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-xs text-indigo-500 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50">
-                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
-                {uploading ? "上传中..." : "点击上传附件"}
-              </button>
-              <p className="text-[10px] text-slate-400">支持图片、PDF、Office 文档、视频，单文件最大 20MB</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" disabled={uploading}
+                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-xs text-indigo-500 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50">
+                  {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                  {uploading ? "上传中..." : "点击上传附件"}
+                </button>
+                <button type="button" disabled={uploading}
+                  onClick={(e) => { e.stopPropagation(); void handlePasteImageClick(); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-1.5 text-xs text-emerald-600 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50">
+                  {uploading ? <Loader2 size={12} className="animate-spin" /> : <Image size={12} />}
+                  粘贴图片
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">支持点击上传图片、PDF、Office 文档、视频；复制截图后可点击“粘贴图片”，单文件最大 20MB</p>
             </div>
           )}
         </>
