@@ -447,6 +447,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [leaveExpanded, setLeaveExpanded] = useState(false);
   const submittingRef = useRef(false); // 同步守门，防止并发重复提交
 
   // 当父组件传入的 record 变化时同步本地状态
@@ -459,6 +460,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
       setRecordStatus(record.status);
       setLeaveRequests(record.leaveRequests ?? []);
       setLeaveReason("");
+      setLeaveExpanded(false);
     } else {
       // 同一任务刷新：只同步 status 和请假状态（itemRecords 保持本地最新，避免倒退）
       setRecordStatus(record.status);
@@ -668,23 +670,6 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
             </div>
           )}
 
-          {!isSubmitted && !isLeaveApproved && !isLeavePending && (
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-sm font-semibold text-slate-700">无法完成？可申请请假</p>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                <input
-                  value={leaveReason}
-                  onChange={(event) => setLeaveReason(event.target.value)}
-                  placeholder="请填写请假原因"
-                  className="min-h-10 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-teal-400"
-                />
-                <button type="button" onClick={() => void handleApplyLeave()} disabled={leaveLoading || !leaveReason.trim()} className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-40">
-                  {leaveLoading ? "提交中..." : "申请请假"}
-                </button>
-              </div>
-            </div>
-          )}
-
           {items.length === 0 ? (
             <p className="py-4 text-center text-sm text-slate-400">暂无子任务</p>
           ) : (
@@ -741,6 +726,40 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
           {!isLocked && incompleteRequired.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               还有 {incompleteRequired.length} 项必填子任务未完成。
+            </div>
+          )}
+
+          {!isSubmitted && !isLeaveApproved && !isLeavePending && (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-red-200 bg-red-50/70">
+              <button
+                type="button"
+                onClick={() => setLeaveExpanded((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-red-50"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">请假申请</span>
+                    <p className="text-sm font-bold text-red-700">无法完成本日任务？</p>
+                  </div>
+                  <p className="mt-1 text-xs text-red-500">此入口不属于子任务；仅在确实无法完成时提交请假申请。</p>
+                </div>
+                {leaveExpanded ? <ChevronUp size={16} className="shrink-0 text-red-500" /> : <ChevronDown size={16} className="shrink-0 text-red-500" />}
+              </button>
+              {leaveExpanded && (
+                <div className="border-t border-red-100 bg-white px-4 py-3">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={leaveReason}
+                      onChange={(event) => setLeaveReason(event.target.value)}
+                      placeholder="请填写请假原因"
+                      className="min-h-10 flex-1 rounded-xl border border-red-200 bg-red-50/40 px-3 text-sm outline-none transition focus:border-red-400"
+                    />
+                    <button type="button" onClick={() => void handleApplyLeave()} disabled={leaveLoading || !leaveReason.trim()} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40">
+                      {leaveLoading ? "提交中..." : "申请请假"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
