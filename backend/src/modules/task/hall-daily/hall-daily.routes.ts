@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authRequired } from "../../../middleware/authRequired.js";
 import { identityRequired } from "../../../middleware/identityRequired.js";
 import { permissionRequired } from "../../../middleware/permissionRequired.js";
-import { HallDailyAssignmentController, HallDailyRecordController, HallDailyTemplateController } from "./hall-daily.controller.js";
+import { HallDailyAssignmentController, HallDailyLeaveController, HallDailyRecordController, HallDailyTemplateController } from "./hall-daily.controller.js";
 
 export const hallDailyRoutes = Router();
 hallDailyRoutes.use(authRequired, identityRequired);
@@ -40,10 +40,18 @@ hallDailyRoutes.post("/hall-daily/assignments/:id/close", permissionRequired("ta
 hallDailyRoutes.delete("/hall-daily/assignments/:id", permissionRequired("task:template:manage"), HallDailyAssignmentController.delete);
 
 // ─── 厅管日常任务：执行层（厅管填报）─────────────────────────────────────────
-// GET    /api/hall-daily/my-records              获取当前厅今日+昨日可补录的记录
-// POST   /api/hall-daily/item-records            单题作答
-// POST   /api/hall-daily/my-records/:id/submit   整条提交
+// GET    /api/hall-daily/my-records                         获取当前厅今日+昨日可补录的记录
+// POST   /api/hall-daily/item-records                       单题作答
+// POST   /api/hall-daily/my-records/:id/submit              整条提交
+// POST   /api/hall-daily/my-records/:id/leave-requests      申请请假
+// POST   /api/hall-daily/leave-requests/:id/cancel          撤回请假
+// POST   /api/hall-daily/leave-requests/:id/approve         同意请假
+// POST   /api/hall-daily/leave-requests/:id/reject          拒绝请假
 
 hallDailyRoutes.get("/hall-daily/my-records", permissionRequired("task:record:submit"), HallDailyRecordController.getMyRecords);
 hallDailyRoutes.post("/hall-daily/item-records", permissionRequired("task:record:submit"), HallDailyRecordController.submitItemRecord);
 hallDailyRoutes.post("/hall-daily/my-records/:id/submit", permissionRequired("task:record:submit"), HallDailyRecordController.submitRecord);
+hallDailyRoutes.post("/hall-daily/my-records/:id/leave-requests", permissionRequired("task:record:submit"), HallDailyLeaveController.apply);
+hallDailyRoutes.post("/hall-daily/leave-requests/:id/cancel", permissionRequired("task:record:submit"), HallDailyLeaveController.cancel);
+hallDailyRoutes.post("/hall-daily/leave-requests/:id/approve", permissionRequired("task:report:view"), HallDailyLeaveController.approve);
+hallDailyRoutes.post("/hall-daily/leave-requests/:id/reject", permissionRequired("task:report:view"), HallDailyLeaveController.reject);

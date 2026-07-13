@@ -363,6 +363,22 @@ export type HallTaskItemRecord = {
   attachments?: HallTaskItemAttachment[];
 };
 
+export type HallTaskLeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export type HallTaskLeaveRequest = {
+  id: string;
+  taskRecordId: string;
+  applicantUserId: string;
+  applicantName?: string | null;
+  reason: string;
+  status: HallTaskLeaveStatus;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewComment?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type HallTaskRecord = {
   id: string;
   assignmentId: string;
@@ -392,6 +408,7 @@ export type HallTaskRecord = {
     };
   };
   itemRecords?: HallTaskItemRecord[];
+  leaveRequests?: HallTaskLeaveRequest[];
 };
 
 export type HallTaskTemplate = {
@@ -489,6 +506,18 @@ export const hallDailyApi = {
 
   submitRecord: (id: string) =>
     api.post<HallTaskRecord>(`/hall-daily/my-records/${id}/submit`),
+
+  applyLeave: (recordId: string, reason: string) =>
+    api.post<HallTaskLeaveRequest>(`/hall-daily/my-records/${recordId}/leave-requests`, { reason }),
+
+  cancelLeave: (leaveRequestId: string) =>
+    api.post<HallTaskLeaveRequest>(`/hall-daily/leave-requests/${leaveRequestId}/cancel`, {}),
+
+  approveLeave: (leaveRequestId: string, comment?: string) =>
+    api.post<HallTaskLeaveRequest>(`/hall-daily/leave-requests/${leaveRequestId}/approve`, { comment }),
+
+  rejectLeave: (leaveRequestId: string, comment: string) =>
+    api.post<HallTaskLeaveRequest>(`/hall-daily/leave-requests/${leaveRequestId}/reject`, { comment }),
 
   uploadAttachment: (hallTaskItemRecordId: string, file: File) => {
     const form = new FormData();

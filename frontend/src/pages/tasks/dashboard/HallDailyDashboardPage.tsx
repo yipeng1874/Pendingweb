@@ -11,7 +11,7 @@ import type {
   OrgUnit,
   Identity,
 } from "../../../types";
-import { reportApi } from "../../../services/task";
+import { hallDailyApi, reportApi } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
 import { useIdentityStore } from "../../../stores/identityStore";
 
@@ -25,6 +25,8 @@ function getPhaseMeta(phase: string) {
 
 function getStatusMeta(status: string | null) {
   if (status === "submitted") return { label: "已提交", cls: "text-emerald-600", badgeCls: "border-emerald-100 bg-emerald-50 text-emerald-700" };
+  if (status === "leave_approved") return { label: "已请假", cls: "text-violet-600", badgeCls: "border-violet-100 bg-violet-50 text-violet-700" };
+  if (status === "leave_pending") return { label: "请假待审", cls: "text-amber-600", badgeCls: "border-amber-100 bg-amber-50 text-amber-700" };
   if (status === "in_progress") return { label: "进行中", cls: "text-blue-600", badgeCls: "border-blue-100 bg-blue-50 text-blue-700" };
   if (status === "overdue") return { label: "已逾期", cls: "text-red-600", badgeCls: "border-red-100 bg-red-50 text-red-700" };
   if (status === "pending") return { label: "未开始", cls: "text-slate-500", badgeCls: "border-slate-200 bg-slate-50 text-slate-500" };
@@ -229,15 +231,51 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
   const [data, setData] = useState<HallDailyAdminHallDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [rejectComment, setRejectComment] = useState("");
 
-  useEffect(() => {
+  async function loadDetail() {
     setLoading(true);
     setError("");
     reportApi.getHallDailyAdminHallDetail(hallOrgId, { taskDate })
       .then((r) => { setData(r); })
       .catch((err: Error) => { setError(err.message || "加载失败"); })
       .finally(() => { setLoading(false); });
+  }
+
+  useEffect(() => {
+    void loadDetail();
   }, [hallOrgId, taskDate]);
+
+  async function handleApproveLeave(leaveRequestId: string) {
+    setReviewLoading(true);
+    try {
+      await hallDailyApi.approveLeave(leaveRequestId, "同意请假");
+      await loadDetail();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "同意请假失败");
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  async function handleRejectLeave(leaveRequestId: string) {
+    const comment = rejectComment.trim();
+    if (!comment) {
+      alert("请填写拒绝原因");
+      return;
+    }
+    setReviewLoading(true);
+    try {
+      await hallDailyApi.rejectLeave(leaveRequestId, comment);
+      setRejectComment("");
+      await loadDetail();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "拒绝请假失败");
+    } finally {
+      setReviewLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -257,6 +295,30 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
     <div className="mt-2 space-y-1.5 border-l-2 border-teal-200 pl-4">
       {data.record.templateTitle && (
         <p className="mb-2 text-xs font-medium text-slate-400">模板：{data.record.templateTitle}</p>
+      )}
+      {data.record.leaveRequest && data.record.leaveRequest.status !== "cancelled" && (
+        <div className={`mb-3 rounded-xl border px-3 py-2.5 text-sm ${data.record.leaveRequest.status === "approved" ? "border-violet-100 bg-violet-50 text-violet-700" : data.record.leaveRequest.status === "pending" ? "border-amber-100 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{data.record.leaveRequest.status === "approved" ? "已请假" : data.record.leaveRequest.status === "pending" ? "请假待审批" : "请假未通过"}</p>
+              <p className="mt-1 text-xs">申请人：{data.record.leaveRequest.applicantName || "-"}</p>
+              <p className="mt-1 text-xs">申请时间：{data.record.leaveRequest.createdAt.slice(0, 16).replace("T", " ")}</p>
+              <p className="mt-1 text-xs">请假原因：{data.record.leaveRequest.reason}</p>
+              {data.record.leaveRequest.reviewComment && <p className="mt-1 text-xs">审批意见：{data.record.leaveRequest.reviewComment}</p>}
+            </div>
+            {data.record.leaveRequest.status === "pending" && (
+              <div className="w-full space-y-2 sm:w-56">
+                <button type="button" disabled={reviewLoading} onClick={() => void handleApproveLeave(data.record!.leaveRequest!.id)} className="w-full rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-700 disabled:opacity-50">
+                  {reviewLoading ? "处理中..." : "同意请假"}
+                </button>
+                <input value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="拒绝原因" className="h-9 w-full rounded-lg border border-amber-200 bg-white px-2 text-xs outline-none focus:border-amber-400" />
+                <button type="button" disabled={reviewLoading || !rejectComment.trim()} onClick={() => void handleRejectLeave(data.record!.leaveRequest!.id)} className="w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50">
+                  拒绝请假
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
       {data.record.items.length === 0 ? (
         <p className="text-sm text-slate-400">模板暂无题目。</p>
@@ -433,6 +495,16 @@ function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; 
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
                 <CheckCircle2 size={11} /> {team.submittedCount} 已提交
               </span>
+              {(team.leaveApprovedCount ?? 0) > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-violet-100">
+                  {team.leaveApprovedCount} 已请假
+                </span>
+              )}
+              {(team.leavePendingCount ?? 0) > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
+                  {team.leavePendingCount} 请假待审
+                </span>
+              )}
               {team.inProgressCount > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
                   <Loader2 size={11} /> {team.inProgressCount} 进行中

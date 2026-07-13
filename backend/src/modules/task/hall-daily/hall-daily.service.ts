@@ -755,6 +755,99 @@ export async function ensureHallDailyRecordsForToday() {
   return { created };
 }
 
+// ─── 请假服务 ────────────────────────────────────────────────────────────────
+
+async function ensureHallManagerOwnsRecord(recordId: string, userId: string) {
+  const record = await prisma.hallTaskRecord.findUnique({
+    where: { id: recordId },
+    include: { hallOrg: { select: { id: true, name: true, path: true } } },
+  });
+  if (!record) throw new Error("HALL_TASK_RECORD_NOT_FOUND");
+  const allowed = await prisma.userIdentity.findFirst({
+    where: { userId, roleCode: "HALL_MANAGER", status: "active", orgId: record.hallOrgId },
+    include: { user: { select: { nickname: true, phone: true } } },
+  });
+  if (!allowed) throw new Error("HALL_TASK_RECORD_NOT_FOUND");
+  return { record, identity: allowed };
+}
+
+function canReviewHallPath(reviewerIdentity: any, hallPath?: string | null) {
+  const roleCode = reviewerIdentity?.roleCode;
+  if (!roleCode || !["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"].includes(roleCode)) return false;
+  if (roleCode === "DEV_ADMIN") return true;
+  const scopePath = reviewerIdentity?.scopePath;
+  if (!scopePath || !hallPath) return false;
+  return hallPath === scopePath || hallPath.startsWith(`${scopePath}/`);
+}
+
+export const HallDailyLeaveService = {
+  async apply(data: { recordId: string; userId: string; reason: string }) {
+    const reason = data.reason.trim();
+    if (!reason) throw new Error("HALL_TASK_LEAVE_REASON_REQUIRED");
+    const { record, identity } = await ensureHallManagerOwnsRecord(data.recordId, data.userId);
+    if (record.status === "submitted") throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
+    const now = new Date();
+    if (isDailyRecordCollectionClosed(record.recordDate, now)) throw new Error("HALL_TASK_SUPPLEMENT_DEADLINE_PASSED");
+
+    const existingPending = await prisma.hallTaskLeaveRequest.findFirst({
+      where: { taskRecordId: record.id, status: "pending" },
+      select: { id: true },
+    });
+    if (existingPending) throw new Error("HALL_TASK_LEAVE_PENDING_EXISTS");
+
+    return prisma.hallTaskLeaveRequest.create({
+      data: {
+        taskRecordId: record.id,
+        applicantUserId: data.userId,
+        applicantName: identity.user?.nickname || identity.user?.phone || null,
+        reason,
+      },
+    });
+  },
+
+  async cancel(leaveRequestId: string, userId: string) {
+    const leave = await prisma.hallTaskLeaveRequest.findUnique({
+      where: { id: leaveRequestId },
+      include: { taskRecord: true },
+    });
+    if (!leave || leave.applicantUserId !== userId) throw new Error("HALL_TASK_LEAVE_REQUEST_NOT_FOUND");
+    if (leave.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
+    if (isDailyRecordCollectionClosed(leave.taskRecord.recordDate, new Date())) throw new Error("HALL_TASK_SUPPLEMENT_DEADLINE_PASSED");
+    return prisma.hallTaskLeaveRequest.update({
+      where: { id: leaveRequestId },
+      data: { status: "cancelled" },
+    });
+  },
+
+  async review(data: {
+    leaveRequestId: string;
+    reviewerUserId: string;
+    reviewerIdentity: any;
+    action: "approved" | "rejected";
+    comment?: string;
+  }) {
+    if (data.action === "rejected" && !data.comment?.trim()) throw new Error("HALL_TASK_LEAVE_COMMENT_REQUIRED");
+    const leave = await prisma.hallTaskLeaveRequest.findUnique({
+      where: { id: data.leaveRequestId },
+      include: { taskRecord: { include: { hallOrg: { select: { path: true } } } } },
+    });
+    if (!leave) throw new Error("HALL_TASK_LEAVE_REQUEST_NOT_FOUND");
+    if (leave.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
+    if (!canReviewHallPath(data.reviewerIdentity, leave.taskRecord.hallOrg?.path)) {
+      throw new Error("HALL_TASK_LEAVE_REVIEW_FORBIDDEN");
+    }
+    return prisma.hallTaskLeaveRequest.update({
+      where: { id: data.leaveRequestId },
+      data: {
+        status: data.action,
+        reviewedBy: data.reviewerUserId,
+        reviewedAt: new Date(),
+        reviewComment: data.comment?.trim() || null,
+      },
+    });
+  },
+};
+
 // ─── 执行层服务（厅管填报） ────────────────────────────────────────────────────
 
 export const HallDailyRecordService = {
@@ -798,6 +891,9 @@ export const HallDailyRecordService = {
         },
         itemRecords: {
           include: { attachments: true },
+        },
+        leaveRequests: {
+          orderBy: { createdAt: "desc" },
         },
       },
       orderBy: { recordDate: "desc" },
@@ -844,6 +940,8 @@ export const HallDailyRecordService = {
     });
     if (!allowed) throw new Error("HALL_TASK_RECORD_NOT_FOUND");
     if (record.status === "submitted") throw new Error("HALL_TASK_RECORD_ALREADY_SUBMITTED");
+    const approvedLeave = await prisma.hallTaskLeaveRequest.findFirst({ where: { taskRecordId: record.id, status: "approved" }, select: { id: true } });
+    if (approvedLeave) throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
 
     const now = new Date();
     if (isDailyRecordOverdue(record.recordDate, now)) {
@@ -919,6 +1017,8 @@ export const HallDailyRecordService = {
     });
     if (!allowed) throw new Error("HALL_TASK_RECORD_NOT_FOUND");
     if (record.status === "submitted") throw new Error("HALL_TASK_RECORD_ALREADY_SUBMITTED");
+    const approvedLeave = await prisma.hallTaskLeaveRequest.findFirst({ where: { taskRecordId: record.id, status: "approved" }, select: { id: true } });
+    if (approvedLeave) throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
 
     const now = new Date();
     if (isDailyRecordOverdue(record.recordDate, now)) {

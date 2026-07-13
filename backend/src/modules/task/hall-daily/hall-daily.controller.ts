@@ -1,5 +1,5 @@
 import { fail, ok } from "../../../shared/response.js";
-import { HallDailyAssignmentService, HallDailyRecordService, HallDailyTemplateService } from "./hall-daily.service.js";
+import { HallDailyAssignmentService, HallDailyLeaveService, HallDailyRecordService, HallDailyTemplateService } from "./hall-daily.service.js";
 
 const t = (v: any): string => (typeof v === "string" ? v.trim() : "");
 
@@ -29,6 +29,13 @@ function handleHallDailyError(res: any, error: any) {
     HALL_TASK_RECORD_ALREADY_SUBMITTED:     ["该任务已提交，不可重复提交", 400],
     HALL_TASK_RECORD_INCOMPLETE:            ["还有必填题目未完成，无法提交", 400],
     HALL_TASK_SUPPLEMENT_DEADLINE_PASSED:   ["已超过补录截止时间（次日 16:00）", 400],
+    HALL_TASK_LEAVE_REASON_REQUIRED:         ["请填写请假原因", 400],
+    HALL_TASK_LEAVE_NOT_ALLOWED:             ["当前任务状态不允许申请请假", 400],
+    HALL_TASK_LEAVE_PENDING_EXISTS:          ["已有待审批的请假申请", 400],
+    HALL_TASK_LEAVE_REQUEST_NOT_FOUND:       ["请假申请不存在或无权访问", 404],
+    HALL_TASK_LEAVE_NOT_PENDING:             ["该请假申请已处理", 400],
+    HALL_TASK_LEAVE_REVIEW_FORBIDDEN:        ["当前身份无权审批该请假申请", 403],
+    HALL_TASK_LEAVE_COMMENT_REQUIRED:        ["请填写审批意见", 400],
   };
 
   const entry = map[error?.message];
@@ -253,6 +260,60 @@ export const HallDailyAssignmentController = {
 };
 
 // ─── 执行层 Controller（厅管填报） ────────────────────────────────────────────
+
+export const HallDailyLeaveController = {
+  async apply(req: any, res: any) {
+    try {
+      const result = await HallDailyLeaveService.apply({
+        recordId: req.params.id,
+        userId: req.userId,
+        reason: t(req.body.reason),
+      });
+      return ok(res, result);
+    } catch (error: any) {
+      return handleHallDailyError(res, error);
+    }
+  },
+
+  async cancel(req: any, res: any) {
+    try {
+      const result = await HallDailyLeaveService.cancel(req.params.id, req.userId);
+      return ok(res, result);
+    } catch (error: any) {
+      return handleHallDailyError(res, error);
+    }
+  },
+
+  async approve(req: any, res: any) {
+    try {
+      const result = await HallDailyLeaveService.review({
+        leaveRequestId: req.params.id,
+        reviewerUserId: req.userId,
+        reviewerIdentity: req.identity,
+        action: "approved",
+        comment: t(req.body.comment) || undefined,
+      });
+      return ok(res, result);
+    } catch (error: any) {
+      return handleHallDailyError(res, error);
+    }
+  },
+
+  async reject(req: any, res: any) {
+    try {
+      const result = await HallDailyLeaveService.review({
+        leaveRequestId: req.params.id,
+        reviewerUserId: req.userId,
+        reviewerIdentity: req.identity,
+        action: "rejected",
+        comment: t(req.body.comment),
+      });
+      return ok(res, result);
+    } catch (error: any) {
+      return handleHallDailyError(res, error);
+    }
+  },
+};
 
 export const HallDailyRecordController = {
 

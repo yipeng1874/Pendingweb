@@ -64,15 +64,53 @@ function getEffectiveRecordStatus(record: any, now = new Date()) {
   );
 }
 
+type HallDailyReportStatus = "submitted" | "leave_approved" | "leave_pending" | "in_progress" | "overdue" | "pending";
+
+type HallDailyRecordForStatus = {
+  status: string;
+  recordDate?: string | null;
+  doneItems: number;
+  leaveRequests?: Array<{ status: string; createdAt?: Date }>;
+};
+
+function getLatestHallDailyLeaveStatus(record?: HallDailyRecordForStatus | null) {
+  const leaveRequests = record?.leaveRequests ?? [];
+  const approved = leaveRequests.find((leave) => leave.status === "approved");
+  if (approved) return "approved";
+  const pending = leaveRequests.find((leave) => leave.status === "pending");
+  if (pending) return "pending";
+  return null;
+}
+
 function resolveHallDailyReportStatus(
-  record: { status: string; recordDate?: string | null; doneItems: number } | null | undefined,
+  record: HallDailyRecordForStatus | null | undefined,
   taskDate: string,
   now = new Date()
-): "submitted" | "in_progress" | "overdue" | "pending" | null {
+): HallDailyReportStatus | null {
   if (!record) return null;
   if (record.status === "submitted") return "submitted";
+  const leaveStatus = getLatestHallDailyLeaveStatus(record);
+  if (leaveStatus === "approved") return "leave_approved";
+  if (leaveStatus === "pending") return "leave_pending";
   if (isDailyRecordOverdue(record.recordDate ?? taskDate, now)) return "overdue";
   return record.doneItems > 0 ? "in_progress" : "pending";
+}
+
+function serializeHallDailyLeaveRequest(record?: { leaveRequests?: Array<any> } | null) {
+  const leave = record?.leaveRequests?.find((item) => item.status === "approved")
+    ?? record?.leaveRequests?.find((item) => item.status === "pending")
+    ?? record?.leaveRequests?.find((item) => item.status === "rejected")
+    ?? null;
+  if (!leave) return null;
+  return {
+    id: leave.id,
+    status: leave.status,
+    applicantName: leave.applicantName,
+    reason: leave.reason,
+    reviewComment: leave.reviewComment,
+    createdAt: leave.createdAt.toISOString(),
+    reviewedAt: leave.reviewedAt?.toISOString() ?? null,
+  };
 }
 
 function canViewDailyDashboard(roleCode?: string) {
@@ -1911,6 +1949,9 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:
           doneBy: true,
         },
       },
+      leaveRequests: {
+        orderBy: { createdAt: "desc" },
+      },
       hallOrg: { select: { id: true, name: true } },
     },
     orderBy: { recordDate: "desc" },
@@ -1924,6 +1965,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:
     totalItems: activeRecord?.totalItems ?? 0,
     doneItems: activeRecord?.doneItems ?? 0,
     submittedAt: activeRecord?.submittedAt?.toISOString() ?? null,
+    leaveRequest: serializeHallDailyLeaveRequest(activeRecord),
     completionRate: activeRecord?.totalItems
       ? Math.round((activeRecord.doneItems / activeRecord.totalItems) * 100)
       : 0,
@@ -1948,6 +1990,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard", permissionRequired("task:
           totalItems: activeRecord.totalItems,
           doneItems: activeRecord.doneItems,
           submittedAt: activeRecord.submittedAt?.toISOString() ?? null,
+          leaveRequest: serializeHallDailyLeaveRequest(activeRecord),
           templateTitle: activeRecord.assignment.template?.title ?? null,
           items: (activeRecord.assignment.template?.items ?? []).map((item) => {
             const ir = activeRecord.itemRecords.find((r) => r.taskItemId === item.id);
@@ -2049,6 +2092,10 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
           template: { select: { title: true } },
         },
       },
+      leaveRequests: {
+        orderBy: { createdAt: "desc" },
+        select: { status: true, createdAt: true },
+      },
     },
     orderBy: { createdAt: "desc" },
   }) : [];
@@ -2091,6 +2138,8 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
     const hasTask = assignedHalls > 0;
 
     let submittedCount = 0;
+    let leaveApprovedCount = 0;
+    let leavePendingCount = 0;
     let inProgressCount = 0;
     let pendingCount = 0;
     let overdueCount = 0;
@@ -2103,6 +2152,10 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
         noRecordCount += 1;
       } else if (displayStatus === "submitted") {
         submittedCount += 1;
+      } else if (displayStatus === "leave_approved") {
+        leaveApprovedCount += 1;
+      } else if (displayStatus === "leave_pending") {
+        leavePendingCount += 1;
       } else if (displayStatus === "in_progress") {
         inProgressCount += 1;
       } else if (displayStatus === "overdue") {
@@ -2112,8 +2165,8 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
       }
     }
 
-    // 完成率 = 已提交 / 参与任务的厅（分母不排除 noRecord，保留透明度）
-    const completionRate = assignedHalls > 0 ? Math.round((submittedCount / assignedHalls) * 100) : 0;
+    // 完成率 = 已提交 + 已请假 / 参与任务的厅（分母不排除 noRecord，保留透明度）
+    const completionRate = assignedHalls > 0 ? Math.round(((submittedCount + leaveApprovedCount) / assignedHalls) * 100) : 0;
 
     return {
       teamOrgId: team.id,
@@ -2122,6 +2175,8 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
       totalHalls,
       assignedHalls,
       submittedCount,
+      leaveApprovedCount,
+      leavePendingCount,
       inProgressCount,
       pendingCount,
       overdueCount,
@@ -2137,7 +2192,9 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
   const baseTotalHalls = allHalls.length;
   const baseAssignedHalls = assignedHallIds.size;
   const baseSubmittedHalls = teamSummaries.reduce((s, t) => s + t.submittedCount, 0);
-  const baseCompletionRate = baseAssignedHalls > 0 ? Math.round((baseSubmittedHalls / baseAssignedHalls) * 100) : 0;
+  const baseLeaveApprovedHalls = teamSummaries.reduce((s, t) => s + t.leaveApprovedCount, 0);
+  const baseLeavePendingHalls = teamSummaries.reduce((s, t) => s + t.leavePendingCount, 0);
+  const baseCompletionRate = baseAssignedHalls > 0 ? Math.round(((baseSubmittedHalls + baseLeaveApprovedHalls) / baseAssignedHalls) * 100) : 0;
 
   return ok(res, {
     taskDate,
@@ -2154,6 +2211,8 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
       totalHalls: baseTotalHalls,
       assignedHalls: baseAssignedHalls,
       submittedHalls: baseSubmittedHalls,
+      leaveApprovedHalls: baseLeaveApprovedHalls,
+      leavePendingHalls: baseLeavePendingHalls,
       completionRate: baseCompletionRate,
     },
     teams: teamSummaries,
@@ -2214,6 +2273,10 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/teams/:teamOrgId/halls", pe
       assignmentId: true,
       createdAt: true,
       assignment: { select: { status: true } },
+      leaveRequests: {
+        orderBy: { createdAt: "desc" },
+        select: { status: true, createdAt: true },
+      },
     },
     orderBy: { createdAt: "desc" },
   }) : [];
@@ -2312,6 +2375,9 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/halls/:hallOrgId/detail", p
           },
         },
       },
+      leaveRequests: {
+        orderBy: { createdAt: "desc" },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -2328,6 +2394,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/halls/:hallOrgId/detail", p
     totalItems: activeRecord?.totalItems ?? 0,
     doneItems: activeRecord?.doneItems ?? 0,
     submittedAt: activeRecord?.submittedAt?.toISOString() ?? null,
+    leaveRequest: serializeHallDailyLeaveRequest(activeRecord),
     completionRate: activeRecord?.totalItems
       ? Math.round((activeRecord.doneItems / activeRecord.totalItems) * 100)
       : 0,
@@ -2346,6 +2413,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/halls/:hallOrgId/detail", p
           totalItems: activeRecord.totalItems,
           doneItems: activeRecord.doneItems,
           submittedAt: activeRecord.submittedAt?.toISOString() ?? null,
+          leaveRequest: serializeHallDailyLeaveRequest(activeRecord),
           templateTitle: activeRecord.assignment.template?.title ?? null,
           items: (activeRecord.assignment.template?.items ?? []).map((item) => {
             const ir = activeRecord.itemRecords.find((r) => r.taskItemId === item.id);

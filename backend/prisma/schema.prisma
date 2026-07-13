@@ -844,6 +844,7 @@ model HallTaskRecord {
   assignment     HallTaskAssignment   @relation(fields: [assignmentId], references: [id])
   hallOrg        OrgUnit              @relation("HallTaskRecordHall", fields: [hallOrgId], references: [id])
   itemRecords    HallTaskItemRecord[]
+  leaveRequests  HallTaskLeaveRequest[]
 
   @@unique([assignmentId, hallOrgId, recordDate])
   @@index([assignmentId])
@@ -851,6 +852,27 @@ model HallTaskRecord {
   @@index([recordDate])
   @@index([recordDate, hallOrgId])
   @@map("hall_task_records")
+}
+
+/// 厅管日常任务请假申请
+model HallTaskLeaveRequest {
+  id              String              @id @default(uuid())
+  taskRecordId    String              @map("task_record_id")
+  applicantUserId String              @map("applicant_user_id")
+  applicantName   String?             @map("applicant_name")
+  reason          String              @db.Text
+  status          HallTaskLeaveStatus @default(pending)
+  reviewedBy      String?             @map("reviewed_by")
+  reviewedAt      DateTime?           @map("reviewed_at")
+  reviewComment   String?             @map("review_comment") @db.Text
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  taskRecord      HallTaskRecord      @relation(fields: [taskRecordId], references: [id])
+
+  @@index([taskRecordId])
+  @@index([status])
+  @@index([applicantUserId])
+  @@map("hall_task_leave_requests")
 }
 
 /// 厅管日常任务题目作答记录
@@ -929,6 +951,13 @@ enum HallTaskRecordStatus {
 enum HallTaskItemRecordStatus {
   pending
   done
+}
+
+enum HallTaskLeaveStatus {
+  pending
+  approved
+  rejected
+  cancelled
 }
 
 enum ExportTaskStatus {

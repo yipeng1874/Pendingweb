@@ -51,6 +51,8 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function statusLabel(status: string) {
   if (status === "submitted") return { text: "已完成", cls: "bg-emerald-50 text-emerald-600" };
+  if (status === "leave_approved") return { text: "已请假", cls: "bg-violet-50 text-violet-600" };
+  if (status === "leave_pending") return { text: "请假审核中", cls: "bg-amber-50 text-amber-600" };
   if (status === "in_progress") return { text: "进行中", cls: "bg-teal-50 text-teal-600" };
   if (status === "overdue") return { text: "已逾期", cls: "bg-red-50 text-red-600" };
   return { text: "待开始", cls: "bg-slate-100 text-slate-500" };
@@ -441,6 +443,9 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
   // 本地维护 itemRecords，子任务完成后直接本地更新，避免触发父组件刷新导致展开状态丢失
   const [localItemRecords, setLocalItemRecords] = useState<HallTaskItemRecord[]>(record.itemRecords ?? []);
   const [recordStatus, setRecordStatus] = useState(record.status);
+  const [leaveRequests, setLeaveRequests] = useState(record.leaveRequests ?? []);
+  const [leaveReason, setLeaveReason] = useState("");
+  const [leaveLoading, setLeaveLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false); // 同步守门，防止并发重复提交
 
@@ -452,11 +457,14 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
       prevRecordIdRef.current = record.id;
       setLocalItemRecords(record.itemRecords ?? []);
       setRecordStatus(record.status);
+      setLeaveRequests(record.leaveRequests ?? []);
+      setLeaveReason("");
     } else {
-      // 同一任务刷新：只同步 status（itemRecords 保持本地最新，避免倒退）
+      // 同一任务刷新：只同步 status 和请假状态（itemRecords 保持本地最新，避免倒退）
       setRecordStatus(record.status);
+      setLeaveRequests(record.leaveRequests ?? []);
     }
-  }, [record.id, record.itemRecords, record.status]);
+  }, [record.id, record.itemRecords, record.leaveRequests, record.status]);
 
   const items = record.assignment?.template?.items ?? [];
   const itemRecordsMap = new Map(localItemRecords.map((ir) => [ir.taskItemId, ir]));
@@ -468,10 +476,15 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
     (item) => item.isRequired && itemRecordsMap.get(item.id)?.status !== "done"
   );
 
-  const status = statusLabel(recordStatus);
+  const activeLeave = leaveRequests.find((leave) => leave.status === "approved") ?? leaveRequests.find((leave) => leave.status === "pending") ?? leaveRequests.find((leave) => leave.status === "rejected");
+  const leaveDisplayStatus = activeLeave?.status === "approved" ? "leave_approved" : activeLeave?.status === "pending" ? "leave_pending" : recordStatus;
+  const status = statusLabel(leaveDisplayStatus);
   const isOverdue = recordStatus === "overdue";
   const isSubmitted = recordStatus === "submitted";
-  const leftBorderColor = isOverdue ? "border-l-red-400" : isSubmitted ? "border-l-emerald-400" : "border-l-teal-400";
+  const isLeaveApproved = activeLeave?.status === "approved";
+  const isLeavePending = activeLeave?.status === "pending";
+  const isLocked = isSubmitted || isLeaveApproved || isLeavePending;
+  const leftBorderColor = isLeaveApproved ? "border-l-violet-400" : isLeavePending ? "border-l-amber-400" : isOverdue ? "border-l-red-400" : isSubmitted ? "border-l-emerald-400" : "border-l-teal-400";
 
   const dateLabel = formatRecordDate(record.recordDate);
   const supplementDateLabel = record.recordDate ? formatRecordDate(addDays(record.recordDate, 1)) : "";
@@ -491,6 +504,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
   const autoSubmitCalledRef = useRef(false);
   useEffect(() => {
     if (autoSubmitCalledRef.current) return;
+    if (isLocked) return;
     if (recordStatus !== "in_progress" && recordStatus !== "overdue") return;
     const currentItems = record.assignment?.template?.items ?? [];
     if (currentItems.length === 0) return;
@@ -533,6 +547,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
 
   // 整体提交记录，调用后端接口
   async function handleSubmitRecord() {
+    if (isLocked) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -545,6 +560,40 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
+    }
+  }
+
+  async function handleApplyLeave() {
+    const reason = leaveReason.trim();
+    if (!reason) {
+      alert("请填写请假原因");
+      return;
+    }
+    setLeaveLoading(true);
+    try {
+      const created = await hallDailyApi.applyLeave(record.id, reason);
+      setLeaveRequests((prev) => [created, ...prev]);
+      setLeaveReason("");
+      onRefresh();
+    } catch (error) {
+      alert(getErrorMessage(error, "申请请假失败，请稍后重试"));
+    } finally {
+      setLeaveLoading(false);
+    }
+  }
+
+  async function handleCancelLeave() {
+    if (!activeLeave || activeLeave.status !== "pending") return;
+    if (!window.confirm("确定撤回这条请假申请吗？")) return;
+    setLeaveLoading(true);
+    try {
+      const updated = await hallDailyApi.cancelLeave(activeLeave.id);
+      setLeaveRequests((prev) => prev.map((leave) => leave.id === updated.id ? updated : leave));
+      onRefresh();
+    } catch (error) {
+      alert(getErrorMessage(error, "撤回请假失败，请稍后重试"));
+    } finally {
+      setLeaveLoading(false);
     }
   }
 
@@ -596,9 +645,43 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
             </div>
           )}
 
-          {isOverdue && !isSubmitted && (
+          {activeLeave && activeLeave.status !== "cancelled" && (
+            <div className={`rounded-2xl border px-4 py-3 text-sm ${activeLeave.status === "approved" ? "border-violet-100 bg-violet-50 text-violet-700" : activeLeave.status === "pending" ? "border-amber-100 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{activeLeave.status === "approved" ? "已批准请假" : activeLeave.status === "pending" ? "请假审核中" : "请假未通过"}</p>
+                  <p className="mt-1 text-xs opacity-80">原因：{activeLeave.reason}</p>
+                  {activeLeave.reviewComment && <p className="mt-1 text-xs opacity-80">审批意见：{activeLeave.reviewComment}</p>}
+                </div>
+                {activeLeave.status === "pending" && (
+                  <button type="button" onClick={() => void handleCancelLeave()} disabled={leaveLoading} className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50">
+                    {leaveLoading ? "处理中..." : "撤回请假"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isOverdue && !isSubmitted && !isLeaveApproved && (
             <div className="rounded-2xl border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-600">
               当前任务已逾期，可在今日 16:00 前补录提交；到点后将不可再补录。
+            </div>
+          )}
+
+          {!isSubmitted && !isLeaveApproved && !isLeavePending && (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm font-semibold text-slate-700">无法完成？可申请请假</p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={leaveReason}
+                  onChange={(event) => setLeaveReason(event.target.value)}
+                  placeholder="请填写请假原因"
+                  className="min-h-10 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-teal-400"
+                />
+                <button type="button" onClick={() => void handleApplyLeave()} disabled={leaveLoading || !leaveReason.trim()} className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-40">
+                  {leaveLoading ? "提交中..." : "申请请假"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -607,7 +690,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
           ) : (
             <>
               {/* 未完成项 */}
-              {pendingItems.length > 0 && (
+              {pendingItems.length > 0 && !isLocked && (
                 <div className="space-y-3">
                   {pendingItems.map((item) => (
                     <HallItemRow
@@ -655,7 +738,7 @@ export function HallDailyRecordCard({ record, expanded, onToggle, onRefresh }: H
           )}
 
           {/* 必填项提示 */}
-          {!isSubmitted && incompleteRequired.length > 0 && (
+          {!isLocked && incompleteRequired.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               还有 {incompleteRequired.length} 项必填子任务未完成。
             </div>

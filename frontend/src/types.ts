@@ -472,7 +472,7 @@ export interface HallDailyDashboardResponse {
   viewer: { roleCode: string; orgId: string };
   quickRanges: { today: string; yesterday: string; canSupplementYesterday: boolean };
   summary: {
-    status: "pending" | "in_progress" | "submitted" | "overdue" | null;
+    status: HallDailyDisplayStatus | null;
     totalItems: number;
     doneItems: number;
     submittedAt: string | null;
@@ -481,10 +481,11 @@ export interface HallDailyDashboardResponse {
   record: {
     id: string;
     assignmentId: string;
-    status: "pending" | "in_progress" | "submitted" | "overdue";
+    status: HallDailyDisplayStatus;
     totalItems: number;
     doneItems: number;
     submittedAt: string | null;
+    leaveRequest?: HallDailyLeaveRequestSummary | null;
     templateTitle: string | null;
     items: Array<{
       taskItemId: string;
@@ -504,6 +505,18 @@ export interface HallDailyDashboardResponse {
 
 // ── 厅管日常任务看板：管理员视角 ─────────────────────────────────────────────
 
+export interface HallDailyLeaveRequestSummary {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  applicantName?: string | null;
+  reason: string;
+  reviewComment?: string | null;
+  createdAt: string;
+  reviewedAt?: string | null;
+}
+
+export type HallDailyDisplayStatus = "pending" | "in_progress" | "submitted" | "overdue" | "leave_pending" | "leave_approved";
+
 export interface HallDailyAdminTeamSummary {
   teamOrgId: string;
   teamOrgName: string;
@@ -514,6 +527,8 @@ export interface HallDailyAdminTeamSummary {
   /** 参与任务的厅数（有 Assignment target） */
   assignedHalls: number;
   submittedCount: number;
+  leaveApprovedCount?: number;
+  leavePendingCount?: number;
   inProgressCount: number;
   pendingCount: number;
   overdueCount: number;
@@ -531,6 +546,8 @@ export interface HallDailyAdminBaseSummary {
   totalHalls: number;
   assignedHalls: number;
   submittedHalls: number;
+  leaveApprovedHalls?: number;
+  leavePendingHalls?: number;
   completionRate: number;
 }
 
@@ -548,7 +565,7 @@ export interface HallDailyAdminHallRow {
   hallOrgName: string;
   /** 是否有任务分配（false 表示未参与任务，仅展示用） */
   hasTask: boolean;
-  status: "pending" | "in_progress" | "submitted" | "overdue" | null;
+  status: HallDailyDisplayStatus | null;
   totalItems: number;
   doneItems: number;
   completionRate: number;
@@ -561,19 +578,21 @@ export interface HallDailyAdminHallDetailResponse {
   phase: "in_progress" | "supplement" | "closed";
   hall: { id: string; name: string };
   summary: {
-    status: "pending" | "in_progress" | "submitted" | "overdue" | null;
+    status: HallDailyDisplayStatus | null;
     totalItems: number;
     doneItems: number;
     submittedAt: string | null;
+    leaveRequest?: HallDailyLeaveRequestSummary | null;
     completionRate: number;
   };
   record: {
     id: string;
     assignmentId: string;
-    status: "pending" | "in_progress" | "submitted" | "overdue";
+    status: HallDailyDisplayStatus;
     totalItems: number;
     doneItems: number;
     submittedAt: string | null;
+    leaveRequest?: HallDailyLeaveRequestSummary | null;
     templateTitle: string | null;
     items: Array<{
       taskItemId: string;
