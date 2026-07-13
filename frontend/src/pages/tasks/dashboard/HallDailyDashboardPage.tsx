@@ -233,6 +233,7 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
   const [error, setError] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
 
   async function loadDetail() {
     setLoading(true);
@@ -251,6 +252,7 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
     setReviewLoading(true);
     try {
       await hallDailyApi.approveLeave(leaveRequestId, "同意请假");
+      setLeaveModalOpen(false);
       await loadDetail();
     } catch (error) {
       alert(error instanceof Error ? error.message : "同意请假失败");
@@ -269,6 +271,7 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
     try {
       await hallDailyApi.rejectLeave(leaveRequestId, comment);
       setRejectComment("");
+      setLeaveModalOpen(false);
       await loadDetail();
     } catch (error) {
       alert(error instanceof Error ? error.message : "拒绝请假失败");
@@ -297,27 +300,18 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
         <p className="mb-2 text-xs font-medium text-slate-400">模板：{data.record.templateTitle}</p>
       )}
       {data.record.leaveRequest && data.record.leaveRequest.status !== "cancelled" && (
-        <div className={`mb-3 rounded-xl border px-3 py-2.5 text-sm ${data.record.leaveRequest.status === "approved" ? "border-violet-100 bg-violet-50 text-violet-700" : data.record.leaveRequest.status === "pending" ? "border-amber-100 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500"}`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{data.record.leaveRequest.status === "approved" ? "已请假" : data.record.leaveRequest.status === "pending" ? "请假待审批" : "请假未通过"}</p>
-              <p className="mt-1 text-xs">申请人：{data.record.leaveRequest.applicantName || "-"}</p>
-              <p className="mt-1 text-xs">申请时间：{data.record.leaveRequest.createdAt.slice(0, 16).replace("T", " ")}</p>
-              <p className="mt-1 text-xs">请假原因：{data.record.leaveRequest.reason}</p>
-              {data.record.leaveRequest.reviewComment && <p className="mt-1 text-xs">审批意见：{data.record.leaveRequest.reviewComment}</p>}
-            </div>
-            {data.record.leaveRequest.status === "pending" && (
-              <div className="w-full space-y-2 sm:w-56">
-                <button type="button" disabled={reviewLoading} onClick={() => void handleApproveLeave(data.record!.leaveRequest!.id)} className="w-full rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-700 disabled:opacity-50">
-                  {reviewLoading ? "处理中..." : "同意请假"}
-                </button>
-                <input value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="拒绝原因" className="h-9 w-full rounded-lg border border-amber-200 bg-white px-2 text-xs outline-none focus:border-amber-400" />
-                <button type="button" disabled={reviewLoading || !rejectComment.trim()} onClick={() => void handleRejectLeave(data.record!.leaveRequest!.id)} className="w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50">
-                  拒绝请假
-                </button>
-              </div>
-            )}
+        <div className={`mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm ${data.record.leaveRequest.status === "approved" ? "border-violet-100 bg-violet-50 text-violet-700" : data.record.leaveRequest.status === "pending" ? "border-amber-100 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500"}`}>
+          <div>
+            <p className="font-semibold">{data.record.leaveRequest.status === "approved" ? "已请假" : data.record.leaveRequest.status === "pending" ? "请假待审批" : "请假未通过"}</p>
+            <p className="mt-1 text-xs opacity-80">点击查看申请人详情和审批信息</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setLeaveModalOpen(true)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${data.record.leaveRequest.status === "pending" ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+          >
+            请假审批
+          </button>
         </div>
       )}
       {data.record.items.length === 0 ? (
@@ -380,6 +374,50 @@ function HallDetailPanel({ hallOrgId, taskDate }: { hallOrgId: string; taskDate:
         <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
           <CheckCircle2 size={13} />
           已于 {data.record.submittedAt.slice(0, 16).replace("T", " ")} 提交完成
+        </div>
+      )}
+
+      {leaveModalOpen && data.record.leaveRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" onClick={() => setLeaveModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-amber-600">厅管日常任务</p>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">请假审批</h3>
+              </div>
+              <button type="button" onClick={() => setLeaveModalOpen(false)} className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-200">关闭</button>
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="flex justify-between gap-3"><span className="text-slate-400">申请状态</span><span className="font-semibold text-slate-800">{data.record.leaveRequest.status === "approved" ? "已请假" : data.record.leaveRequest.status === "pending" ? "待审批" : "请假未通过"}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-slate-400">申请人</span><span className="font-semibold text-slate-800">{data.record.leaveRequest.applicantName || "-"}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-slate-400">申请时间</span><span className="font-medium text-slate-700">{data.record.leaveRequest.createdAt.slice(0, 16).replace("T", " ")}</span></div>
+              <div>
+                <p className="mb-1 text-slate-400">请假原因</p>
+                <p className="rounded-xl bg-white px-3 py-2 font-medium text-slate-800 ring-1 ring-slate-100">{data.record.leaveRequest.reason}</p>
+              </div>
+              {data.record.leaveRequest.reviewComment && (
+                <div>
+                  <p className="mb-1 text-slate-400">审批意见</p>
+                  <p className="rounded-xl bg-white px-3 py-2 font-medium text-slate-800 ring-1 ring-slate-100">{data.record.leaveRequest.reviewComment}</p>
+                </div>
+              )}
+            </div>
+
+            {data.record.leaveRequest.status === "pending" && (
+              <div className="mt-4 space-y-3">
+                <button type="button" disabled={reviewLoading} onClick={() => void handleApproveLeave(data.record!.leaveRequest!.id)} className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50">
+                  {reviewLoading ? "处理中..." : "同意请假"}
+                </button>
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
+                  <input value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="拒绝请假需填写原因" className="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-sm outline-none focus:border-red-400" />
+                  <button type="button" disabled={reviewLoading || !rejectComment.trim()} onClick={() => void handleRejectLeave(data.record!.leaveRequest!.id)} className="mt-2 w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50">
+                    拒绝请假
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
