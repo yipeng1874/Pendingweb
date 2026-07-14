@@ -830,39 +830,37 @@ export function CockpitPage() {
                     const grandUsed = rooms.reduce((s, r) => s + (r.used || 0), 0);
                     const grandSpare = Math.max(0, grandTotal - grandUsed);
                     return (
-                      <div key={sd.siteId || si} className="shrink-0 snap-start rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-5 py-4 shadow-sm" style={{ width: "calc(50% - 6px)" }}>
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                            <span className="text-[13px] font-semibold truncate">{siteName}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 shrink-0 tabular-nums">
-                            <span>总 <strong className="text-white text-[12px] ml-0.5">{grandTotal}</strong></span>
-                            <span className="text-sky-300">已用 <strong className="text-sky-300 text-[12px] ml-0.5">{grandUsed}</strong></span>
-                            <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[12px] ml-0.5">{grandSpare}</strong></span>
-                          </div>
+                      <div key={sd.siteId || si} className="shrink-0 snap-start rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-5 py-4 shadow-sm flex flex-col" style={{ width: "calc(50% - 6px)" }}>
+                        {/* 标题：场地名 */}
+                        <div className="flex items-center gap-1.5 mb-3">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                          <span className="text-[13px] font-semibold truncate">{siteName}</span>
                         </div>
                         {/* 房间类型行 */}
-                        <div className="space-y-2">
+                        <div className="space-y-1.5 flex-1">
                           {rooms.map((r, ri) => {
                             const pct = r.total > 0 ? Math.round((r.used / r.total) * 100) : 0;
                             const colorIdx = ri % typeColors.length;
                             return (
-                              <div key={ri}>
-                                <div className="flex justify-between text-[12px] mb-0.5">
-                                  <span className="text-slate-300">{r.typeName}</span>
-                                  <span className="tabular-nums">
-                                    <span className="text-white font-semibold">{r.used}</span>
-                                    <span className="text-slate-500">/{r.total}</span>
-                                    <span className="ml-1.5 text-[11px] text-slate-400">{pct}%</span>
-                                  </span>
-                                </div>
-                                <div className="h-1.5 rounded-full bg-slate-700/40 overflow-hidden">
+                              <div key={ri} className="flex items-center gap-2 text-[12px]">
+                                <span className="text-slate-300 shrink-0 w-12">{r.typeName}</span>
+                                <div className="h-1.5 flex-1 rounded-full bg-slate-700/40 overflow-hidden">
                                   <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${pct}%` }} />
                                 </div>
+                                <span className="tabular-nums shrink-0">
+                                  <span className="text-white font-semibold">{r.used}</span>
+                                  <span className="text-slate-500">/{r.total}</span>
+                                  <span className="ml-1.5 text-[11px] text-slate-400">{pct}%</span>
+                                </span>
                               </div>
                             );
                           })}
+                        </div>
+                        {/* 底部汇总：总/已用/空余 */}
+                        <div className="mt-3 pt-2 border-t border-white/10 flex items-center gap-3 text-[11px] text-slate-400 tabular-nums">
+                          <span>总 <strong className="text-white text-[12px] ml-0.5">{grandTotal}</strong></span>
+                          <span className="text-sky-300">已用 <strong className="text-sky-300 text-[12px] ml-0.5">{grandUsed}</strong></span>
+                          <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[12px] ml-0.5">{grandSpare}</strong></span>
                         </div>
                       </div>
                     );
