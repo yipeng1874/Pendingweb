@@ -115,7 +115,7 @@ liveRoomCapacityRoutes.post(
       },
     });
 
-    return ok(res, site, "场地创建成功", 201);
+    return res.status(201).json({ success: true, data: site });
   }
 );
 
@@ -177,7 +177,7 @@ liveRoomCapacityRoutes.delete(
     }
 
     await prisma.liveRoomSite.delete({ where: { id } });
-    return ok(res, { id }, "场地已删除");
+    return ok(res, { id });
   }
 );
 
