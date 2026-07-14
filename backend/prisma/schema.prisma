@@ -212,14 +212,27 @@ model AnchorLossDailySummary {
   @@map("anchor_loss_daily_summaries")
 }
 
-// 基地直播间空余（覆盖式：每个基地一条最新记录）
+// 基地直播间空余 — 场地表（每个基地可有多场地，场地名可自定义）
+model LiveRoomSite {
+  id           String   @id @default(uuid())
+  baseOrgId    String   @map("base_org_id")
+  baseOrgName  String   @map("base_org_name")
+  name         String                                                // 场地名称（如"场地一"），可自定义
+  sort         Int      @default(0)                                  // 排序
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([baseOrgId, name])                                        // 同基地下场地名不重复
+  @@index([baseOrgId])
+  @@map("live_room_sites")
+}
+
+// 基地直播间空余（覆盖式：每个基地一条最新记录，siteDetails JSON 存多场地+房间类型）
 model LiveRoomCapacity {
   id           String   @id @default(uuid())
   baseOrgId    String   @unique @map("base_org_id")
   baseOrgName  String   @map("base_org_name")
-  totalCount   Int      @map("total_count")
-  liveRoomUsed Int      @map("live_room_used")
-  officeUsed   Int      @map("office_used")
+  siteDetails  Json     @map("site_details")                         // [{ siteId, siteName, rooms: [{ typeName, used, total }] }]
   updatedBy    String   @map("updated_by")
   updaterName  String   @map("updater_name")
   createdAt    DateTime @default(now()) @map("created_at")

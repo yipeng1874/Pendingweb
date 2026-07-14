@@ -842,23 +842,41 @@ export const dataOverviewApi = {
 
 // ---------- 基地直播间空余 ----------
 
+export type RoomTypeDetail = {
+  typeName: string;          // 自定义房间类型名
+  used: number;              // 已使用
+  total: number;             // 总数
+};
+
+export type SiteDetail = {
+  siteId: string;            // 对应 live_room_sites.id
+  siteName: string;          // 冗余场地名
+  rooms: RoomTypeDetail[];
+};
+
 export type LiveRoomCapacity = {
   id: string;
   baseOrgId: string;
   baseOrgName: string;
-  totalCount: number;
-  liveRoomUsed: number;
-  officeUsed: number;
+  siteDetails: SiteDetail[];  // 核心字段：多场地 + 自定义类型
   updatedBy: string;
   updaterName: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export type LiveRoomUpsertInput = {
-  totalCount: number;
-  liveRoomUsed: number;
-  officeUsed: number;
+export type LiveRoomSite = {
+  id: string;
+  baseOrgId: string;
+  baseOrgName: string;
+  name: string;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LiveRoomCapacityUpsertInput = {
+  siteDetails: SiteDetail[];
 };
 
 export const liveRoomCapacityApi = {
@@ -868,12 +886,32 @@ export const liveRoomCapacityApi = {
     const q = params.toString();
     return api.get<LiveRoomCapacity | null>(`/live-room-capacity/latest${q ? `?${q}` : ""}`);
   },
-  upsert: (data: LiveRoomUpsertInput, scopeOrgId?: string) => {
+  upsert: (data: LiveRoomCapacityUpsertInput, scopeOrgId?: string) => {
     const params = new URLSearchParams();
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     const q = params.toString();
     return api.post<LiveRoomCapacity>(`/live-room-capacity/upsert${q ? `?${q}` : ""}`, data);
   },
+};
+
+// ── 场地管理 API ──
+export const liveRoomSiteApi = {
+  list: (scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.get<LiveRoomSite[]>(`/live-room-sites${q ? `?${q}` : ""}`);
+  },
+  create: (data: { name: string; sort?: number }, scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.post<LiveRoomSite>(`/live-room-sites${q ? `?${q}` : ""}`, data);
+  },
+  update: (id: string, data: { name?: string; sort?: number }) =>
+    api.put<LiveRoomSite>(`/live-room-sites/${id}`, data),
+  delete: (id: string) =>
+    api.delete<{ id: string }>(`/live-room-sites/${id}`),
 };
 
 // ---------- 人均音浪 ----------

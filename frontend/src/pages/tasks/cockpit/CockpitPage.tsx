@@ -9,8 +9,8 @@ import { HallOperatorPopover } from "./HallOperatorPopover";
 import { LossTrendPopover } from "./LossTrendPopover";
 import { WaveTrendPopover } from "./WaveTrendPopover";
 import { api } from "../../../services/http";
-import { anchorLossSummaryApi, anchorAvgWaveApi, anchorSummaryApi, liveRoomCapacityApi, dataOverviewApi, hallSummaryApi, reportApi } from "../../../services/task";
-import type { AnchorLossTrendResponse, HallOperatorStat, HallTrendResponse, LiveRoomCapacity, AnchorAvgWaveTrendResponse } from "../../../services/task";
+import { anchorLossSummaryApi, anchorAvgWaveApi, anchorSummaryApi, liveRoomCapacityApi, liveRoomSiteApi, dataOverviewApi, hallSummaryApi, reportApi } from "../../../services/task";
+import type { AnchorLossTrendResponse, HallOperatorStat, HallTrendResponse, LiveRoomCapacity, LiveRoomSite, SiteDetail, AnchorAvgWaveTrendResponse } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
 import { useIdentityStore } from "../../../stores/identityStore";
 import type { User, OrgUnit, DailyDashboardResponse, DailyRangeStatsResponse } from "../../../types";
@@ -59,16 +59,26 @@ export function CockpitPage() {
   const [hallUploadError, setHallUploadError] = useState("");
   const hallFileInputRef = useRef<HTMLInputElement>(null);
 
-  // 数据录入弹窗（直播间空余 + 人均音浪）
+  // 数据录入弹窗（直播间空余：场地+房间类型 / 人均音浪）
   const [dataInputDate, setDataInputDate] = useState(getBeijingDateStr(-1));
-  const [dataInputTotal, setDataInputTotal] = useState("");
-  const [dataInputLiveRoom, setDataInputLiveRoom] = useState("");
-  const [dataInputOffice, setDataInputOffice] = useState("");
   const [dataInputAvgWave, setDataInputAvgWave] = useState("");
   const [dataInputOfflineAvgWave, setDataInputOfflineAvgWave] = useState("");
   const [dataInputTotalAvgWave, setDataInputTotalAvgWave] = useState("");
   const [dataInputLoading, setDataInputLoading] = useState(false);
   const [dataInputError, setDataInputError] = useState("");
+  // 场地+房间输入
+  const [liveRoomSites, setLiveRoomSites] = useState<LiveRoomSite[]>([]);
+  // 录入表单：key = siteId, value = { siteName, rooms: [{ typeName, used, total }] }
+  type RoomInputRow = { key: number; typeName: string; used: string; total: string; };
+  type SiteInputData = { siteName: string; rooms: RoomInputRow[]; };
+  const [siteInputs, setSiteInputs] = useState<Record<string, SiteInputData>>({});
+  // 场地管理
+  const [showNewSiteInput, setShowNewSiteInput] = useState(false);
+  const [newSiteName, setNewSiteName] = useState("");
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [editingSiteName, setEditingSiteName] = useState("");
+  const roomRowRef = useRef(0);
+  const nextRowKey = () => ++roomRowRef.current;
 
   // 统一上传弹窗
   const [dataUploadOpen, setDataUploadOpen] = useState(false);
@@ -240,42 +250,115 @@ export function CockpitPage() {
     loadAvgWaveTrend(selectedBaseOrgId);
   }, [selectedBaseOrgId]);
 
+  // ── 初始化录入表单（加载场地 + 已有容量） ──
+  const initSiteInputs = async () => {
+    try {
+      const sites = await liveRoomSiteApi.list(scopeOrgId);
+      setLiveRoomSites(sites);
+      const cap = await liveRoomCapacityApi.getLatest(scopeOrgId);
+      const map: Record<string, SiteInputData> = {};
+      let globalKey = 0;
+      sites.forEach((s) => {
+        const detail = cap?.siteDetails?.find((d: SiteDetail) => d.siteId === s.id);
+        map[s.id] = {
+          siteName: s.name,
+          rooms: detail?.rooms?.map((r) => {
+            globalKey++;
+            return {
+              key: globalKey,
+              typeName: r.typeName,
+              used: String(r.used ?? ""),
+              total: String(r.total ?? ""),
+            };
+          }) ?? [{ key: ++globalKey, typeName: "", used: "", total: "" }],
+        };
+      });
+      setSiteInputs(map);
+    } catch {
+      // 加载失败则置空
+      setSiteInputs({});
+    }
+  };
+
+  // 监听：打开弹窗后加载场地列表
+  useEffect(() => {
+    if (dataUploadOpen) {
+      initSiteInputs();
+      setShowNewSiteInput(false);
+      setNewSiteName("");
+      setEditingSiteId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataUploadOpen]);
+
   // ── 数据录入弹窗已合并到统一上传弹窗 ──
   const handleDataInputSubmit = async () => {
     setDataInputError("");
-    const total = parseInt(dataInputTotal, 10);
-    const live = parseInt(dataInputLiveRoom, 10);
-    const office = parseInt(dataInputOffice, 10);
     const avgWave = parseFloat(dataInputAvgWave);
     const offlineAvgWave = parseFloat(dataInputOfflineAvgWave);
     const totalAvgWave = parseFloat(dataInputTotalAvgWave);
 
-    // 校验
-    const hasRoom = dataInputTotal || dataInputLiveRoom || dataInputOffice;
-    const hasWave = dataInputAvgWave;
-    const hasOfflineWave = dataInputOfflineAvgWave;
-    const hasTotalWave = dataInputTotalAvgWave;
-    if (!hasRoom && !hasWave && !hasOfflineWave && !hasTotalWave) {
+    // 构建 siteDetails
+    const siteIds = Object.keys(siteInputs);
+    const hasRoomData = siteIds.some((sid) => {
+      const d = siteInputs[sid];
+      return d.rooms.some((r) => r.typeName.trim() && (r.used || r.total));
+    });
+    const hasWave = !!dataInputAvgWave;
+    const hasOfflineWave = !!dataInputOfflineAvgWave;
+    const hasTotalWave = !!dataInputTotalAvgWave;
+
+    if (!hasRoomData && !hasWave && !hasOfflineWave && !hasTotalWave) {
       setDataInputError("请至少填写一项数据");
       return;
     }
-    if (hasRoom) {
-      if (isNaN(total) || total < 0) { setDataInputError("总数量需为有效非负整数"); return; }
-      if (isNaN(live) || live < 0) { setDataInputError("直播间已使用需为有效非负整数"); return; }
-      if (isNaN(office) || office < 0) { setDataInputError("办公室已使用需为有效非负整数"); return; }
+
+    // 校验房间数据
+    if (hasRoomData) {
+      for (const sid of siteIds) {
+        const d = siteInputs[sid];
+        for (const r of d.rooms) {
+          if (!r.typeName.trim() && !r.used && !r.total) continue;
+          if (!r.typeName.trim()) { setDataInputError(`场地 "${d.siteName}" 存在空的房间类型名称`); return; }
+          const used = parseInt(r.used, 10);
+          const total = parseInt(r.total, 10);
+          if ((r.used && (isNaN(used) || used < 0))) { setDataInputError(`"${r.typeName}" 已使用需为有效非负整数`); return; }
+          if ((r.total && (isNaN(total) || total < 0))) { setDataInputError(`"${r.typeName}" 总数需为有效非负整数`); return; }
+        }
+      }
     }
     if ((hasWave || hasOfflineWave || hasTotalWave) && !dataInputDate) {
       setDataInputError("请选择人均音浪的归属日期"); return;
     }
-      if (hasWave && (isNaN(avgWave) || avgWave < 0)) { setDataInputError("线上人均音浪需为有效非负数"); return; }
-      if (hasOfflineWave && (isNaN(offlineAvgWave) || offlineAvgWave < 0)) { setDataInputError("线下人均音浪需为有效非负数"); return; }
-      if (hasTotalWave && (isNaN(totalAvgWave) || totalAvgWave < 0)) { setDataInputError("人均音浪需为有效非负数"); return; }
+    if (hasWave && (isNaN(avgWave) || avgWave < 0)) { setDataInputError("线上人均音浪需为有效非负数"); return; }
+    if (hasOfflineWave && (isNaN(offlineAvgWave) || offlineAvgWave < 0)) { setDataInputError("线下人均音浪需为有效非负数"); return; }
+    if (hasTotalWave && (isNaN(totalAvgWave) || totalAvgWave < 0)) { setDataInputError("人均音浪需为有效非负数"); return; }
 
     setDataInputLoading(true);
     try {
       const tasks: Promise<any>[] = [];
-      if (hasRoom) {
-        tasks.push(liveRoomCapacityApi.upsert({ totalCount: total, liveRoomUsed: live, officeUsed: office }, scopeOrgId));
+      if (hasRoomData) {
+        const siteDetails: SiteDetail[] = siteIds
+          .filter((sid) => {
+            const d = siteInputs[sid];
+            return d.rooms.some((r) => r.typeName.trim() && (r.used || r.total));
+          })
+          .map((sid) => {
+            const d = siteInputs[sid];
+            const site = liveRoomSites.find((s) => s.id === sid);
+            return {
+              siteId: sid,
+              siteName: site?.name ?? d.siteName,
+              rooms: d.rooms
+                .filter((r) => r.typeName.trim() && (r.used || r.total))
+                .map((r) => ({
+                  typeName: r.typeName.trim(),
+                  used: parseInt(r.used, 10) || 0,
+                  total: parseInt(r.total, 10) || 0,
+                })),
+            };
+          });
+        tasks.push(liveRoomCapacityApi.upsert({ siteDetails }, scopeOrgId));
       }
       if (hasWave) {
         tasks.push(anchorAvgWaveApi.upsert({ recordDate: dataInputDate, avgWaveValue: avgWave, waveType: "online" }, scopeOrgId));
@@ -287,10 +370,8 @@ export function CockpitPage() {
         tasks.push(anchorAvgWaveApi.upsert({ recordDate: dataInputDate, avgWaveValue: totalAvgWave, waveType: "total" }, scopeOrgId));
       }
       await Promise.all(tasks);
-      // 刷新数据
-      if (hasRoom) loadRoomCapacity();
+      if (hasRoomData) loadRoomCapacity();
       if (hasWave || hasOfflineWave || hasTotalWave) loadAvgWaveTrend();
-      // 刷新 KPI 数据
       loadHallTrend();
       loadLossTrend();
       setDataUploadOpen(false);
@@ -494,7 +575,6 @@ export function CockpitPage() {
                 setHallUploadFile(null);
                 setHallUploadError("");
                 setDataInputDate(yesterday);
-                setDataInputTotal(""); setDataInputLiveRoom(""); setDataInputOffice("");
                 setDataInputAvgWave(""); setDataInputOfflineAvgWave(""); setDataInputTotalAvgWave(""); setDataInputError("");
                 setDataUploadTab("excel");
                 setDataUploadOpen(true);
@@ -718,48 +798,79 @@ export function CockpitPage() {
           )}
         </div>
 
-          {/* 右侧：基地直播间空余 */}
-          {(() => {
-            const cap = roomCapacity;
-            const spare = cap ? cap.totalCount - cap.liveRoomUsed - cap.officeUsed : 0;
-            const livePct = cap && cap.totalCount > 0 ? (cap.liveRoomUsed / cap.totalCount * 100).toFixed(1) : "0";
-            const officePct = cap && cap.totalCount > 0 ? (cap.officeUsed / cap.totalCount * 100).toFixed(1) : "0";
-            const sparePct = cap && cap.totalCount > 0 ? Math.max(0, 100 - Number(livePct) - Number(officePct)).toFixed(1) : "100";
-            return (
-            <div className="lg:col-span-2 rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-6 py-8 shadow-sm flex flex-col justify-center h-full">
-              <div className="flex items-center gap-2 mb-5">
-                <Building2 size={18} className="text-sky-300" />
-                <span className="text-[15px] font-semibold">基地直播间空余</span>
-              </div>
-              {cap ? (
-                <>
-                  <div className="space-y-3 text-[14px]">
-                    <div className="flex justify-between"><span className="text-slate-300">总数量</span><span className="font-semibold text-[15px]">{cap.totalCount} 间</span></div>
-                    <div className="flex justify-between"><span className="text-slate-300">直播间已使用</span><span className="font-semibold text-[15px]">{cap.liveRoomUsed}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-300">办公室已使用</span><span className="font-semibold text-[15px]">{cap.officeUsed}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-300">空余房间</span><span className="font-semibold text-emerald-300 text-[15px]">{spare}</span></div>
-                  </div>
-                  <div className="mt-6 h-3 rounded-full overflow-hidden flex bg-slate-700/40">
-                    <div className="bg-emerald-500" style={{ width: `${livePct}%` }} />
-                    <div className="bg-blue-500" style={{ width: `${officePct}%` }} />
-                    <div className="bg-slate-400" style={{ width: `${sparePct}%` }} />
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-[12px] text-slate-300">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500" />直播间</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500" />办公室</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-400" />空余</span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-400 text-[13px] py-4">
-                  <Building2 size={28} className="text-slate-500/50" />
-                  <span>暂无数据</span>
-                  <span className="text-[11px]">点击右上角「录入数据」填写</span>
-                </div>
-              )}
+          {/* 右侧：基地直播间空余 — 按场地分组 */}
+          <div className="lg:col-span-2 flex flex-col gap-3 h-full min-h-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <Building2 size={16} className="text-feishu-blue shrink-0" />
+              <span className="text-[14px] font-semibold text-slate-700">基地直播间空余</span>
             </div>
-            );
-          })()}
+            {(() => {
+              const cap = roomCapacity;
+              const details = cap?.siteDetails ?? [];
+              if (!cap || details.length === 0) {
+                return (
+                  <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center gap-2 text-slate-400 text-[13px] py-10">
+                    <Building2 size={28} className="text-slate-300" />
+                    <span>暂无数据</span>
+                    <span className="text-[11px]">点击左上角星星按钮「双击」录入数据</span>
+                  </div>
+                );
+              }
+              // 颜色池
+              const typeColors = [
+                "bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500",
+                "bg-rose-500", "bg-cyan-500", "bg-orange-500", "bg-pink-500",
+              ];
+              return (
+                <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory -mx-1 px-1 scrollbar-thin flex-1 min-h-0 items-stretch">
+                  {details.map((sd, si) => {
+                    const siteName = sd.siteName || "未命名";
+                    const rooms = sd.rooms ?? [];
+                    const grandTotal = rooms.reduce((s, r) => s + (r.total || 0), 0);
+                    const grandUsed = rooms.reduce((s, r) => s + (r.used || 0), 0);
+                    const grandSpare = Math.max(0, grandTotal - grandUsed);
+                    return (
+                      <div key={sd.siteId || si} className="shrink-0 snap-start rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-5 py-4 shadow-sm" style={{ width: "calc(50% - 6px)" }}>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                            <span className="text-[13px] font-semibold truncate">{siteName}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 shrink-0 tabular-nums">
+                            <span>总 <strong className="text-white text-[12px] ml-0.5">{grandTotal}</strong></span>
+                            <span className="text-sky-300">已用 <strong className="text-sky-300 text-[12px] ml-0.5">{grandUsed}</strong></span>
+                            <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[12px] ml-0.5">{grandSpare}</strong></span>
+                          </div>
+                        </div>
+                        {/* 房间类型行 */}
+                        <div className="space-y-2">
+                          {rooms.map((r, ri) => {
+                            const pct = r.total > 0 ? Math.round((r.used / r.total) * 100) : 0;
+                            const colorIdx = ri % typeColors.length;
+                            return (
+                              <div key={ri}>
+                                <div className="flex justify-between text-[12px] mb-0.5">
+                                  <span className="text-slate-300">{r.typeName}</span>
+                                  <span className="tabular-nums">
+                                    <span className="text-white font-semibold">{r.used}</span>
+                                    <span className="text-slate-500">/{r.total}</span>
+                                    <span className="ml-1.5 text-[11px] text-slate-400">{pct}%</span>
+                                  </span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-slate-700/40 overflow-hidden">
+                                  <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </div>
         </>
       )}
@@ -1132,21 +1243,189 @@ export function CockpitPage() {
                 ) : (
                   /* ── 数值录入 ── */
                   <>
-                    <div className="px-6 py-5 space-y-5">
+                    <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
                       {/* 直播间空余 */}
                       <div>
-                        <div className="flex items-center gap-1.5 mb-2">
+                        <div className="flex items-center gap-1.5 mb-3">
                           <Building2 size={14} className="text-sky-600" />
                           <span className="text-[13px] font-semibold text-slate-700">基地直播间空余 <span className="text-[10px] font-normal text-slate-400">(覆盖式)</span></span>
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div><label className="text-[11px] text-slate-500 mb-0.5 block">总数量</label>
-                            <input type="number" min="0" value={dataInputTotal} onChange={(e) => setDataInputTotal(e.target.value)} placeholder="130" className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" /></div>
-                          <div><label className="text-[11px] text-slate-500 mb-0.5 block">直播间已使用</label>
-                            <input type="number" min="0" value={dataInputLiveRoom} onChange={(e) => setDataInputLiveRoom(e.target.value)} placeholder="90" className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" /></div>
-                          <div><label className="text-[11px] text-slate-500 mb-0.5 block">办公室已使用</label>
-                            <input type="number" min="0" value={dataInputOffice} onChange={(e) => setDataInputOffice(e.target.value)} placeholder="20" className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" /></div>
-                        </div>
+
+                        {liveRoomSites.length === 0 ? (
+                          <div className="text-center text-[12px] text-slate-400 py-4">
+                            暂无场地，请先添加场地
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {liveRoomSites.map((site) => {
+                              const input = siteInputs[site.id];
+                              if (!input) return null;
+                              const isEditing = editingSiteId === site.id;
+                              return (
+                                <div key={site.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                                  {/* 场地名行 */}
+                                  <div className="flex items-center gap-1.5">
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        value={editingSiteName}
+                                        onChange={(e) => setEditingSiteName(e.target.value)}
+                                        onBlur={async () => {
+                                          if (editingSiteName.trim() && editingSiteName.trim() !== site.name) {
+                                            try {
+                                              await liveRoomSiteApi.update(site.id, { name: editingSiteName.trim() });
+                                              setLiveRoomSites((prev) => prev.map((s) => s.id === site.id ? { ...s, name: editingSiteName.trim() } : s));
+                                              setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], siteName: editingSiteName.trim() } }));
+                                            } catch (e: any) {
+                                              setDataInputError(e?.response?.data?.message || "改名失败");
+                                            }
+                                          }
+                                          setEditingSiteId(null);
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                        className="flex-1 h-7 rounded border border-slate-300 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:border-sky-400"
+                                        autoFocus
+                                      />
+                                    ) : (
+                                      <>
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                                        <span className="flex-1 text-[12px] font-semibold text-slate-600 truncate">{site.name}</span>
+                                        <button
+                                          onClick={() => { setEditingSiteId(site.id); setEditingSiteName(site.name); }}
+                                          title="重命名"
+                                          className="text-slate-400 hover:text-sky-500 p-0.5"
+                                        >✏</button>
+                                        <button
+                                          onClick={async () => {
+                                            if (!confirm(`确定删除场地「${site.name}」？`)) return;
+                                            try {
+                                              await liveRoomSiteApi.delete(site.id);
+                                              setLiveRoomSites((prev) => prev.filter((s) => s.id !== site.id));
+                                              setSiteInputs((prev) => { const n = { ...prev }; delete n[site.id]; return n; });
+                                            } catch (e: any) { setDataInputError(e?.response?.data?.message || "删除失败"); }
+                                          }}
+                                          title="删除"
+                                          className="text-slate-400 hover:text-red-500 p-0.5"
+                                        >🗑</button>
+                                      </>
+                                    )}
+                                  </div>
+                                  {/* 房间类型表头 */}
+                                  <div className="grid grid-cols-[1fr_80px_80px_28px] gap-1.5 items-center text-[10px] text-slate-400">
+                                    <span>类型名称</span>
+                                    <span className="text-center">已使用</span>
+                                    <span className="text-center">总数</span>
+                                    <span />
+                                  </div>
+                                  {/* 房间类型行 */}
+                                  {input.rooms.map((row, ri) => (
+                                    <div key={row.key} className="grid grid-cols-[1fr_80px_80px_28px] gap-1.5 items-center">
+                                      <input
+                                        type="text"
+                                        value={row.typeName}
+                                        onChange={(e) => {
+                                          const newRows = [...input.rooms];
+                                          newRows[ri] = { ...newRows[ri], typeName: e.target.value };
+                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                        }}
+                                        placeholder="如：直播间"
+                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:border-sky-400"
+                                      />
+                                      <input
+                                        type="number" min="0"
+                                        value={row.used}
+                                        onChange={(e) => {
+                                          const newRows = [...input.rooms];
+                                          newRows[ri] = { ...newRows[ri], used: e.target.value };
+                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                        }}
+                                        placeholder="0"
+                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 text-center focus:outline-none focus:border-sky-400"
+                                      />
+                                      <input
+                                        type="number" min="0"
+                                        value={row.total}
+                                        onChange={(e) => {
+                                          const newRows = [...input.rooms];
+                                          newRows[ri] = { ...newRows[ri], total: e.target.value };
+                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                        }}
+                                        placeholder="0"
+                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 text-center focus:outline-none focus:border-sky-400"
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const newRows = input.rooms.filter((_, i) => i !== ri);
+                                          if (newRows.length === 0) newRows.push({ key: nextRowKey(), typeName: "", used: "", total: "" });
+                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                        }}
+                                        className="text-[11px] text-slate-400 hover:text-red-500"
+                                      >✕</button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    onClick={() => {
+                                      const newRows = [...input.rooms, { key: nextRowKey(), typeName: "", used: "", total: "" }];
+                                      setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                    }}
+                                    className="text-[11px] text-sky-600 hover:text-sky-700 font-medium"
+                                  >
+                                    + 添加类型
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* 新增场地 */}
+                        {showNewSiteInput ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={newSiteName}
+                              onChange={(e) => setNewSiteName(e.target.value)}
+                              placeholder="输入场地名称"
+                              className="flex-1 h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:border-sky-400"
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter") {
+                                  if (!newSiteName.trim()) return;
+                                  try {
+                                    const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
+                                    setLiveRoomSites((prev) => [...prev, site]);
+                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "" }] } }));
+                                    setShowNewSiteInput(false);
+                                    setNewSiteName("");
+                                  } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              onClick={async () => {
+                                if (!newSiteName.trim()) return;
+                                try {
+                                  const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
+                                  setLiveRoomSites((prev) => [...prev, site]);
+                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "" }] } }));
+                                  setShowNewSiteInput(false);
+                                  setNewSiteName("");
+                                } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }
+                              }}
+                              className="h-8 px-3 rounded-lg bg-sky-500 text-[12px] text-white hover:bg-sky-600"
+                            >
+                              确定
+                            </button>
+                            <button onClick={() => { setShowNewSiteInput(false); setNewSiteName(""); }} className="h-8 px-2 rounded-lg text-[12px] text-slate-400 hover:text-slate-600">取消</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowNewSiteInput(true)}
+                            className="mt-2 flex items-center gap-1 text-[12px] text-sky-600 hover:text-sky-700 font-medium"
+                          >
+                            + 新增场地
+                          </button>
+                        )}
                       </div>
 
                       <div className="border-t border-slate-100" />
