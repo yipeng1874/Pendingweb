@@ -453,6 +453,23 @@ export function CockpitPage() {
   // 悬停的环形图（用于展开团队明细）
   const [hoveredRangeKey, setHoveredRangeKey] = useState<RangeKey | null>(null);
 
+  // ── 厅管历史完成率：state ────────────────────────────────────────────
+  type HallRangeKey = "yesterday" | "last3" | "last7" | "thisMonth";
+  const [hallRangeStats, setHallRangeStats] = useState<Record<HallRangeKey, DailyRangeStatsResponse | null>>({
+    yesterday: null,
+    last3: null,
+    last7: null,
+    thisMonth: null,
+  });
+  const [hallRangeLoading, setHallRangeLoading] = useState(false);
+  const [hallRangeError, setHallRangeError] = useState<string | null>(null);
+  const [hallCustomDateOpen, setHallCustomDateOpen] = useState(false);
+  const [hallCustomStart, setHallCustomStart] = useState("");
+  const [hallCustomEnd, setHallCustomEnd] = useState("");
+  const [hallCustomLabel, setHallCustomLabel] = useState<string | null>(null);
+  const [hallCustomLoading, setHallCustomLoading] = useState(false);
+  const [hallHoveredRangeKey, setHallHoveredRangeKey] = useState<HallRangeKey | null>(null);
+
   function getBeijingDateStr(offsetDays = 0): string {
     const now = new Date();
     // UTC+8
@@ -496,20 +513,56 @@ export function CockpitPage() {
       .finally(() => setRangeLoading(false));
   };
 
+  const loadHallRangeStats = (overrideScopeOrgId?: string) => {
+    if (!showDashboard) return;
+    const sid = overrideScopeOrgId ?? scopeOrgId;
+    if (needsBaseSelect && !sid) return;
+
+    const today = getBeijingDateStr(0);
+    const yesterday = getBeijingDateStr(-1);
+    const monthStart = `${today.slice(0, 8)}01`;
+
+    const ranges: Record<HallRangeKey, { start: string; end: string }> = {
+      yesterday: { start: yesterday, end: yesterday },
+      last3: { start: getBeijingDateStr(-3), end: yesterday },
+      last7: { start: getBeijingDateStr(-7), end: yesterday },
+      thisMonth: { start: monthStart, end: yesterday },
+    };
+
+    setHallRangeLoading(true);
+    setHallRangeError(null);
+
+    const keys = Object.keys(ranges) as HallRangeKey[];
+    Promise.all(
+      keys.map((key) =>
+        reportApi.getHallDailyRangeStats(ranges[key].start, ranges[key].end, sid).catch(() => null)
+      )
+    )
+      .then((results) => {
+        const next = { ...hallRangeStats };
+        keys.forEach((key, i) => { next[key] = results[i] ?? null; });
+        setHallRangeStats(next);
+      })
+      .catch((e) => setHallRangeError(e?.message ?? "厅管历史完成率加载失败"))
+      .finally(() => setHallRangeLoading(false));
+  };
+
   // 与今日看板联动：scopeOrgId / selectedBaseOrgId 变化时一起刷新
   useEffect(() => {
     if (needsBaseSelect) return;
     loadRangeStats();
+    loadHallRangeStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDashboard, currentIdentity?.id]);
 
   useEffect(() => {
     if (!needsBaseSelect || !selectedBaseOrgId) return;
     loadRangeStats(selectedBaseOrgId);
+    loadHallRangeStats(selectedBaseOrgId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBaseOrgId]);
 
-  // ── 自定义日期查询 / 重置 ──
+  // ── 自定义日期查询 / 重置（主播）──
   const handleCustomQuery = () => {
     if (!customStart || !customEnd) return;
     if (customStart > customEnd) return;
@@ -534,6 +587,34 @@ export function CockpitPage() {
     const sid = scopeOrgId ?? undefined;
     reportApi.getDailyRangeStats(monthStart, yesterday, sid)
       .then((res) => setRangeStats((prev) => ({ ...prev, thisMonth: res })))
+      .catch(() => {});
+  };
+
+  // ── 厅管自定义日期查询 / 重置 ──
+  const handleHallCustomQuery = () => {
+    if (!hallCustomStart || !hallCustomEnd) return;
+    if (hallCustomStart > hallCustomEnd) return;
+    const sid = scopeOrgId ?? undefined;
+    setHallCustomLoading(true);
+    reportApi.getHallDailyRangeStats(hallCustomStart, hallCustomEnd, sid)
+      .then((res) => {
+        setHallRangeStats((prev) => ({ ...prev, thisMonth: res }));
+        setHallCustomLabel("自定义日期");
+        setHallCustomDateOpen(false);
+      })
+      .catch(() => {})
+      .finally(() => setHallCustomLoading(false));
+  };
+
+  const handleHallResetToMonth = () => {
+    setHallCustomLabel(null);
+    setHallCustomDateOpen(false);
+    const today = getBeijingDateStr(0);
+    const yesterday = getBeijingDateStr(-1);
+    const monthStart = `${today.slice(0, 8)}01`;
+    const sid = scopeOrgId ?? undefined;
+    reportApi.getHallDailyRangeStats(monthStart, yesterday, sid)
+      .then((res) => setHallRangeStats((prev) => ({ ...prev, thisMonth: res })))
       .catch(() => {});
   };
 
@@ -633,24 +714,31 @@ export function CockpitPage() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 rounded-2xl border border-slate-100 bg-white shadow-sm">
           {/* 标题行 */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 h-14 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 h-12 border-b border-slate-100">
             <div className="flex items-center gap-2 min-w-0">
               <TrendingUp size={16} className="text-feishu-blue shrink-0" />
               <span className="text-[14px] font-semibold text-slate-700 truncate">
                 {rangeStats.yesterday?.baseOrg.name
-                  ? `${rangeStats.yesterday.baseOrg.name} · 主播日常任务完成率（历史）`
-                  : "基地看板 · 主播日常任务完成率（历史）"}
+                  ? `${rangeStats.yesterday.baseOrg.name} · 日常任务完成率（历史）`
+                  : "基地看板 · 日常任务完成率（历史）"}
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {rangeError && (
                 <span className="text-[11px] text-red-500">{rangeError}</span>
               )}
+              {hallRangeError && (
+                <span className="text-[11px] text-red-500">{hallRangeError}</span>
+              )}
               {/* 图例（已合并到标题行，节省高度） */}
               <span className="hidden lg:flex items-center gap-2 text-[11px] text-slate-400">
                 <span className="flex items-center gap-1">
                   <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-                  已完成
+                  主播
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" />
+                  厅管
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-200" />
@@ -665,11 +753,11 @@ export function CockpitPage() {
                 进入看板 →
               </button>
               <button
-                onClick={() => loadRangeStats()}
-                disabled={rangeLoading}
+                onClick={() => { loadRangeStats(); loadHallRangeStats(); }}
+                disabled={rangeLoading || hallRangeLoading}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
               >
-                <RefreshCw size={12} className={rangeLoading ? "animate-spin" : ""} />
+                <RefreshCw size={12} className={(rangeLoading || hallRangeLoading) ? "animate-spin" : ""} />
                 刷新
               </button>
             </div>
@@ -681,7 +769,7 @@ export function CockpitPage() {
               <div className="grid grid-cols-4 gap-3">
                 {[...Array(4)].map((_, i) => (
                   <div key={i} className="flex flex-col items-center gap-3">
-                    <div className="w-[120px] h-[120px] rounded-full animate-pulse bg-slate-100" />
+                    <div className="w-[100px] h-[100px] rounded-full animate-pulse bg-slate-100" />
                     <div className="h-3 w-16 animate-pulse rounded bg-slate-100" />
                     <div className="h-2 w-20 animate-pulse rounded bg-slate-100" />
                   </div>
@@ -689,8 +777,8 @@ export function CockpitPage() {
               </div>
             </div>
           ) : (
-            <div className="px-5 pt-5 pb-3">
-              <div className="grid grid-cols-4 gap-2">
+            <div className="px-5 pt-2 pb-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {RANGE_KEYS.map((key) => {
                   const data = rangeStats[key];
                   const label = RANGE_LABELS[key];
@@ -700,33 +788,37 @@ export function CockpitPage() {
                   return (
                     <div
                       key={key}
-                      className={`relative flex flex-col items-center rounded-xl py-3 px-1 transition-colors cursor-default ${
+                      className={`relative flex flex-col items-center rounded-xl py-1.5 px-1 transition-colors cursor-default ${
                         isHovered ? "bg-slate-100" : "bg-slate-50/50 hover:bg-slate-100/50"
                       }`}
                       onMouseEnter={() => setHoveredRangeKey(key)}
                       onMouseLeave={() => setHoveredRangeKey((prev) => (prev === key ? null : prev))}
                     >
-                      <SummaryDonut data={data} label={label}>
-                        {isThisMonth && (
-                          <button
-                            title={customLabel ? "重置为本月" : "自定义日期"}
-                            onClick={() => {
-                              if (customLabel) {
-                                handleResetToMonth();
-                              } else {
-                                setCustomDateOpen((v) => !v);
-                              }
-                            }}
-                            className={`mt-1 rounded-full px-2.5 py-0.5 text-[11px] leading-none transition-colors border ${
-                              customLabel
-                                ? "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200"
-                                : "bg-blue-50 text-blue-500 border-blue-300 hover:bg-blue-100"
-                            }`}
-                          >
-                            {customLabel ? "重置" : "自定义日期"}
-                          </button>
-                        )}
-                      </SummaryDonut>
+                      {/* 本月单元格右上角：自定义日期按钮 */}
+                      {isThisMonth && (
+                        <button
+                          title={customLabel ? `重置为本月（当前：${customLabel}）` : "自定义日期范围"}
+                          onClick={() => {
+                            if (customLabel) {
+                              handleResetToMonth();
+                            } else {
+                              setCustomDateOpen((v) => !v);
+                              setHallCustomDateOpen(false);
+                            }
+                          }}
+                          className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+                            customLabel
+                              ? "bg-amber-50 text-amber-600 border-amber-300 hover:bg-amber-100"
+                              : customDateOpen
+                              ? "bg-blue-100 text-blue-600 border-blue-400"
+                              : "bg-white text-slate-400 border-slate-200 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50"
+                          }`}
+                        >
+                          <Calendar size={10} />
+                          {customLabel ? "自定义" : "日期"}
+                        </button>
+                      )}
+                      <SummaryDonut data={data} label={label} size={100} color="emerald" />
 
                       {/* 悬浮浮层：团队明细（不推动布局） */}
                       {isHovered && hasTeams && data && (
@@ -793,6 +885,126 @@ export function CockpitPage() {
                 </div>
               )}
 
+              {/* ── 厅管日常任务完成率 ── */}
+              <div className="mt-2">
+                {/* 厅管环形图 + 暂无数据 / 加载态 */}
+                {hallRangeLoading && !hallRangeStats.yesterday ? (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="flex flex-col items-center gap-2 py-2">
+                        <div className="rounded-full animate-pulse bg-slate-100" style={{ width: 100, height: 100 }} />
+                        <div className="h-2.5 w-14 animate-pulse rounded bg-slate-100" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2">
+                    {(["yesterday", "last3", "last7", "thisMonth"] as HallRangeKey[]).map((key) => {
+                      const data = hallRangeStats[key];
+                      const label = (() => {
+                        const m: Record<string, string> = { yesterday: "昨天", last3: "近3天", last7: "近7天", thisMonth: hallCustomLabel ?? "本月" };
+                        return m[key];
+                      })();
+                      const isThisMonth = key === "thisMonth";
+                      const isHovered = hallHoveredRangeKey === key;
+                      const hasTeams = (data?.teams?.length ?? 0) > 0;
+                      return (
+                        <div
+                          key={key}
+                          className={`relative flex flex-col items-center rounded-xl py-1.5 px-1 transition-colors cursor-default ${
+                            isHovered ? "bg-slate-100" : "bg-slate-50/50 hover:bg-slate-100/50"
+                          }`}
+                          onMouseEnter={() => setHallHoveredRangeKey(key)}
+                          onMouseLeave={() => setHallHoveredRangeKey((prev) => (prev === key ? null : prev))}
+                        >
+                          {/* 本月单元格右上角：自定义日期按钮 */}
+                          {isThisMonth && (
+                            <button
+                              title={hallCustomLabel ? `重置为本月（当前：${hallCustomLabel}）` : "自定义日期范围"}
+                              onClick={() => {
+                                if (hallCustomLabel) {
+                                  handleHallResetToMonth();
+                                } else {
+                                  setHallCustomDateOpen((v) => !v);
+                                  setCustomDateOpen(false);
+                                }
+                              }}
+                              className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+                                hallCustomLabel
+                                  ? "bg-amber-50 text-amber-600 border-amber-300 hover:bg-amber-100"
+                                  : hallCustomDateOpen
+                                  ? "bg-blue-100 text-blue-600 border-blue-400"
+                                  : "bg-white text-slate-400 border-slate-200 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50"
+                              }`}
+                            >
+                              <Calendar size={10} />
+                              {hallCustomLabel ? "自定义" : "日期"}
+                            </button>
+                          )}
+                          <SummaryDonut data={data} label={label} size={100} color="blue" />
+                          {/* 悬浮浮层：团队明细 */}
+                          {isHovered && hasTeams && data && (
+                            <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[260px]">
+                              <p className="text-[11px] font-semibold text-slate-500 mb-2">{label} · 团队明细</p>
+                              {data.teams.map((team) => {
+                                const teamColor = rateColor(team.completionRate);
+                                return (
+                                  <div key={team.orgId} className="flex items-center gap-2 text-[11px]">
+                                    <span className="w-[64px] shrink-0 text-slate-600 font-medium truncate" title={team.orgName}>
+                                      {team.orgName}
+                                    </span>
+                                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                      <div className="h-full rounded-full transition-all" style={{ width: `${team.completionRate}%`, backgroundColor: teamColor }} />
+                                    </div>
+                                    <span className="w-[34px] shrink-0 text-right font-bold tabular-nums" style={{ color: teamColor }}>
+                                      {team.completionRate}%
+                                    </span>
+                                    <span className="w-[42px] shrink-0 text-right text-slate-400 tabular-nums">
+                                      {team.completed}/{team.total}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 厅管自定义日期面板 */}
+                {hallCustomDateOpen && (
+                  <div className="mt-3 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={hallCustomStart}
+                      onChange={(e) => setHallCustomStart(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px] text-slate-700 focus:outline-none focus:border-feishu-blue"
+                    />
+                    <span className="text-[12px] text-slate-400">至</span>
+                    <input
+                      type="date"
+                      value={hallCustomEnd}
+                      onChange={(e) => setHallCustomEnd(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px] text-slate-700 focus:outline-none focus:border-feishu-blue"
+                    />
+                    <button
+                      onClick={handleHallCustomQuery}
+                      disabled={!hallCustomStart || !hallCustomEnd || hallCustomStart > hallCustomEnd || hallCustomLoading}
+                      className="rounded-lg bg-feishu-blue px-3 py-1 text-[12px] text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
+                    >
+                      {hallCustomLoading ? "查询中…" : "查询"}
+                    </button>
+                    <button
+                      onClick={() => setHallCustomDateOpen(false)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[12px] text-slate-500 hover:bg-slate-100 transition-colors"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+              </div>
               {/* 底部图例 + 进入看板 已合并到标题行（节省高度） */}
             </div>
           )}

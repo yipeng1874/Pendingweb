@@ -22,23 +22,49 @@ function DonutCenter({ cx, cy, rate }: { cx?: number; cy?: number; rate: number 
   );
 }
 
+/** 根据 size 计算缩放参数 */
+function scaleParams(size: number) {
+  return {
+    innerRadius: Math.round(size * 0.32),
+    outerRadius: Math.round(size * 0.433),
+    percentFontSize: Math.round(size * 0.173),
+    labelFontSize: Math.round(size * 0.087),
+    dyPercent: -Math.round(size * 0.067),
+    dyLabel: Math.round(size * 0.12),
+    noDataBorder: Math.round(size * 0.053),
+    noDataText: Math.round(size * 0.087),
+    bottomText: Math.round(size * 0.087),
+  };
+}
+
 /** 历史待办完成率 - 汇总环形图 */
 export function SummaryDonut({
   data,
   label,
+  size = 150,
+  color: accent = "emerald",
   children,
 }: {
   data: DailyRangeStatsResponse | null;
   label: string;
+  size?: number;
+  color?: "emerald" | "blue";
   children?: React.ReactNode;
 }) {
+  const s = scaleParams(size);
+  const accentColor = accent === "emerald" ? "#10b981" : "#3b82f6";
+  const accentTextClass = accent === "emerald" ? "text-emerald-500" : "text-blue-500";
+
   if (!data || data.summary.total === 0) {
     return (
-      <div className="flex flex-col items-center gap-1.5">
-        <div className="w-[150px] h-[150px] flex items-center justify-center rounded-full border-[8px] border-slate-100 bg-slate-50">
-          <span className="text-[13px] text-slate-300">暂无数据</span>
+      <div className="flex flex-col items-center gap-1">
+        <div
+          className="flex items-center justify-center rounded-full border-slate-100 bg-slate-50"
+          style={{ width: size, height: size, borderWidth: s.noDataBorder }}
+        >
+          <span style={{ fontSize: s.noDataText, color: "#94a3b8" }}>暂无数据</span>
         </div>
-        <span className="text-[13px] text-slate-400">{label}</span>
+        <span style={{ fontSize: s.bottomText, color: "#94a3b8" }}>{label}</span>
       </div>
     );
   }
@@ -46,24 +72,23 @@ export function SummaryDonut({
   const { completed, total, completionRate, exemptions } = data.summary;
   const pending = Math.max(total - completed, 0);
   const exemptRate = total > 0 ? Math.round((exemptions / total) * 1000) / 10 : 0;
-  const color = rateColor(completionRate);
 
   const pieData = [
-    { name: "已完成", value: completed || 0, color: "#10b981" },
+    { name: "已完成", value: completed || 0, color: accentColor },
     { name: "未完成", value: pending || 1, color: "#e2e8f0" },
   ];
 
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div style={{ width: 150, height: 150 }}>
+      <div style={{ width: size, height: size }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={pieData}
               cx="50%"
               cy="50%"
-              innerRadius={48}
-              outerRadius={65}
+              innerRadius={s.innerRadius}
+              outerRadius={s.outerRadius}
               paddingAngle={2}
               dataKey="value"
               strokeWidth={0}
@@ -74,10 +99,10 @@ export function SummaryDonut({
               ))}
             </Pie>
             <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle">
-              <tspan x="50%" dy="-10" fontSize={26} fontWeight="800" fill={color}>
+              <tspan x="50%" dy={s.dyPercent} fontSize={s.percentFontSize} fontWeight="800" fill={accentColor}>
                 {completionRate}%
               </tspan>
-              <tspan x="50%" dy={18} fontSize={13} fill="#94a3b8">
+              <tspan x="50%" dy={s.dyLabel} fontSize={s.labelFontSize} fill="#94a3b8">
                 {label}
               </tspan>
             </text>
@@ -85,13 +110,16 @@ export function SummaryDonut({
         </ResponsiveContainer>
       </div>
 
-      <div className="flex flex-col items-center gap-0.5">
-        <span className="text-[13px] text-slate-500 tabular-nums">
-          <span className="text-emerald-500 font-bold">{completed}</span>
+      <div className="flex flex-row items-center justify-center gap-1 whitespace-nowrap" style={{ fontSize: s.bottomText }}>
+        <span className="text-slate-500 tabular-nums">
+          <span className={`font-bold ${accentTextClass}`}>{completed}</span>
           /{total} 人次
         </span>
         {exemptRate > 0 && (
-          <span className="text-[13px] text-violet-500 tabular-nums">豁免 {exemptRate}%</span>
+          <>
+            <span className="text-slate-300">·</span>
+            <span className="text-violet-500 tabular-nums">豁免 {exemptRate}%</span>
+          </>
         )}
       </div>
 

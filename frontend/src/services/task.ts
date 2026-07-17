@@ -584,6 +584,13 @@ export const reportApi = {
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     return api.get<import("../types").DailyRangeStatsResponse>(`/tasks/report/daily-range-stats?${params.toString()}`);
   },
+  getHallDailyRangeStats: (startDate: string, endDate: string, scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    params.set("startDate", startDate);
+    params.set("endDate", endDate);
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    return api.get<import("../types").DailyRangeStatsResponse>(`/tasks/report/hall-daily-range-stats?${params.toString()}`);
+  },
   getHallDailyDashboard: (taskDate?: string) => {
     const params = new URLSearchParams();
     if (taskDate) params.set("taskDate", taskDate);

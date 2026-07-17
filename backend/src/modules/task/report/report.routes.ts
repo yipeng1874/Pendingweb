@@ -1222,6 +1222,248 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
   });
 });
 
+// ── 厅管历史完成率：多日期范围统计 ─────────────────────────────────────────
+reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("task:report:view"), async (req: any, res: any) => {
+  const roleCode = req.identity?.roleCode;
+  const allowedAdminRoles = ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"];
+  if (!allowedAdminRoles.includes(roleCode)) {
+    return fail(res, "HALL_DAILY_RANGE_STATS_FORBIDDEN", "当前身份无权查看厅管日常任务历史数据", 403);
+  }
+
+  const startDate = t(req.query.startDate);
+  const endDate = t(req.query.endDate);
+  const scopeOrgId = t(req.query.scopeOrgId) || undefined;
+
+  if (!startDate || !endDate) {
+    return fail(res, "MISSING_DATE_RANGE", "startDate 和 endDate 为必填项", 400);
+  }
+  if (startDate > endDate) {
+    return fail(res, "INVALID_DATE_RANGE", "startDate 不能晚于 endDate", 400);
+  }
+
+  function enumerateHallDates(start: string, end: string): string[] {
+    const result: string[] = [];
+    const cur = new Date(`${start}T00:00:00Z`);
+    const endD = new Date(`${end}T00:00:00Z`);
+    let guard = 0;
+    while (cur <= endD && guard < 32) {
+      result.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+      guard++;
+    }
+    return result;
+  }
+
+  const dates = enumerateHallDates(startDate, endDate);
+  if (dates.length === 0) {
+    return fail(res, "INVALID_DATE_RANGE", "日期范围无效", 400);
+  }
+
+  const baseOrg = await resolveBaseScopeOrg(scopeOrgId, req.identity).catch((error: Error) => error);
+  if (baseOrg instanceof Error) {
+    if (baseOrg.message === "BASE_SCOPE_REQUIRED") return fail(res, "BASE_SCOPE_REQUIRED", "请先选择基地后查看", 400);
+    if (baseOrg.message === "SCOPE_ORG_NOT_FOUND") return fail(res, "SCOPE_ORG_NOT_FOUND", "当前基地不存在或已停用", 404);
+    if (baseOrg.message === "SCOPE_ORG_FORBIDDEN") return fail(res, "SCOPE_ORG_FORBIDDEN", "当前身份无权查看该基地", 403);
+    return fail(res, "HALL_DAILY_RANGE_STATS_SCOPE_FAILED", "基地解析失败", 500);
+  }
+
+  const viewerScopePath = req.identity?.scopePath ?? baseOrg.path;
+
+  // 查询基地下所有 active 团队
+  const allTeams = await prisma.orgUnit.findMany({
+    where: { status: "active", orgType: "TEAM", path: { startsWith: `${baseOrg.path}/` } },
+    select: { id: true, name: true, path: true },
+    orderBy: { path: "asc" },
+  });
+
+  const scopedTeams = roleCode === "TEAM_ADMIN" && viewerScopePath
+    ? allTeams.filter((t) => t.path === viewerScopePath || t.path.startsWith(`${viewerScopePath}/`))
+    : allTeams;
+
+  const scopedTeamIds = scopedTeams.map((t) => t.id);
+  if (scopedTeamIds.length === 0) {
+    return ok(res, {
+      startDate, endDate, effectiveDays: dates.length,
+      baseOrg: { id: baseOrg.id, name: baseOrg.name },
+      summary: { total: 0, completed: 0, exemptions: 0, completionRate: 0, exemptionRate: 0 },
+      teams: [],
+    });
+  }
+
+  // 查询日期范围内有效的 HallTaskAssignment
+  const assignments = await prisma.hallTaskAssignment.findMany({
+    where: {
+      teamOrgId: { in: scopedTeamIds },
+      status: { in: ["active", "ended"] },
+      effectiveAt: { lte: getDailyTaskSupplementDeadline(endDate) },
+      OR: [
+        { endedAt: null },
+        { endedAt: { gte: getDailyTaskDayEnd(startDate) } },
+      ],
+    },
+    include: {
+      targets: { select: { hallOrgId: true } },
+    },
+  });
+
+  // 收集目标 hallOrgId 并建立 team 映射
+  const allHallTargetIds = new Set<string>();
+  for (const assignment of assignments) {
+    for (const target of assignment.targets) {
+      allHallTargetIds.add(target.hallOrgId);
+    }
+  }
+
+  const targetHallIds = Array.from(allHallTargetIds);
+  if (targetHallIds.length === 0) {
+    return ok(res, {
+      startDate, endDate, effectiveDays: dates.length,
+      baseOrg: { id: baseOrg.id, name: baseOrg.name },
+      summary: { total: 0, completed: 0, exemptions: 0, completionRate: 0, exemptionRate: 0 },
+      teams: [],
+    });
+  }
+
+  // 查询涉及的厅详情 + scope 校验 + 建立 hallOrgId → team 映射
+  const hallsWithInfo = await prisma.orgUnit.findMany({
+    where: { id: { in: targetHallIds }, status: "active", orgType: "HALL" },
+    select: { id: true, name: true, path: true, parentId: true },
+  });
+
+  const hallTeamMap = new Map<string, { teamOrgId: string; teamOrgName: string }>();
+  const scopeFilteredHallIds = new Set<string>();
+
+  for (const hall of hallsWithInfo) {
+    if (!(hall.path === viewerScopePath || hall.path.startsWith(`${viewerScopePath}/`) || viewerScopePath.startsWith(`${hall.path}/`))) continue;
+    scopeFilteredHallIds.add(hall.id);
+    const teamInfo = scopedTeams.find((t) => t.id === hall.parentId);
+    hallTeamMap.set(hall.id, {
+      teamOrgId: hall.parentId ?? baseOrg.id,
+      teamOrgName: teamInfo?.name ?? baseOrg.name,
+    });
+  }
+
+  const scopeFilteredHallIdsArr = Array.from(scopeFilteredHallIds);
+  const total = scopeFilteredHallIdsArr.length * dates.length;
+  if (total === 0) {
+    return ok(res, {
+      startDate, endDate, effectiveDays: dates.length,
+      baseOrg: { id: baseOrg.id, name: baseOrg.name },
+      summary: { total: 0, completed: 0, exemptions: 0, completionRate: 0, exemptionRate: 0 },
+      teams: [],
+    });
+  }
+
+  // 批量查 HallTaskRecord
+  const allRecordsRaw = await prisma.hallTaskRecord.findMany({
+    where: {
+      hallOrgId: { in: scopeFilteredHallIdsArr },
+      recordDate: { in: dates },
+      assignment: { status: { in: ["active", "ended"] }, teamOrgId: { in: scopedTeamIds } },
+    },
+    select: {
+      assignmentId: true,
+      hallOrgId: true,
+      recordDate: true,
+      status: true,
+      submittedAt: true,
+      leaveRequests: {
+        orderBy: { createdAt: "desc" },
+        select: { status: true },
+      },
+      assignment: { select: { status: true } },
+    },
+  });
+
+  // 按 hallOrgId + recordDate 去重：active assignment 优先
+  type HallRawRecord = (typeof allRecordsRaw)[number];
+  const recordDedupeMap = new Map<string, HallRawRecord>();
+  const activeAssignmentIds = new Set(assignments.filter((a) => a.status === "active").map((a) => a.id));
+
+  for (const record of allRecordsRaw) {
+    const key = `${record.hallOrgId}:${record.recordDate}`;
+    const existing = recordDedupeMap.get(key);
+    if (!existing) {
+      recordDedupeMap.set(key, record);
+      continue;
+    }
+    const curIsActive = activeAssignmentIds.has(record.assignmentId);
+    const existIsActive = activeAssignmentIds.has(existing.assignmentId);
+    if (curIsActive && !existIsActive) {
+      recordDedupeMap.set(key, record);
+    } else if (curIsActive === existIsActive) {
+      if ((record.submittedAt ?? 0) > (existing.submittedAt ?? 0)) {
+        recordDedupeMap.set(key, record);
+      }
+    }
+  }
+
+  // 统计：与 resolveHallDailyReportStatus 优先级一致 — submitted > leave_approved
+  type TeamStat = { teamOrgId: string; teamOrgName: string; completed: number; exemptions: number };
+  const teamStatMap = new Map<string, TeamStat>();
+  let totalCompleted = 0;
+  let totalExemptions = 0;
+
+  for (const record of recordDedupeMap.values()) {
+    const teamInfo = hallTeamMap.get(record.hallOrgId) ?? { teamOrgId: baseOrg.id, teamOrgName: baseOrg.name };
+
+    if (!teamStatMap.has(teamInfo.teamOrgId)) {
+      teamStatMap.set(teamInfo.teamOrgId, { teamOrgId: teamInfo.teamOrgId, teamOrgName: teamInfo.teamOrgName, completed: 0, exemptions: 0 });
+    }
+    const stat = teamStatMap.get(teamInfo.teamOrgId)!;
+
+    const isSubmitted = record.status === "submitted";
+    const hasApprovedLeave = record.leaveRequests?.some((l) => l.status === "approved") ?? false;
+
+    // 与 resolveHallDailyReportStatus 一致：submitted 优先
+    if (isSubmitted) {
+      stat.completed++;
+      totalCompleted++;
+    } else if (hasApprovedLeave) {
+      stat.exemptions++;
+      totalExemptions++;
+    }
+  }
+
+  // 计算各团队分母（该团队下有 scope 权限的厅数 × 天数）
+  const teamHallCount = new Map<string, number>();
+  for (const hallId of scopeFilteredHallIdsArr) {
+    const ti = hallTeamMap.get(hallId) ?? { teamOrgId: baseOrg.id, teamOrgName: baseOrg.name };
+    teamHallCount.set(ti.teamOrgId, (teamHallCount.get(ti.teamOrgId) ?? 0) + 1);
+  }
+
+  const teams = Array.from(teamStatMap.entries())
+    .filter(([, stat]) => (teamHallCount.get(stat.teamOrgId) ?? 0) > 0)
+    .map(([, stat]) => {
+      const teamTotal = (teamHallCount.get(stat.teamOrgId) ?? 0) * dates.length;
+      return {
+        orgId: stat.teamOrgId,
+        orgName: stat.teamOrgName,
+        total: teamTotal,
+        completed: stat.completed,
+        exemptions: stat.exemptions,
+        completionRate: teamTotal > 0 ? Math.round((stat.completed / teamTotal) * 100) : 0,
+        exemptionRate: teamTotal > 0 ? Math.round((stat.exemptions / teamTotal) * 100) : 0,
+      };
+    })
+    .sort((a, b) => a.orgName.localeCompare(b.orgName));
+
+  return ok(res, {
+    startDate,
+    endDate,
+    effectiveDays: dates.length,
+    baseOrg: { id: baseOrg.id, name: baseOrg.name },
+    summary: {
+      total,
+      completed: totalCompleted,
+      exemptions: totalExemptions,
+      completionRate: total > 0 ? Math.round((totalCompleted / total) * 100) : 0,
+      exemptionRate: total > 0 ? Math.round((totalExemptions / total) * 100) : 0,
+    },
+    teams,
+  });
+});
+
 reportRoutes.get("/tasks/report/daily-dashboard/halls/:hallOrgId/details", permissionRequired("task:report:view"), async (req: any, res: any) => {
   if (!canViewDailyDashboard(req.identity?.roleCode)) {
     return fail(res, "DAILY_DASHBOARD_FORBIDDEN", "当前身份无权查看日常任务看板", 403);
