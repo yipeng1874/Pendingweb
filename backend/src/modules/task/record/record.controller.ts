@@ -19,6 +19,8 @@ function handleRecordError(res: any, error: any) {
   if (error.message === "EXEMPTION_REASON_REQUIRED") return fail(res, "EXEMPTION_REASON_REQUIRED", "请填写豁免原因", 400);
   if (error.message === "EXEMPTION_REVIEW_FORBIDDEN") return fail(res, "EXEMPTION_REVIEW_FORBIDDEN", "当前身份无权审核该豁免", 403);
   if (error.message === "EXEMPTION_CANCEL_FORBIDDEN") return fail(res, "EXEMPTION_CANCEL_FORBIDDEN", "当前身份无权撤回或取消该豁免", 403);
+  if (error.message === "RECONFIRM_NOT_PENDING") return fail(res, "RECONFIRM_NOT_PENDING", "当前任务无需二次确认或已完成确认", 400);
+  if (error.message === "RECONFIRM_FORBIDDEN") return fail(res, "RECONFIRM_FORBIDDEN", "当前身份无权确认该任务", 403);
   throw error;
 }
 
@@ -101,6 +103,15 @@ export const RecordController = {
         roleCode: req.identity?.roleCode,
         scopePath: req.identity?.scopePath,
       });
+      return ok(res, result);
+    } catch (error: any) {
+      return handleRecordError(res, error);
+    }
+  },
+
+  async reconfirmRecord(req: any, res: any) {
+    try {
+      const result = await RecordService.reconfirmRecord(req.params.id, req.userId, req.identity.id);
       return ok(res, result);
     } catch (error: any) {
       return handleRecordError(res, error);

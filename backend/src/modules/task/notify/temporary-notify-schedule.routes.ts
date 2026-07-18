@@ -180,6 +180,182 @@ async function buildTemporaryNotifyOpenIds(assignmentId: string): Promise<Audien
     .map((u) => ({ feishuConfigId: u.feishuConfigId!, feishuOpenId: u.feishuOpenId! }));
 }
 
+// ─── 二次投放：截止前已完成确认 ────────────────────────────────────────────────
+
+type PreDeadlineConfirmAssignment = {
+  id: string;
+  deadlineAt: Date | null;
+  template?: { title: string } | null;
+};
+
+type NotifyProcessedEntry = {
+  identityId: string;
+  assignmentId: string;
+  status: string;
+  [key: string]: unknown;
+};
+
+async function buildTemporaryReconfirmOpenIds(assignmentId: string): Promise<AudienceOpenIdRow[]> {
+  const assignment = await prisma.taskAssignment.findUnique({
+    where: { id: assignmentId },
+    include: { targets: true, exclusions: true, template: { select: { id: true, title: true } } },
+  });
+  if (!assignment || assignment.category !== "TEMPORARY") return [];
+  if (assignment.status !== "active" || !assignment.isActive) return [];
+
+  const groups = await buildTemporarySubjectGroups(prisma, assignment as any);
+  if (!groups.length) return [];
+
+  const records = await prisma.taskRecord.findMany({
+    where: {
+      assignmentId: assignment.id,
+      status: "submitted",
+      reconfirmStatus: "pending",
+    },
+    include: {
+      visibleIdentityLinks: {
+        select: {
+          userId: true,
+          identity: { select: { userId: true } },
+        },
+      },
+    },
+  });
+
+  const groupMap = new Map(groups.map((group: any) => [group.subjectKey, group]));
+  const userIdSet = new Set<string>();
+
+  for (const record of records) {
+    const group = groupMap.get(record.subjectKey);
+    if (!group) continue;
+    if ((group as any).subjectType === "USER") {
+      const uid = record.userId ?? (group as any).subjectUserId;
+      if (uid) userIdSet.add(uid);
+    } else {
+      record.visibleIdentityLinks.forEach((link: any) => {
+        if (link.userId) userIdSet.add(link.userId);
+        if (link.identity?.userId) userIdSet.add(link.identity.userId);
+      });
+      if (userIdSet.size === 0) {
+        (group as any).visibleIdentities?.forEach((identity: any) => userIdSet.add(identity.userId));
+      }
+    }
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: Array.from(userIdSet) }, status: "active" },
+    select: { id: true, feishuConfigId: true, feishuOpenId: true },
+  });
+
+  return users
+    .filter((u) => u.feishuConfigId && u.feishuOpenId)
+    .map((u) => ({ feishuConfigId: u.feishuConfigId!, feishuOpenId: u.feishuOpenId! }));
+}
+
+async function processPreDeadlineReconfirmIfNeeded(
+  schedule: { identityId: string; prefix: string },
+  assignment: PreDeadlineConfirmAssignment,
+  daysLeft: number,
+  now: Date,
+  processed: NotifyProcessedEntry[],
+) {
+  // Only trigger 1 day before deadline
+  if (daysLeft !== 1) return;
+
+  // Validate assignment-level flag
+  const freshAssignment = await prisma.taskAssignment.findUnique({
+    where: { id: assignment.id },
+    select: { preDeadlineConfirmEnabled: true, status: true, isActive: true, deadlineAt: true },
+  });
+  if (!freshAssignment || !freshAssignment.preDeadlineConfirmEnabled) return;
+  if (freshAssignment.status !== "active" || !freshAssignment.isActive) return;
+
+  const confirmSlotKey = `reconfirm-${formatBeijingDate(now)}`;
+
+  // Dedup check
+  const existingLog = await (prisma as any).temporaryNotifyTriggerLog?.findUnique({
+    where: { assignmentId_slotKey: { assignmentId: assignment.id, slotKey: confirmSlotKey } },
+  });
+  if (existingLog) return;
+
+  // Bulk-mark submitted records as pending reconfirm (idempotent)
+  const result = await prisma.taskRecord.updateMany({
+    where: {
+      assignmentId: assignment.id,
+      status: "submitted",
+      reconfirmStatus: null,
+    },
+    data: {
+      reconfirmStatus: "pending",
+      reconfirmSentAt: new Date(),
+    },
+  });
+
+  if (result.count === 0) {
+    processed.push({ identityId: schedule.identityId, assignmentId: assignment.id, status: "RECONFIRM_SKIPPED_NO_SUBMITTED" });
+    // Still write log to avoid re-scanning
+    await (prisma as any).temporaryNotifyTriggerLog?.create({ data: { assignmentId: assignment.id, slotKey: confirmSlotKey } });
+    return;
+  }
+
+  // Send Feishu notification
+  try {
+    const openIdRows = await buildTemporaryReconfirmOpenIds(assignment.id);
+    if (openIdRows.length > 0) {
+      const delegate = await getFeishuConfigDelegate();
+      if (delegate) {
+        const configIds = Array.from(new Set(openIdRows.map((r) => r.feishuConfigId)));
+        const configs = await delegate.findMany({ where: { id: { in: configIds }, status: "active" } } as any);
+        const configMap = new Map(configs.map((c) => [c.id, c]));
+
+        const bucketMap = new Map<string, string[]>();
+        for (const row of openIdRows) {
+          const bucket = bucketMap.get(row.feishuConfigId) ?? [];
+          bucket.push(row.feishuOpenId);
+          bucketMap.set(row.feishuConfigId, bucket);
+        }
+
+        const prefix = schedule.prefix || "来自系统提醒";
+        const title = assignment.template?.title ?? "临时任务";
+        const text = `${prefix}，「${title}」明天截止，请回顾确认你已提交的内容。`;
+
+        let totalSuccess = 0;
+        for (const [feishuConfigId, openIds] of bucketMap.entries()) {
+          const config = configMap.get(feishuConfigId);
+          if (!config) continue;
+          const uniqueOpenIds = Array.from(new Set(openIds));
+          const sendResult = await sendFeishuBatchMessage(config, uniqueOpenIds, text);
+          totalSuccess += Math.max(uniqueOpenIds.length - sendResult.invalidOpenIds.length, 0);
+        }
+
+        processed.push({
+          identityId: schedule.identityId,
+          assignmentId: assignment.id,
+          assignmentTitle: title,
+          status: "RECONFIRM_SENT",
+          daysLeft,
+          slotKey: confirmSlotKey,
+          markedCount: result.count,
+          audienceCount: openIdRows.length,
+          successCount: totalSuccess,
+        });
+      }
+    }
+
+    await (prisma as any).temporaryNotifyTriggerLog?.create({ data: { assignmentId: assignment.id, slotKey: confirmSlotKey } });
+  } catch (error: any) {
+    // Still write log on failure to avoid repeated retries
+    await (prisma as any).temporaryNotifyTriggerLog?.create({ data: { assignmentId: assignment.id, slotKey: confirmSlotKey } }).catch(() => undefined);
+    processed.push({
+      identityId: schedule.identityId,
+      assignmentId: assignment.id,
+      status: "RECONFIRM_FAILED",
+      slotKey: confirmSlotKey,
+      error: error?.message ?? "发送失败",
+    });
+  }
+}
+
 // ─── Tick 函数（每分钟调用）─────────────────────────────────────────────────
 
 export async function runTemporaryNotifyScheduleTick(now = new Date()) {
@@ -235,6 +411,10 @@ export async function runTemporaryNotifyScheduleTick(now = new Date()) {
 
       const daysLeft = Math.ceil((assignment.deadlineAt.getTime() - now.getTime()) / (86400 * 1000));
       const tierIndex = getTierIndex(daysLeft);
+
+      // ── 二次投放：截止前已完成确认 ───────────────────────────────
+      await processPreDeadlineReconfirmIfNeeded(schedule, assignment, daysLeft, now, processed);
+
       const dailyCount = getTierDailyCount(schedule, tierIndex);
       if (dailyCount <= 0) {
         processed.push({ identityId: schedule.identityId, assignmentId: assignment.id, status: "SKIPPED_ZERO_COUNT", daysLeft, tierIndex });

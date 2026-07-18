@@ -149,6 +149,7 @@ export const AssignmentController = {
         targetRoleCodes: parseTemporaryPayload(req).targetRoleCodes,
         targetUserIds: parseTemporaryPayload(req).targetUserIds,
         subjectOrgType: parseTemporaryPayload(req).temporarySubjectOrgType,
+        preDeadlineConfirmEnabled: req.body.preDeadlineConfirmEnabled === true,
       });
       return ok(res, result);
     } catch (error: any) {

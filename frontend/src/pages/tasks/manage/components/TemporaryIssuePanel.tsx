@@ -355,6 +355,7 @@ export function TemporaryIssuePanel({
   const [expandedTeamIds, setExpandedTeamIds] = useState<Set<string>>(new Set());
   const loadingTeamIds = useRef<Set<string>>(new Set());
   const [deadlineAt, setDeadlineAt] = useState("");
+  const [preDeadlineConfirmEnabled, setPreDeadlineConfirmEnabled] = useState(false);
   const deadlineDate = deadlineAt ? deadlineAt.slice(0, 10) : "";
   const deadlineTime = deadlineAt ? deadlineAt.slice(11, 16) : "";
   function handleDeadlineChange(date: string, time: string) {
@@ -544,6 +545,7 @@ export function TemporaryIssuePanel({
         setExcludedAnchorProfileIds((assignment.exclusions ?? []).filter((item) => item.exclusionType === "ANCHOR" && item.anchorProfileId).map((item) => item.anchorProfileId!));
         setKnownExcludedAnchors(extractKnownExcludedAnchors(assignment.exclusions));
         setDeadlineAt(toLocalDateTimeInputValue(assignment.deadlineAt));
+        setPreDeadlineConfirmEnabled(assignment.preDeadlineConfirmEnabled === true);
         const nextTargetUserIds = Array.isArray(assignment.targetUserIds) ? assignment.targetUserIds : [];
         if (nextTargetUserIds.length) {
           const accounts = await accountApi.getAccountsByIds(nextTargetUserIds, { scopeOrgId: managementOrgId }).catch(() => [] as SearchAccount[]);
@@ -586,6 +588,7 @@ export function TemporaryIssuePanel({
     setExcludedAnchorProfileIds([]);
     setKnownExcludedAnchors({});
     setDeadlineAt("");
+    setPreDeadlineConfirmEnabled(false);
     setPublishPreview(null);
   }
 
@@ -803,6 +806,7 @@ export function TemporaryIssuePanel({
         targetRoleCodes: mode === "ACCOUNT" ? undefined : targetRoleCodes,
         targetUserIds: mode === "ACCOUNT" ? selectedAccountIds : undefined,
         subjectOrgType: mode === "MANAGER" ? subjectOrgType : undefined,
+        preDeadlineConfirmEnabled,
       })
       .catch(console.error);
     setSavingDraft(false);
@@ -1634,6 +1638,20 @@ export function TemporaryIssuePanel({
                 </div>
               </div>
             </section>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-blue-200">
+              <input
+                type="checkbox"
+                checked={preDeadlineConfirmEnabled}
+                onChange={(e) => setPreDeadlineConfirmEnabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-500 focus:ring-blue-400"
+              />
+              <div>
+                <p className="text-sm font-medium text-slate-800">开启二次通知</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  截止前一天，向已完成任务的员工再次投放确认任务。员工将在"我的待办"中看到"二次通知"标签的确认卡片，查看原始答案并确认无误即可。已确认的记录不会重复通知。
+                </p>
+              </div>
+            </label>
             {mode === "ANCHOR" ? (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <div className="flex items-center justify-between gap-3">
@@ -2174,6 +2192,11 @@ export function TemporaryIssuePanel({
                 })()
               )}
 
+              {preDeadlineConfirmEnabled && (
+                <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-700">
+                  已开启二次通知：截止前一天，已完成任务的员工将收到确认提醒，在"我的待办"中查看原始答案并确认无误。
+                </div>
+              )}
               <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
                 发布后将立即生成临时任务记录，由发起人负责后续关闭、删除和重新开启；请确认以上内容完全正确后再继续。
               </div>

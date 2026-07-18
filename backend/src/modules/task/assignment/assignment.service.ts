@@ -233,6 +233,7 @@ async function saveTemporaryDraft(data: any) {
       temporarySubjectOrgType: normalized.mode === "MANAGER" ? normalized.subjectOrgType : null,
       deadlineAt: normalized.deadlineAt ?? null,
       deadlinePolicy: null,
+      preDeadlineConfirmEnabled: normalized.preDeadlineConfirmEnabled === true,
       isActive: false,
     };
 

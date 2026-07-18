@@ -668,4 +668,20 @@ export const RecordService = {
       orderBy: { createdAt: "desc" },
     });
   },
+
+  async reconfirmRecord(recordId: string, userId: string, identityId: string) {
+    const record = await ensureVisibleRecord(recordId, userId, identityId, {
+      assignment: { select: { category: true, status: true, preDeadlineConfirmEnabled: true } },
+    });
+    if (record.reconfirmStatus !== "pending") throw new Error("RECONFIRM_NOT_PENDING");
+    const assignmentAny = (record as any).assignment;
+    if (!assignmentAny?.preDeadlineConfirmEnabled) throw new Error("RECONFIRM_NOT_PENDING");
+    return prisma.taskRecord.update({
+      where: { id: recordId },
+      data: {
+        reconfirmStatus: "confirmed",
+        reconfirmConfirmedAt: new Date(),
+      },
+    });
+  },
 };

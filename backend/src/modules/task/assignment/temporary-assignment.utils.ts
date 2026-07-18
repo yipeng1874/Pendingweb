@@ -27,6 +27,7 @@ export type TemporaryDraftInput = {
   targetRoleCodes?: string[];
   targetUserIds?: string[];
   subjectOrgType?: OrgType | null;
+  preDeadlineConfirmEnabled?: boolean;
 };
 
 type AssignmentShape = {
@@ -105,6 +106,7 @@ export function normalizeTemporaryDraftInput(input: TemporaryDraftInput) {
     targetRoleCodes: nextRoleCodes,
     targetUserIds,
     subjectOrgType: mode === "MANAGER" ? (input.subjectOrgType ?? "TEAM") : null,
+    preDeadlineConfirmEnabled: input.preDeadlineConfirmEnabled === true,
   };
 }
 

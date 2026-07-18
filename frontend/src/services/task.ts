@@ -169,6 +169,7 @@ type TemporaryDraftPayload = {
   targetRoleCodes?: string[];
   targetUserIds?: string[];
   subjectOrgType?: "BASE" | "TEAM" | "HALL";
+  preDeadlineConfirmEnabled?: boolean;
 };
 
 function buildQuery(params?: Record<string, string | number | boolean | null | undefined>) {
@@ -268,6 +269,7 @@ export const recordApi = {
   submitItemRecord: (data: { taskRecordId: string; taskItemId: string; answerText?: string; answerOptions?: string[]; isLinkConfirmed?: boolean; done: boolean }) =>
     api.post<TaskItemRecord | TaskRecord>("/tasks/item-records", data),
   submitRecord: (id: string) => api.post<TaskRecord>(`/tasks/my-records/${id}/submit`),
+  reconfirmRecord: (id: string) => api.post<TaskRecord>(`/tasks/my-records/${id}/reconfirm`),
   applyExemption: (data: { taskRecordId: string; reason: string }) => api.post<TaskExemption>("/tasks/exemptions", data),
   cancelExemption: (taskRecordId: string) => api.delete(`/tasks/exemptions/${taskRecordId}`),
   listExemptions: (status?: string) => api.get<TaskExemption[]>(`/tasks/exemptions${status ? `?status=${status}` : ""}`),

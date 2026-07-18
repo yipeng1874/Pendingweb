@@ -12,6 +12,7 @@ recordRoutes.get("/tasks/my-records", permissionRequired("task:record:submit"), 
 recordRoutes.get("/tasks/my-records/:id", permissionRequired("task:record:submit"), RecordController.getRecord);
 recordRoutes.post("/tasks/item-records", permissionRequired("task:record:submit"), RecordController.submitItemRecord);
 recordRoutes.post("/tasks/my-records/:id/submit", permissionRequired("task:record:submit"), RecordController.submitRecord);
+recordRoutes.post("/tasks/my-records/:id/reconfirm", permissionRequired("task:record:submit"), RecordController.reconfirmRecord);
 recordRoutes.post("/tasks/exemptions", permissionRequired("task:exemption:apply"), RecordController.applyExemption);
 recordRoutes.delete("/tasks/exemptions/:taskRecordId", permissionRequired("task:exemption:apply"), RecordController.cancelExemption);
 

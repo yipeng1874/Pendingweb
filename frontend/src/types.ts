@@ -206,6 +206,7 @@ export interface TaskAssignment {
   createdByIdentityId?: string | null;
   deadlineAt?: string | null;
   deadlinePolicy?: string | null;
+  preDeadlineConfirmEnabled?: boolean;
   isActive: boolean;
   createdBy: string;
   createdByOrgId: string;
@@ -268,6 +269,9 @@ export interface TaskRecord {
   lastSubmittedByIdentityId?: string | null;
   lastSubmittedAt?: string | null;
   lastSubmittedByName?: string | null;
+  reconfirmStatus?: "pending" | "confirmed" | null;
+  reconfirmSentAt?: string | null;
+  reconfirmConfirmedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   exemptionStatus?: ExemptionStatus | null;

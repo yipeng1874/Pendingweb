@@ -11,6 +11,7 @@ import {
   Paperclip,
   Send,
   ShieldOff,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -82,6 +83,26 @@ function statusLabel(status: string) {
   if (status === "in_progress") return { text: "进行中", cls: "bg-blue-50 text-blue-600" };
   if (status === "overdue") return { text: "已逾期", cls: "bg-red-50 text-red-600" };
   return { text: "待开始", cls: "bg-slate-100 text-slate-500" };
+}
+
+function reconfirmBadge(record: TaskRecord) {
+  if (record.reconfirmStatus === "pending") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 py-0.5 text-[11px] font-medium text-orange-600">
+        <Sparkles size={10} />
+        今日重点关注
+      </span>
+    );
+  }
+  if (record.reconfirmStatus === "confirmed") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-500">
+        <CheckCircle2 size={10} />
+        已确认
+      </span>
+    );
+  }
+  return null;
 }
 
 function itemTypeLabel(type: string) {
@@ -483,6 +504,7 @@ function ItemRow({ item, itemRecord, recordId, onDone, allowSupplementAfterSubmi
 
 export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDeadline, urgent, compact = false, currentIdentityId, rightSlot }: Props) {
   const status = statusLabel(record.status);
+  const reconfirmTag = reconfirmBadge(record);
   const items = record.assignment?.template?.items ?? [];
   const subjectMeta = recordSubjectMeta[record.subjectType];
   const allowSupplementAfterSubmit = canSupplementRecord(record);
@@ -506,8 +528,24 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
   const subjectOrgLabel = record.subjectOrgType ? orgTypeMeta[record.subjectOrgType].label : "组织";
   const dailyTaskInfo = getDailyTaskInfo(record);
   const incompleteRequiredItems = useMemo(() => getIncompleteRequiredItems(record), [record]);
-  const canSubmitRecord = record.status !== "submitted" && incompleteRequiredItems.length === 0 && items.length > 0;
+  const isReconfirmPending = record.reconfirmStatus === "pending";
+  const isReconfirmConfirmed = record.reconfirmStatus === "confirmed";
+  const canSubmitRecord = record.status !== "submitted" && incompleteRequiredItems.length === 0 && items.length > 0 && !isReconfirmPending;
 
+  // 二次确认操作
+  const [reconfirming, setReconfirming] = useState(false);
+  async function handleReconfirmRecord() {
+    setReconfirming(true);
+    try {
+      await recordApi.reconfirmRecord(record.id);
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      alert(getErrorMessage(error, "确认失败，请稍后重试"));
+    } finally {
+      setReconfirming(false);
+    }
+  }
 
   // 日常任务使用内部独立展开状态，初始为 true（自动展开）
   const [dailyExpanded, setDailyExpanded] = useState(true);
@@ -608,6 +646,8 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
             )}
             {/* 6. 状态胶囊 */}
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}>{status.text}</span>
+            {/* 6.1 二次通知标签 */}
+            {reconfirmTag}
             {/* 折叠箭头 */}
             {isExpanded ? <ChevronUp size={15} className="shrink-0 text-slate-400" /> : <ChevronDown size={15} className="shrink-0 text-slate-400" />}
           </>
@@ -617,6 +657,7 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                 {!compact && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${status.cls}`}>{status.text}</span>}
+                {!compact && reconfirmTag}
                 {!compact && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{record.assignment?.category === "DAILY" ? "主播日常任务" : "临时任务"}</span>}
                 {tempModeMeta && !compact && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tempModeMeta.badge}`}>{tempModeMeta.label}</span>}
                 {!compact && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${subjectMeta.badge}`}>{subjectMeta.label}</span>}
@@ -640,6 +681,12 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
               </div>
               {record.assignment?.category === "TEMPORARY" && compact && (
                 <div className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${status.cls}`}>{status.text}</span>
+                    {reconfirmTag}
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">临时任务</span>
+                    {tempModeMeta && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tempModeMeta.badge}`}>{tempModeMeta.label}</span>}
+                  </div>
                   <p>{isTouchTask ? "发布者账号" : "发布人"}：{publisherLabel}</p>
                 </div>
               )}
@@ -679,7 +726,18 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
       {isExpanded && (
         <div className={`space-y-3 border-t border-slate-100 bg-slate-50/60 ${compact ? "p-3" : "p-4"}`}>
 
-          {record.status === "submitted" && <div className={`rounded-2xl px-4 py-3 text-sm ${allowSupplementAfterSubmit ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>{allowSupplementAfterSubmit ? "当前组织主体已完成提交，后续仍可继续补充备注或附件。多人补充内容会保留在同一条记录里。" : "任务已完成提交。"}</div>}
+          {isReconfirmPending && (
+            <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-700">
+              <div className="flex items-center gap-1.5 font-medium">
+                <Sparkles size={13} />
+                今日重点关注
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-orange-600/80">此任务明天截止，请回顾下方你已提交的内容是否准确无误；如需修改请联系任务发布者。</p>
+            </div>
+          )}
+          {record.status === "submitted" && !isReconfirmPending && (
+            <div className={`rounded-2xl px-4 py-3 text-sm ${allowSupplementAfterSubmit ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>{allowSupplementAfterSubmit ? "当前组织主体已完成提交，后续仍可继续补充备注或附件。多人补充内容会保留在同一条记录里。" : "任务已完成提交。"}</div>
+          )}
           {items.length === 0 ? (
             <p className="py-4 text-center text-sm text-slate-400">暂无子任务</p>
           ) : (
@@ -763,6 +821,12 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               还有 {incompleteRequiredItems.length} 项必填子任务未完成，暂不可提交{record.assignment?.category === "DAILY" ? "主播日常任务" : "任务"}。
             </div>
+          )}
+          {isReconfirmPending && (
+            <button type="button" onClick={() => void handleReconfirmRecord()} disabled={reconfirming} className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-2.5 text-sm font-medium text-white transition hover:bg-orange-600 disabled:opacity-50">
+              {reconfirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              确认内容无误
+            </button>
           )}
           {canSubmitRecord && <button type="button" onClick={() => void handleSubmitRecord()} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium text-white transition ${record.status === "overdue" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}><Send size={14} />{record.status === "overdue" ? "提交补录" : "提交任务"}</button>}
 
