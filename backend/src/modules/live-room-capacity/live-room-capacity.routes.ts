@@ -239,6 +239,23 @@ liveRoomCapacityRoutes.post(
         if (!Number.isInteger(r.total) || r.total < 0) {
           return fail(res, "INVALID_PARAM", `"${r.typeName}" 的总数需为非负整数`, 400);
         }
+        // 校验 allocations（可选字段）
+        if (r.allocations !== undefined) {
+          if (!Array.isArray(r.allocations)) {
+            return fail(res, "INVALID_PARAM", `"${r.typeName}" 的 allocations 需为数组`, 400);
+          }
+          for (const a of r.allocations) {
+            if (!a.orgId || typeof a.orgId !== "string") {
+              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队分配缺少 orgId`, 400);
+            }
+            if (!a.orgName || typeof a.orgName !== "string") {
+              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队分配缺少 orgName`, 400);
+            }
+            if (!Number.isInteger(a.used) || a.used < 0) {
+              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队 "${a.orgName}" 占用数需为非负整数`, 400);
+            }
+          }
+        }
       }
     }
 
@@ -252,11 +269,24 @@ liveRoomCapacityRoutes.post(
     const normalized = siteDetails.map((sd: any) => ({
       siteId: sd.siteId,
       siteName: sd.siteName || siteMap.get(sd.siteId) || sd.siteId,
-      rooms: (sd.rooms ?? []).map((r: any) => ({
-        typeName: r.typeName.trim(),
-        used: r.used,
-        total: r.total,
-      })),
+      rooms: (sd.rooms ?? []).map((r: any) => {
+        const room: any = {
+          typeName: r.typeName.trim(),
+          used: r.used,
+          total: r.total,
+        };
+        // 保留 allocations（如果存在且非空）
+        if (Array.isArray(r.allocations) && r.allocations.length > 0) {
+          room.allocations = r.allocations
+            .filter((a: any) => a.used > 0)
+            .map((a: any) => ({
+              orgId: a.orgId,
+              orgName: a.orgName,
+              used: a.used,
+            }));
+        }
+        return room;
+      }),
     }));
 
     const record = await prisma.liveRoomCapacity.upsert({

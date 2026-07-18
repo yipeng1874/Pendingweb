@@ -68,8 +68,9 @@ export function CockpitPage() {
   const [dataInputError, setDataInputError] = useState("");
   // 场地+房间输入
   const [liveRoomSites, setLiveRoomSites] = useState<LiveRoomSite[]>([]);
-  // 录入表单：key = siteId, value = { siteName, rooms: [{ typeName, used, total }] }
-  type RoomInputRow = { key: number; typeName: string; used: string; total: string; };
+  // 录入表单：key = siteId, value = { siteName, rooms: [{ typeName, used, total, allocations }] }
+  type AllocInputRow = { orgId: string; orgName: string; used: string; };
+  type RoomInputRow = { key: number; typeName: string; used: string; total: string; allocations: AllocInputRow[]; allocExpanded: boolean; };
   type SiteInputData = { siteName: string; rooms: RoomInputRow[]; };
   const [siteInputs, setSiteInputs] = useState<Record<string, SiteInputData>>({});
   // 场地管理
@@ -77,6 +78,8 @@ export function CockpitPage() {
   const [newSiteName, setNewSiteName] = useState("");
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [editingSiteName, setEditingSiteName] = useState("");
+  // 当前基地下的团队列表（用于分配直播间占用）
+  const [teamsUnderBase, setTeamsUnderBase] = useState<{ orgId: string; orgName: string; }[]>([]);
   const roomRowRef = useRef(0);
   const nextRowKey = () => ++roomRowRef.current;
 
@@ -250,12 +253,29 @@ export function CockpitPage() {
     loadAvgWaveTrend(selectedBaseOrgId);
   }, [selectedBaseOrgId]);
 
-  // ── 初始化录入表单（加载场地 + 已有容量） ──
+  // ── 初始化录入表单（加载场地 + 已有容量 + 团队列表） ──
   const initSiteInputs = async () => {
     try {
-      const sites = await liveRoomSiteApi.list(scopeOrgId);
+      const [sites, cap, orgTree] = await Promise.all([
+        liveRoomSiteApi.list(scopeOrgId),
+        liveRoomCapacityApi.getLatest(scopeOrgId),
+        fetchOrgTree(),
+      ]);
       setLiveRoomSites(sites);
-      const cap = await liveRoomCapacityApi.getLatest(scopeOrgId);
+
+      // 从 orgTree 中提取当前基地下的所有活跃 TEAM
+      const baseOrg = orgTree.find((o) => o.id === scopeOrgId);
+      const basePath = baseOrg?.path ?? "";
+      const teams: { orgId: string; orgName: string; }[] = orgTree
+        .filter((o) => o.orgType === "TEAM" && o.status === "active" && o.path.startsWith(basePath + "/"))
+        .sort((a, b) => a.path.localeCompare(b.path))
+        .map((o) => ({ orgId: o.id, orgName: o.name }));
+      // 边缘情况：baseOrg 本身是 TEAM
+      if (baseOrg && baseOrg.orgType === "TEAM" && !teams.find((t) => t.orgId === baseOrg.id)) {
+        teams.unshift({ orgId: baseOrg.id, orgName: baseOrg.name });
+      }
+      setTeamsUnderBase(teams);
+
       const map: Record<string, SiteInputData> = {};
       let globalKey = 0;
       sites.forEach((s) => {
@@ -264,19 +284,26 @@ export function CockpitPage() {
           siteName: s.name,
           rooms: detail?.rooms?.map((r) => {
             globalKey++;
+            const eAllocs = (r as any).allocations as any[] | undefined;
+            const allocRows: AllocInputRow[] = eAllocs
+              ? eAllocs.map((a) => ({ orgId: a.orgId, orgName: a.orgName, used: String(a.used ?? "") }))
+              : teams.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" }));
             return {
               key: globalKey,
-              typeName: r.typeName,
+              typeName: r.typeName ?? "",
               used: String(r.used ?? ""),
               total: String(r.total ?? ""),
+              allocations: allocRows,
+              allocExpanded: false,
             };
-          }) ?? [{ key: ++globalKey, typeName: "", used: "", total: "" }],
+          }) ?? [{ key: ++globalKey, typeName: "", used: "", total: "", allocations: teams.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }],
         };
       });
       setSiteInputs(map);
     } catch {
       // 加载失败则置空
       setSiteInputs({});
+      setTeamsUnderBase([]);
     }
   };
 
@@ -300,9 +327,14 @@ export function CockpitPage() {
 
     // 构建 siteDetails
     const siteIds = Object.keys(siteInputs);
+    const roomHasData = (r: RoomInputRow) => {
+      if (!r.typeName.trim()) return false;
+      const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
+      return !!(r.used || r.total || hasAllocData);
+    };
     const hasRoomData = siteIds.some((sid) => {
       const d = siteInputs[sid];
-      return d.rooms.some((r) => r.typeName.trim() && (r.used || r.total));
+      return d.rooms.some(roomHasData);
     });
     const hasWave = !!dataInputAvgWave;
     const hasOfflineWave = !!dataInputOfflineAvgWave;
@@ -320,10 +352,18 @@ export function CockpitPage() {
         for (const r of d.rooms) {
           if (!r.typeName.trim() && !r.used && !r.total) continue;
           if (!r.typeName.trim()) { setDataInputError(`场地 "${d.siteName}" 存在空的房间类型名称`); return; }
-          const used = parseInt(r.used, 10);
+          const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
           const total = parseInt(r.total, 10);
-          if ((r.used && (isNaN(used) || used < 0))) { setDataInputError(`"${r.typeName}" 已使用需为有效非负整数`); return; }
-          if ((r.total && (isNaN(total) || total < 0))) { setDataInputError(`"${r.typeName}" 总数需为有效非负整数`); return; }
+          if (!hasAllocData && r.used && (isNaN(parseInt(r.used, 10)) || parseInt(r.used, 10) < 0)) { setDataInputError(`"${r.typeName}" 已使用需为有效非负整数`); return; }
+          if (r.total && (isNaN(total) || total < 0)) { setDataInputError(`"${r.typeName}" 总数需为有效非负整数`); return; }
+          // 校验 allocations 中的每个值
+          if (r.allocations) {
+            for (const a of r.allocations) {
+              if (a.used && (isNaN(parseInt(a.used, 10)) || parseInt(a.used, 10) < 0)) {
+                setDataInputError(`"${r.typeName}" 中团队 "${a.orgName}" 占用数需为有效非负整数`); return;
+              }
+            }
+          }
         }
       }
     }
@@ -350,12 +390,23 @@ export function CockpitPage() {
               siteId: sid,
               siteName: site?.name ?? d.siteName,
               rooms: d.rooms
-                .filter((r) => r.typeName.trim() && (r.used || r.total))
-                .map((r) => ({
-                  typeName: r.typeName.trim(),
-                  used: parseInt(r.used, 10) || 0,
-                  total: parseInt(r.total, 10) || 0,
-                })),
+                .filter((r) => r.typeName.trim() && (r.used || r.total || (r.allocations && r.allocations.some((a) => a.used !== ""))))
+                .map((r) => {
+                  const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
+                  const allocUsed = r.allocations ? r.allocations.reduce((s, a) => s + (parseInt(a.used, 10) || 0), 0) : 0;
+                  const used = hasAllocData ? allocUsed : (parseInt(r.used, 10) || 0);
+                  const out: any = {
+                    typeName: r.typeName.trim(),
+                    used,
+                    total: parseInt(r.total, 10) || 0,
+                  };
+                  if (hasAllocData) {
+                    out.allocations = r.allocations!
+                      .filter((a) => a.used !== "")
+                      .map((a) => ({ orgId: a.orgId, orgName: a.orgName, used: parseInt(a.used, 10) || 0 }));
+                  }
+                  return out;
+                }),
             };
           });
         tasks.push(liveRoomCapacityApi.upsert({ siteDetails }, scopeOrgId));
@@ -1038,41 +1089,134 @@ export function CockpitPage() {
                   {details.map((sd, si) => {
                     const siteName = sd.siteName || "未命名";
                     const rooms = sd.rooms ?? [];
+                    // 辅助：有 allocations 时 used = sum(allocations.used)，否则用旧字段
+                    const getUsed = (r: any) => {
+                      if (r.allocations && r.allocations.length > 0) {
+                        return r.allocations.reduce((s: number, a: any) => s + (a.used || 0), 0);
+                      }
+                      return r.used || 0;
+                    };
                     const grandTotal = rooms.reduce((s, r) => s + (r.total || 0), 0);
-                    const grandUsed = rooms.reduce((s, r) => s + (r.used || 0), 0);
+                    const grandUsed = rooms.reduce((s, r) => s + getUsed(r), 0);
                     const grandSpare = Math.max(0, grandTotal - grandUsed);
+                    // 聚合：该场地跨所有类型的团队占用
+                    const teamAgg = new Map<string, { orgId: string; orgName: string; used: number }>();
+                    rooms.forEach((r) => {
+                      const rAllocs = (r as any).allocations as any[] | undefined;
+                      if (!rAllocs) return;
+                      rAllocs.forEach((a) => {
+                        const cur = teamAgg.get(a.orgId) ?? { orgId: a.orgId, orgName: a.orgName, used: 0 };
+                        cur.used += a.used || 0;
+                        teamAgg.set(a.orgId, cur);
+                      });
+                    });
+                    const sortedTeamAgg = Array.from(teamAgg.values())
+                      .filter((t) => t.used > 0)
+                      .sort((a, b) => b.used - a.used);
+                    const hasTeamAgg = sortedTeamAgg.length > 0;
                     return (
                       <div key={sd.siteId || si} className="shrink-0 snap-start rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-5 py-4 shadow-sm flex flex-col" style={{ width: "calc(50% - 6px)" }}>
                         {/* 标题：场地名 */}
                         <div className="flex items-center gap-1.5 mb-3">
                           <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                          <span className="text-[13px] font-semibold truncate">{siteName}</span>
+                          <span className="text-[15px] font-bold truncate">{siteName}</span>
                         </div>
                         {/* 房间类型行 */}
-                        <div className="space-y-1.5 flex-1">
+                        <div className="space-y-2.5 flex-1">
                           {rooms.map((r, ri) => {
-                            const pct = r.total > 0 ? Math.round((r.used / r.total) * 100) : 0;
+                            const usedVal = getUsed(r);
+                            const pct = r.total > 0 ? Math.round((usedVal / r.total) * 100) : 0;
                             const colorIdx = ri % typeColors.length;
+                            const hasAllocations = r.allocations && r.allocations.length > 0;
+                            // 悬停展示用：按 used 倒序
+                            const sortedAllocs = hasAllocations
+                              ? [...r.allocations!].sort((a: any, b: any) => (b.used || 0) - (a.used || 0))
+                              : [];
                             return (
-                              <div key={ri} className="flex items-center gap-2 text-[12px]">
-                                <span className="text-slate-300 shrink-0 w-12">{r.typeName}</span>
-                                <div className="h-1.5 flex-1 rounded-full bg-slate-700/40 overflow-hidden">
-                                  <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${pct}%` }} />
+                              <div
+                                key={ri}
+                                className="relative group/row"
+                              >
+                                <div className="flex items-center gap-2 text-[13px] cursor-default">
+                                  <span className="text-slate-200 font-semibold shrink-0 w-14 truncate">{r.typeName}</span>
+                                  <div className="h-2 flex-1 rounded-full bg-slate-700/40 overflow-hidden">
+                                    <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="tabular-nums shrink-0">
+                                    <span className="text-white font-bold">{usedVal}</span>
+                                    <span className="text-slate-500 font-medium">/{r.total}</span>
+                                    <span className="ml-1.5 text-[12px] text-slate-300 font-semibold">{pct}%</span>
+                                  </span>
                                 </div>
-                                <span className="tabular-nums shrink-0">
-                                  <span className="text-white font-semibold">{r.used}</span>
-                                  <span className="text-slate-500">/{r.total}</span>
-                                  <span className="ml-1.5 text-[11px] text-slate-400">{pct}%</span>
-                                </span>
+                                {/* 悬停 popover：仅在有团队分配时显示 */}
+                                {hasAllocations && (
+                                  <div className="absolute left-12 top-full mt-1 z-20 invisible opacity-0 group-hover/row:visible group-hover/row:opacity-100 transition-opacity duration-150 pointer-events-none">
+                                    <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[180px] max-w-[260px]">
+                                      <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between">
+                                        <span>团队占用明细</span>
+                                        <span className="text-slate-500">{r.typeName}</span>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {sortedAllocs.map((a: any, ai: number) => {
+                                          const aPct = r.total > 0 ? Math.round(((a.used || 0) / r.total) * 100) : 0;
+                                          return (
+                                            <div key={ai} className="flex items-center gap-2 text-[11px]">
+                                              <span className="text-slate-200 truncate flex-1">{a.orgName}</span>
+                                              <span className="tabular-nums text-sky-300 font-semibold w-8 text-right">{a.used || 0}</span>
+                                              <span className="tabular-nums text-slate-500 w-10 text-right">{aPct}%</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      {r.allocations!.some((a: any) => !a.used) && (
+                                        <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-700">
+                                          共 {r.allocations!.length} 个团队，已填 {r.allocations!.filter((a: any) => a.used).length} 个
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
                         </div>
-                        {/* 底部汇总：总/已用/空余 */}
-                        <div className="mt-3 pt-2 border-t border-white/10 flex items-center gap-3 text-[11px] text-slate-400 tabular-nums">
-                          <span>总 <strong className="text-white text-[12px] ml-0.5">{grandTotal}</strong></span>
-                          <span className="text-sky-300">已用 <strong className="text-sky-300 text-[12px] ml-0.5">{grandUsed}</strong></span>
-                          <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[12px] ml-0.5">{grandSpare}</strong></span>
+                        {/* 底部汇总：总/已用/空余（悬停展示团队整体占比） */}
+                        <div className="relative group/summary mt-3 pt-2 border-t border-white/10">
+                          <div className="flex items-center gap-3 text-[12px] text-slate-300 font-medium tabular-nums cursor-default">
+                            <span>总 <strong className="text-white text-[15px] font-bold ml-0.5">{grandTotal}</strong></span>
+                            <span className="text-sky-300">已用 <strong className="text-sky-300 text-[15px] font-bold ml-0.5">{grandUsed}</strong></span>
+                            <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[15px] font-bold ml-0.5">{grandSpare}</strong></span>
+                          </div>
+                          {/* 悬停 popover：聚合所有类型的团队占用 */}
+                          {hasTeamAgg && (
+                            <div className="absolute left-0 bottom-full mb-2 z-20 invisible opacity-0 group-hover/summary:visible group-hover/summary:opacity-100 transition-opacity duration-150 pointer-events-none">
+                              <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[200px] max-w-[280px]">
+                                <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between">
+                                  <span>团队整体占比</span>
+                                  <span className="text-slate-500">{siteName}</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {sortedTeamAgg.map((t) => {
+                                    const tPct = grandTotal > 0 ? Math.round((t.used / grandTotal) * 100) : 0;
+                                    return (
+                                      <div key={t.orgId} className="flex items-center gap-2 text-[11px]">
+                                        <span className="text-slate-200 truncate flex-1" title={t.orgName}>{t.orgName}</span>
+                                        <span className="tabular-nums text-sky-300 font-semibold w-8 text-right">{t.used}</span>
+                                        <span className="tabular-nums text-slate-500 w-10 text-right">{tPct}%</span>
+                                        <div className="w-10 h-1 rounded-full bg-slate-700/60 overflow-hidden">
+                                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${tPct}%` }} />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-700 tabular-nums">
+                                  合计 <span className="text-sky-300 font-semibold">{grandUsed}</span>
+                                  <span className="text-slate-500"> / {grandTotal} ({grandTotal > 0 ? Math.round((grandUsed / grandTotal) * 100) : 0}%)</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1295,7 +1439,7 @@ export function CockpitPage() {
               onClick={close}
             >
               <div
-                className="w-[480px] max-w-[90vw] rounded-2xl bg-white shadow-2xl overflow-hidden"
+                className={`${isManual ? "w-[720px]" : "w-[480px]"} max-w-[95vw] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Tab 切换 */}
@@ -1453,7 +1597,7 @@ export function CockpitPage() {
                 ) : (
                   /* ── 数值录入 ── */
                   <>
-                    <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
+                    <div className="px-6 py-5 space-y-5 flex-1 overflow-y-auto">
                       {/* 直播间空余 */}
                       <div>
                         <div className="flex items-center gap-1.5 mb-3">
@@ -1499,7 +1643,7 @@ export function CockpitPage() {
                                     ) : (
                                       <>
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                                        <span className="flex-1 text-[12px] font-semibold text-slate-600 truncate">{site.name}</span>
+                                        <span className="flex-1 text-[14px] font-bold text-slate-700 truncate">{site.name}</span>
                                         <button
                                           onClick={() => { setEditingSiteId(site.id); setEditingSiteName(site.name); }}
                                           title="重命名"
@@ -1521,61 +1665,136 @@ export function CockpitPage() {
                                     )}
                                   </div>
                                   {/* 房间类型表头 */}
-                                  <div className="grid grid-cols-[1fr_80px_80px_28px] gap-1.5 items-center text-[10px] text-slate-400">
+                                  <div className="grid grid-cols-[1fr_80px_88px_28px] gap-1.5 items-center text-[11px] text-slate-500 font-semibold">
                                     <span>类型名称</span>
-                                    <span className="text-center">已使用</span>
                                     <span className="text-center">总数</span>
+                                    <span className="text-center">团队占用</span>
                                     <span />
                                   </div>
                                   {/* 房间类型行 */}
-                                  {input.rooms.map((row, ri) => (
-                                    <div key={row.key} className="grid grid-cols-[1fr_80px_80px_28px] gap-1.5 items-center">
-                                      <input
-                                        type="text"
-                                        value={row.typeName}
-                                        onChange={(e) => {
-                                          const newRows = [...input.rooms];
-                                          newRows[ri] = { ...newRows[ri], typeName: e.target.value };
-                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
-                                        }}
-                                        placeholder="如：直播间"
-                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:border-sky-400"
-                                      />
-                                      <input
-                                        type="number" min="0"
-                                        value={row.used}
-                                        onChange={(e) => {
-                                          const newRows = [...input.rooms];
-                                          newRows[ri] = { ...newRows[ri], used: e.target.value };
-                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
-                                        }}
-                                        placeholder="0"
-                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 text-center focus:outline-none focus:border-sky-400"
-                                      />
-                                      <input
-                                        type="number" min="0"
-                                        value={row.total}
-                                        onChange={(e) => {
-                                          const newRows = [...input.rooms];
-                                          newRows[ri] = { ...newRows[ri], total: e.target.value };
-                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
-                                        }}
-                                        placeholder="0"
-                                        className="h-8 rounded border border-slate-200 bg-white px-2 text-[12px] text-slate-700 text-center focus:outline-none focus:border-sky-400"
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const newRows = input.rooms.filter((_, i) => i !== ri);
-                                          if (newRows.length === 0) newRows.push({ key: nextRowKey(), typeName: "", used: "", total: "" });
-                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
-                                        }}
-                                        className="text-[11px] text-slate-400 hover:text-red-500"
-                                      >✕</button>
-                                    </div>
-                                  ))}
+                                  {input.rooms.map((row, ri) => {
+                                    // 从 allocations 自动计算 used
+                                    const allocUsed = row.allocations
+                                      ? row.allocations.reduce((s, a) => s + (parseInt(a.used, 10) || 0), 0)
+                                      : 0;
+                                    const hasAllocData = row.allocations && row.allocations.some((a) => a.used !== "");
+                                    const totalNum = parseInt(row.total, 10) || 0;
+                                    const allocExceed = hasAllocData && totalNum > 0 && allocUsed > totalNum;
+                                    const filledTeams = row.allocations ? row.allocations.filter((a) => a.used !== "").length : 0;
+                                    // 最终 used：有分配数据时用分配合计，否则用旧的 used
+                                    const finalUsed = hasAllocData ? allocUsed : (parseInt(row.used, 10) || 0);
+                                    return (
+                                      <div key={row.key}>
+                                        <div className="grid grid-cols-[1fr_80px_88px_28px] gap-1.5 items-center">
+                                          <input
+                                            type="text"
+                                            value={row.typeName}
+                                            onChange={(e) => {
+                                              const newRows = [...input.rooms];
+                                              newRows[ri] = { ...newRows[ri], typeName: e.target.value };
+                                              setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                            }}
+                                            placeholder="如：直播间"
+                                            className="h-9 rounded border border-slate-200 bg-white px-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-sky-400"
+                                          />
+                                          <input
+                                            type="number" min="0"
+                                            value={row.total}
+                                            onChange={(e) => {
+                                              const newRows = [...input.rooms];
+                                              newRows[ri] = { ...newRows[ri], total: e.target.value };
+                                              setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                            }}
+                                            placeholder="0"
+                                            className="h-9 rounded border border-slate-200 bg-white px-2 text-[13px] font-semibold text-slate-700 text-center focus:outline-none focus:border-sky-400"
+                                          />
+                                          <button
+                                            onClick={() => {
+                                              const newRows = [...input.rooms];
+                                              newRows[ri] = { ...newRows[ri], allocExpanded: !row.allocExpanded };
+                                              setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                            }}
+                                            className={`h-9 rounded border px-1.5 text-[12px] font-semibold flex items-center justify-center gap-1 transition-colors ${
+                                              row.allocExpanded
+                                                ? "border-sky-400 bg-sky-50 text-sky-700"
+                                                : hasAllocData
+                                                  ? "border-sky-300 bg-sky-50/50 text-sky-600 hover:bg-sky-50"
+                                                  : "border-slate-200 bg-white text-slate-500 hover:border-sky-300 hover:bg-sky-50/30"
+                                            }`}
+                                            title="点击编辑团队占用"
+                                          >
+                                            <span>{row.allocExpanded ? "▲" : "▼"}</span>
+                                            <span className="tabular-nums">
+                                              {hasAllocData
+                                                ? <><span className="text-sky-700">{allocUsed}</span><span className="text-slate-400">/</span><span className="text-slate-500">{row.allocations!.length}</span></>
+                                                : <>编辑</>}
+                                            </span>
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              const newRows = input.rooms.filter((_, i) => i !== ri);
+                                              if (newRows.length === 0) newRows.push({ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false });
+                                              setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                            }}
+                                            className="text-[11px] text-slate-400 hover:text-red-500"
+                                          >✕</button>
+                                        </div>
+                                        {/* 团队分配编辑区 */}
+                                        {row.allocExpanded && (
+                                          <div className="mt-1.5 ml-0 p-2.5 bg-white rounded-lg border border-slate-200 space-y-2">
+                                            {/* 顶部摘要：已用/总数 + 提示 */}
+                                            <div className="flex items-center justify-between text-[12px] pb-1.5 border-b border-slate-100">
+                                              <span className="text-slate-600 font-semibold">团队占用编辑 {allocExceed ? <span className="text-red-500 ml-1">⚠ 超出总数</span> : null}</span>
+                                              <span className="tabular-nums text-slate-600 font-medium">
+                                                已用 <span className={`font-bold ${allocExceed ? "text-red-500" : "text-sky-600"}`}>{finalUsed}</span>
+                                                {totalNum > 0 && <span className="text-slate-400"> / {totalNum} ({Math.round((finalUsed / totalNum) * 100)}%)</span>}
+                                                {filledTeams > 0 && <span className="text-slate-400 ml-1.5">· 已填 {filledTeams} 队</span>}
+                                              </span>
+                                            </div>
+                                            {/* 团队列表（自适应列宽：1队→1列，2-3队→2列，4-6队→3列，7+队→4列） */}
+                                            {row.allocations && row.allocations.length > 0 ? (
+                                              <div
+                                                className="grid gap-x-2 gap-y-1.5"
+                                                style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${
+                                                  row.allocations.length === 1 ? 200 :
+                                                  row.allocations.length <= 3 ? 180 :
+                                                  row.allocations.length <= 6 ? 150 : 140
+                                                }px, 1fr))` }}
+                                              >
+                                                {row.allocations.map((a, ai) => (
+                                                  <div key={a.orgId} className="flex items-center gap-1.5 min-w-0 bg-slate-50/60 rounded px-2 py-1">
+                                                    <span className="text-[12px] font-medium text-slate-700 truncate flex-1 min-w-0" title={a.orgName}>{a.orgName}</span>
+                                                    <input
+                                                      type="number" min="0"
+                                                      value={a.used}
+                                                      onChange={(e) => {
+                                                        const newRows = [...input.rooms];
+                                                        const newAllocs = [...newRows[ri].allocations];
+                                                        newAllocs[ai] = { ...newAllocs[ai], used: e.target.value };
+                                                        newRows[ri] = { ...newRows[ri], allocations: newAllocs };
+                                                        setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                      }}
+                                                      placeholder="0"
+                                                      className="w-14 shrink-0 h-8 rounded border border-slate-200 bg-white px-1 text-[12px] font-semibold text-slate-700 text-center focus:outline-none focus:border-sky-400"
+                                                    />
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="text-[11px] text-slate-400 text-center py-2">该基地下暂无团队</div>
+                                            )}
+                                            {/* 底部提示 */}
+                                            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                                              <span>未填写的团队视为未占用；「已用」由团队占用自动合计</span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                   <button
                                     onClick={() => {
-                                      const newRows = [...input.rooms, { key: nextRowKey(), typeName: "", used: "", total: "" }];
+                                      const newRows = [...input.rooms, { key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }];
                                       setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
                                     }}
                                     className="text-[11px] text-sky-600 hover:text-sky-700 font-medium"
@@ -1603,7 +1822,7 @@ export function CockpitPage() {
                                   try {
                                     const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
                                     setLiveRoomSites((prev) => [...prev, site]);
-                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "" }] } }));
+                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }] } }));
                                     setShowNewSiteInput(false);
                                     setNewSiteName("");
                                   } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }
@@ -1617,7 +1836,7 @@ export function CockpitPage() {
                                 try {
                                   const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
                                   setLiveRoomSites((prev) => [...prev, site]);
-                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "" }] } }));
+                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }] } }));
                                   setShowNewSiteInput(false);
                                   setNewSiteName("");
                                 } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }

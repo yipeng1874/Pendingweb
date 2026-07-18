@@ -851,10 +851,17 @@ export const dataOverviewApi = {
 
 // ---------- 基地直播间空余 ----------
 
+export type RoomAllocation = {
+  orgId: string;             // 组织架构 ID（团队）
+  orgName: string;           // 团队名称
+  used: number;              // 该团队占用数
+};
+
 export type RoomTypeDetail = {
   typeName: string;          // 自定义房间类型名
-  used: number;              // 已使用
+  used: number;              // 已使用（有 allocations 时等于其 sum，旧数据兼容）
   total: number;             // 总数
+  allocations?: RoomAllocation[]; // 新增：按团队的占用明细
 };
 
 export type SiteDetail = {
