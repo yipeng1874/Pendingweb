@@ -195,6 +195,13 @@ type NotifyProcessedEntry = {
   [key: string]: unknown;
 };
 
+type TemporaryNotifyTickResult = {
+  checked: boolean;
+  reason?: string;
+  slotKey?: string;
+  processed: NotifyProcessedEntry[];
+};
+
 async function buildTemporaryReconfirmOpenIds(assignmentId: string): Promise<AudienceOpenIdRow[]> {
   const assignment = await prisma.taskAssignment.findUnique({
     where: { id: assignmentId },
@@ -358,10 +365,10 @@ async function processPreDeadlineReconfirmIfNeeded(
 
 // ─── Tick 函数（每分钟调用）─────────────────────────────────────────────────
 
-export async function runTemporaryNotifyScheduleTick(now = new Date()) {
+export async function runTemporaryNotifyScheduleTick(now = new Date()): Promise<TemporaryNotifyTickResult> {
   // 只在每小时前5分钟内执行（整点窗口）
   if (getBeijingMinute(now) >= 5) {
-    return { checked: false, reason: "OUTSIDE_TOP_OF_HOUR_WINDOW", processed: [] as Array<Record<string, unknown>> };
+    return { checked: false, reason: "OUTSIDE_TOP_OF_HOUR_WINDOW", processed: [] };
   }
 
   const beijingHour = getBeijingHour(now);
@@ -383,10 +390,10 @@ export async function runTemporaryNotifyScheduleTick(now = new Date()) {
   }> | undefined;
 
   if (!schedules || schedules.length === 0) {
-    return { checked: true, slotKey, processed: [] as Array<Record<string, unknown>> };
+    return { checked: true, slotKey, processed: [] };
   }
 
-  const processed: Array<Record<string, unknown>> = [];
+  const processed: NotifyProcessedEntry[] = [];
 
   for (const schedule of schedules) {
     // 查该 identity 名下所有进行中的临时任务（未截止）
@@ -402,7 +409,7 @@ export async function runTemporaryNotifyScheduleTick(now = new Date()) {
     });
 
     if (!assignments.length) {
-      processed.push({ identityId: schedule.identityId, status: "NO_ACTIVE_ASSIGNMENTS" });
+      processed.push({ identityId: schedule.identityId, assignmentId: "", status: "NO_ACTIVE_ASSIGNMENTS" });
       continue;
     }
 
