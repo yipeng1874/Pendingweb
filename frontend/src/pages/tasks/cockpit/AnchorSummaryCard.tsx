@@ -1,35 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Users, RefreshCw, TrendingUp, Filter } from "lucide-react";
-import { anchorSummaryApi, type AnchorTrendResponse, type AnchorTrendPoint, type AnchorDailySummary, type OperatorStat } from "../../../services/task";
+import { anchorSummaryApi, type AnchorTrendResponse, type AnchorDailySummary, type OperatorStat } from "../../../services/task";
 import { useIdentityStore } from "../../../stores/identityStore";
-import {
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
 
 interface Props {
   scopeOrgId?: string;
 }
-
-/** 格式化 MM-DD */
-function fmtMD(dateStr: string): string {
-  const parts = dateStr.split("-");
-  return `${parts[1]}-${parts[2]}`;
-}
-
-const CHART_COLORS = {
-  online: "#10b981",
-  offline: "#94a3b8",
-  total: "#3b82f6",
-  dailyNew: "#f59e0b",
-};
 
 const PROBATION_OPTIONS = [
   { label: "无试用期", value: 0 },
@@ -109,34 +85,6 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
 
   const latest: AnchorDailySummary | null = trend?.latest ?? null;
 
-  // 趋势数据：补齐缺失日期（连续 7 天）
-  const chartData = useMemo(() => {
-    const points = trend?.points ?? [];
-    if (points.length === 0) return [];
-    const lastDate = new Date(points[points.length - 1].recordDate);
-    const result: Array<AnchorTrendPoint & { label: string }> = [];
-    const map = new Map(points.map((p) => [p.recordDate, p]));
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(lastDate);
-      d.setDate(d.getDate() - i);
-      const ds = d.toISOString().slice(0, 10);
-      const existing = map.get(ds);
-      result.push({
-        recordDate: ds,
-        label: fmtMD(ds),
-        totalCount: existing?.totalCount ?? 0,
-        onlineCount: existing?.onlineCount ?? 0,
-        offlineCount: existing?.offlineCount ?? 0,
-        within7Days: existing?.within7Days ?? 0,
-        within20Days: existing?.within20Days ?? 0,
-        dailyNew: existing?.dailyNew ?? 0,
-        probationDays: existing?.probationDays,
-        probationExcluded: existing?.probationExcluded,
-      });
-    }
-    return result;
-  }, [trend]);
-
   // 最新日期的试用期排除人数
   const latestProbationExcluded = trend?.latest?.probationExcluded ?? 0;
 
@@ -149,8 +97,8 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
             <TrendingUp size={16} className="text-feishu-blue shrink-0" />
             <span className="text-[14px] font-semibold text-slate-700">
               {trend?.baseOrgName
-                ? `${trend.baseOrgName} · 7日主播数量趋势`
-                : "基地主播数量趋势"}
+                ? `${trend.baseOrgName} · 主播数量统计`
+                : "基地主播数量统计"}
             </span>
             {latest && latest.operatorStats && (latest.operatorStats as OperatorStat[]).length > 0 && (
               <span className="text-[12px] font-medium text-slate-500 hidden sm:inline">
@@ -208,153 +156,78 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
           </div>
         </div>
 
-        {/* ── 内容区 ── */}
+        {/* ── 内容区：仅展示最新日期统计（图表已移除） ── */}
         {loading && !trend ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="space-y-4 w-full max-w-lg">
-              <div className="h-48 animate-pulse rounded-xl bg-slate-100" />
+          <div className="flex items-center justify-center py-12">
+            <div className="space-y-3 w-full max-w-2xl px-4">
+              <div className="h-20 animate-pulse rounded-xl bg-slate-100" />
             </div>
           </div>
-        ) : !trend || trend.points.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
+        ) : !latest ? (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
             <Users size={32} className="text-slate-200" />
             <p className="text-[13px]">暂无数据，请通过「上传数据 → 主播数据表」录入</p>
           </div>
         ) : (
-          <div className="flex gap-0">
-            {/* ── 左侧：趋势图（占 2/3） ── */}
-            <div className="flex-[2] px-5 pt-4 pb-3 border-r border-slate-100">
-              <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    axisLine={{ stroke: "#e2e8f0" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid #e2e8f0",
-                      boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-                      fontSize: 12,
-                      padding: "10px 14px",
-                    }}
-                    labelFormatter={(label) => `日期: ${label}`}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                    iconType="rect"
-                    iconSize={8}
-                  />
-                  <Bar
-                    dataKey="onlineCount"
-                    name="线上主播"
-                    fill={CHART_COLORS.online}
-                    radius={[4, 4, 0, 0]}
-                    barSize={20}
-                  />
-                  <Bar
-                    dataKey="offlineCount"
-                    name="线下主播"
-                    fill={CHART_COLORS.offline}
-                    radius={[4, 4, 0, 0]}
-                    barSize={20}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="totalCount"
-                    name="主播总数"
-                    stroke={CHART_COLORS.total}
-                    strokeWidth={2.5}
-                    dot={{ r: 4, fill: CHART_COLORS.total, strokeWidth: 2, stroke: "#fff" }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="dailyNew"
-                    name="当日新增"
-                    stroke={CHART_COLORS.dailyNew}
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: CHART_COLORS.dailyNew, strokeWidth: 1.5, stroke: "#fff" }}
-                    activeDot={{ r: 5 }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+            <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div ref={totalCardRef}>
+                <BigStatCard
+                  label="主播总数"
+                  value={latest.totalCount}
+                  sub={`线上 ${latest.onlineCount} · 线下 ${latest.offlineCount}`}
+                  color="text-feishu-blue"
+                  bg="bg-blue-50"
+                  interactive
+                  active={hoveredField === "total"}
+                  onHoverChange={(active) => {
+                    if (active) {
+                      updatePopoverPos("total");
+                      setHoveredField("total");
+                    } else {
+                      setHoveredField((prev) => (prev === "total" ? null : prev));
+                    }
+                  }}
+                />
+              </div>
+              <div ref={within7CardRef}>
+                <BigStatCard
+                  label="7天内新增"
+                  value={latest.within7Days}
+                  sub={`占总人数 ${latest.totalCount > 0 ? ((latest.within7Days / latest.totalCount) * 100).toFixed(1) : 0}%`}
+                  color="text-amber-600"
+                  bg="bg-orange-50"
+                  interactive
+                  active={hoveredField === "within7"}
+                  onHoverChange={(active) => {
+                    if (active) {
+                      updatePopoverPos("within7");
+                      setHoveredField("within7");
+                    } else {
+                      setHoveredField((prev) => (prev === "within7" ? null : prev));
+                    }
+                  }}
+                />
+              </div>
+              <div ref={within20CardRef}>
+                <BigStatCard
+                  label="20天内新增"
+                  value={latest.within20Days}
+                  sub={`占总人数 ${latest.totalCount > 0 ? ((latest.within20Days / latest.totalCount) * 100).toFixed(1) : 0}%`}
+                  color="text-blue-500"
+                  bg="bg-sky-50"
+                  interactive
+                  active={hoveredField === "within20"}
+                  onHoverChange={(active) => {
+                    if (active) {
+                      updatePopoverPos("within20");
+                      setHoveredField("within20");
+                    } else {
+                      setHoveredField((prev) => (prev === "within20" ? null : prev));
+                    }
+                  }}
+                />
+              </div>
             </div>
-
-            {/* ── 右侧：最新日期统计卡片 ── */}
-            <div className="flex-1 px-4 py-2 flex flex-col justify-center gap-1.5">
-              {latest && (
-                <>
-                  <div ref={totalCardRef}>
-                    <BigStatCard
-                      label="主播总数"
-                      value={latest.totalCount}
-                      sub={`线上 ${latest.onlineCount} · 线下 ${latest.offlineCount}`}
-                      color="text-feishu-blue"
-                      bg="bg-blue-50"
-                      interactive
-                      active={hoveredField === "total"}
-                      onHoverChange={(active) => {
-                        if (active) {
-                          updatePopoverPos("total");
-                          setHoveredField("total");
-                        } else {
-                          setHoveredField((prev) => (prev === "total" ? null : prev));
-                        }
-                      }}
-                    />
-                  </div>
-                  <div ref={within7CardRef}>
-                    <BigStatCard
-                      label="7天内新增"
-                      value={latest.within7Days}
-                      sub={`占总人数 ${latest.totalCount > 0 ? ((latest.within7Days / latest.totalCount) * 100).toFixed(1) : 0}%`}
-                      color="text-amber-600"
-                      bg="bg-orange-50"
-                      interactive
-                      active={hoveredField === "within7"}
-                      onHoverChange={(active) => {
-                        if (active) {
-                          updatePopoverPos("within7");
-                          setHoveredField("within7");
-                        } else {
-                          setHoveredField((prev) => (prev === "within7" ? null : prev));
-                        }
-                      }}
-                    />
-                  </div>
-                  <div ref={within20CardRef}>
-                    <BigStatCard
-                      label="20天内新增"
-                      value={latest.within20Days}
-                      sub={`占总人数 ${latest.totalCount > 0 ? ((latest.within20Days / latest.totalCount) * 100).toFixed(1) : 0}%`}
-                      color="text-blue-500"
-                      bg="bg-sky-50"
-                      interactive
-                      active={hoveredField === "within20"}
-                      onHoverChange={(active) => {
-                        if (active) {
-                          updatePopoverPos("within20");
-                          setHoveredField("within20");
-                        } else {
-                          setHoveredField((prev) => (prev === "within20" ? null : prev));
-                        }
-                      }}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
         )}
 
         {/* ── 底部：运营明细已移至标题旁（节省高度） ── */}

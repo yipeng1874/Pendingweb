@@ -251,8 +251,11 @@ liveRoomCapacityRoutes.post(
             if (!a.orgName || typeof a.orgName !== "string") {
               return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队分配缺少 orgName`, 400);
             }
+            if (!Number.isInteger(a.allocated) || a.allocated < 0) {
+              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队 "${a.orgName}" 分配数需为非负整数`, 400);
+            }
             if (!Number.isInteger(a.used) || a.used < 0) {
-              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队 "${a.orgName}" 占用数需为非负整数`, 400);
+              return fail(res, "INVALID_PARAM", `"${r.typeName}" 的团队 "${a.orgName}" 使用数需为非负整数`, 400);
             }
           }
         }
@@ -270,19 +273,28 @@ liveRoomCapacityRoutes.post(
       siteId: sd.siteId,
       siteName: sd.siteName || siteMap.get(sd.siteId) || sd.siteId,
       rooms: (sd.rooms ?? []).map((r: any) => {
+        const hasAlloc = Array.isArray(r.allocations) && r.allocations.length > 0;
+        const allocTotal = hasAlloc
+          ? r.allocations.reduce((s: number, a: any) => s + (a.allocated || 0), 0)
+          : (r.allocated || 0);
+        const allocUsed = hasAlloc
+          ? r.allocations.reduce((s: number, a: any) => s + (a.used || 0), 0)
+          : (r.used || 0);
         const room: any = {
           typeName: r.typeName.trim(),
-          used: r.used,
+          allocated: allocTotal,
+          used: allocUsed,
           total: r.total,
         };
-        // 保留 allocations（如果存在且非空）
-        if (Array.isArray(r.allocations) && r.allocations.length > 0) {
+        // 保留 allocations（allocated > 0 或 used > 0 的都保留）
+        if (hasAlloc && r.allocations.some((a: any) => (a.allocated || 0) > 0 || (a.used || 0) > 0)) {
           room.allocations = r.allocations
-            .filter((a: any) => a.used > 0)
+            .filter((a: any) => (a.allocated || 0) > 0 || (a.used || 0) > 0)
             .map((a: any) => ({
               orgId: a.orgId,
               orgName: a.orgName,
-              used: a.used,
+              allocated: a.allocated || 0,
+              used: a.used || 0,
             }));
         }
         return room;

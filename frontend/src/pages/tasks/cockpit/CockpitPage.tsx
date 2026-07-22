@@ -1,16 +1,16 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { Sparkles, AlertCircle, RefreshCw, TrendingUp, Users, CheckCircle2, Clock, Circle, ShieldOff, ChevronDown, Calendar, X, Building2, GraduationCap, UserMinus, Zap, Upload, FileSpreadsheet } from "lucide-react";
+import { Sparkles, AlertCircle, RefreshCw, TrendingUp, Users, CheckCircle2, Clock, Circle, ShieldOff, ChevronDown, Calendar, X, Building2, Upload, FileSpreadsheet } from "lucide-react";
 import { AnchorSummaryCard } from "./AnchorSummaryCard";
 import { SummaryDonut, rateColor } from "./SummaryDonut";
 import { KpiCard, AnchorLiveKpiCard } from "./KpiCards";
-import { HallOperatorPopover } from "./HallOperatorPopover";
-import { LossTrendPopover } from "./LossTrendPopover";
-import { WaveTrendPopover } from "./WaveTrendPopover";
+import { StaffTurnoverCard } from "./StaffTurnoverCard";
+import { RetentionCard } from "./RetentionCard";
+import { ProcessMetricCard } from "./ProcessMetricCard";
 import { api } from "../../../services/http";
-import { anchorLossSummaryApi, anchorAvgWaveApi, anchorSummaryApi, liveRoomCapacityApi, liveRoomSiteApi, dataOverviewApi, hallSummaryApi, reportApi } from "../../../services/task";
-import type { AnchorLossTrendResponse, HallOperatorStat, HallTrendResponse, LiveRoomCapacity, LiveRoomSite, SiteDetail, AnchorAvgWaveTrendResponse } from "../../../services/task";
+import { anchorSummaryApi, liveRoomCapacityApi, liveRoomSiteApi, reportApi } from "../../../services/task";
+import type { LiveRoomCapacity, LiveRoomSite, SiteDetail } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
 import { useIdentityStore } from "../../../stores/identityStore";
 import type { User, OrgUnit, DailyDashboardResponse, DailyRangeStatsResponse } from "../../../types";
@@ -42,35 +42,19 @@ export function CockpitPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
 
-  // 厅个数趋势数据（正式厅 / 训练厅 KPI）
-  const [hallTrend, setHallTrend] = useState<HallTrendResponse | null>(null);
-  // 主播流失趋势数据
-  const [lossTrend, setLossTrend] = useState<AnchorLossTrendResponse | null>(null);
-
   // 基地直播间空余数据
   const [roomCapacity, setRoomCapacity] = useState<LiveRoomCapacity | null>(null);
-  // 人均音浪趋势数据
-  const [avgWaveTrend, setAvgWaveTrend] = useState<AnchorAvgWaveTrendResponse | null>(null);
 
-  // 厅个数上传弹窗状态
-  const [hallUploadDate, setHallUploadDate] = useState("");
-  const [hallUploadFile, setHallUploadFile] = useState<File | null>(null);
-  const [hallUploading, setHallUploading] = useState(false);
-  const [hallUploadError, setHallUploadError] = useState("");
-  const hallFileInputRef = useRef<HTMLInputElement>(null);
+  // 厅个数上传弹窗状态（已移除）
 
-  // 数据录入弹窗（直播间空余：场地+房间类型 / 人均音浪）
-  const [dataInputDate, setDataInputDate] = useState(getBeijingDateStr(-1));
-  const [dataInputAvgWave, setDataInputAvgWave] = useState("");
-  const [dataInputOfflineAvgWave, setDataInputOfflineAvgWave] = useState("");
-  const [dataInputTotalAvgWave, setDataInputTotalAvgWave] = useState("");
+  // 数据录入弹窗（直播间空余：场地+房间类型）
   const [dataInputLoading, setDataInputLoading] = useState(false);
   const [dataInputError, setDataInputError] = useState("");
   // 场地+房间输入
   const [liveRoomSites, setLiveRoomSites] = useState<LiveRoomSite[]>([]);
   // 录入表单：key = siteId, value = { siteName, rooms: [{ typeName, used, total, allocations }] }
-  type AllocInputRow = { orgId: string; orgName: string; used: string; };
-  type RoomInputRow = { key: number; typeName: string; used: string; total: string; allocations: AllocInputRow[]; allocExpanded: boolean; };
+  type AllocInputRow = { orgId: string; orgName: string; allocated: string; used: string; };
+  type RoomInputRow = { key: number; typeName: string; used: string; total: string; allocations: AllocInputRow[]; allocExpanded: boolean; teamSelectorOpen: boolean; };
   type SiteInputData = { siteName: string; rooms: RoomInputRow[]; };
   const [siteInputs, setSiteInputs] = useState<Record<string, SiteInputData>>({});
   // 场地管理
@@ -85,24 +69,13 @@ export function CockpitPage() {
 
   // 统一上传弹窗
   const [dataUploadOpen, setDataUploadOpen] = useState(false);
-  const [dataUploadTab, setDataUploadTab] = useState<"excel" | "anchor" | "manual">("excel");
+  const [dataUploadTab, setDataUploadTab] = useState<"anchor" | "manual">("anchor");
   // 主播数据表上传 state
   const [anchorUploadDate, setAnchorUploadDate] = useState(getBeijingDateStr(-1));
   const [anchorUploadFile, setAnchorUploadFile] = useState<File | null>(null);
   const [anchorUploading, setAnchorUploading] = useState(false);
   const [anchorUploadError, setAnchorUploadError] = useState("");
   const anchorFileInputRef = useRef<HTMLInputElement>(null);
-
-  // 厅个数 KPI 卡片悬停浮层
-  const [hoveredHallKpi, setHoveredHallKpi] = useState<"formal" | "training" | null>(null);
-  const formalKpiRef = useRef<HTMLDivElement>(null);
-  const trainingKpiRef = useRef<HTMLDivElement>(null);
-  // 流失卡片悬停浮层
-  const [hoveredLossKpi, setHoveredLossKpi] = useState(false);
-  const lossKpiRef = useRef<HTMLDivElement>(null);
-  // 音浪卡片悬停浮层
-  const [hoveredWaveKpi, setHoveredWaveKpi] = useState(false);
-  const waveKpiRef = useRef<HTMLDivElement>(null);
 
   // 基地选择（给 DEV_ADMIN / HQ_ADMIN 使用）
   const [baseOrgs, setBaseOrgs] = useState<OrgUnit[]>([]);
@@ -183,44 +156,6 @@ export function CockpitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBaseOrgId]);
 
-  // ── 厅个数趋势数据（正式厅/训练厅 KPI） ──
-  const loadHallTrend = (overrideScopeOrgId?: string) => {
-    if (!showDashboard) return;
-    const sid = overrideScopeOrgId ?? scopeOrgId;
-    if (needsBaseSelect && !sid) return;
-    hallSummaryApi.getTrend(sid, 7)
-      .then(setHallTrend)
-      .catch(() => setHallTrend(null));
-  };
-
-  useEffect(() => {
-    if (needsBaseSelect) return;
-    loadHallTrend();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDashboard, currentIdentity?.id]);
-
-  useEffect(() => {
-    if (!needsBaseSelect || !selectedBaseOrgId) return;
-    loadHallTrend(selectedBaseOrgId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBaseOrgId]);
-
-  // ── 主播流失趋势数据 ──
-  const loadLossTrend = (sid?: string) => {
-    if (!showDashboard) return;
-    anchorLossSummaryApi.getTrend(sid ?? scopeOrgId, 7)
-      .then(setLossTrend)
-      .catch(() => setLossTrend(null));
-  };
-  useEffect(() => {
-    if (needsBaseSelect) return;
-    loadLossTrend();
-  }, [showDashboard, currentIdentity?.id]);
-  useEffect(() => {
-    if (!needsBaseSelect || !selectedBaseOrgId) return;
-    loadLossTrend(selectedBaseOrgId);
-  }, [selectedBaseOrgId]);
-
   // ── 直播间空余数据 ──
   const loadRoomCapacity = (sid?: string) => {
     if (!showDashboard) return;
@@ -235,22 +170,6 @@ export function CockpitPage() {
   useEffect(() => {
     if (!needsBaseSelect || !selectedBaseOrgId) return;
     loadRoomCapacity(selectedBaseOrgId);
-  }, [selectedBaseOrgId]);
-
-  // ── 人均音浪趋势数据 ──
-  const loadAvgWaveTrend = (sid?: string) => {
-    if (!showDashboard) return;
-    anchorAvgWaveApi.getTrend(sid ?? scopeOrgId, 7)
-      .then(setAvgWaveTrend)
-      .catch(() => setAvgWaveTrend(null));
-  };
-  useEffect(() => {
-    if (needsBaseSelect) return;
-    loadAvgWaveTrend();
-  }, [showDashboard, currentIdentity?.id]);
-  useEffect(() => {
-    if (!needsBaseSelect || !selectedBaseOrgId) return;
-    loadAvgWaveTrend(selectedBaseOrgId);
   }, [selectedBaseOrgId]);
 
   // ── 初始化录入表单（加载场地 + 已有容量 + 团队列表） ──
@@ -286,8 +205,8 @@ export function CockpitPage() {
             globalKey++;
             const eAllocs = (r as any).allocations as any[] | undefined;
             const allocRows: AllocInputRow[] = eAllocs
-              ? eAllocs.map((a) => ({ orgId: a.orgId, orgName: a.orgName, used: String(a.used ?? "") }))
-              : teams.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" }));
+              ? eAllocs.map((a) => ({ orgId: a.orgId, orgName: a.orgName, allocated: String(a.allocated ?? ""), used: String(a.used ?? "") }))
+              : [];
             return {
               key: globalKey,
               typeName: r.typeName ?? "",
@@ -295,8 +214,9 @@ export function CockpitPage() {
               total: String(r.total ?? ""),
               allocations: allocRows,
               allocExpanded: false,
+              teamSelectorOpen: false,
             };
-          }) ?? [{ key: ++globalKey, typeName: "", used: "", total: "", allocations: teams.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }],
+          }) ?? [{ key: ++globalKey, typeName: "", used: "", total: "", allocations: [], allocExpanded: false, teamSelectorOpen: false }],
         };
       });
       setSiteInputs(map);
@@ -321,27 +241,21 @@ export function CockpitPage() {
   // ── 数据录入弹窗已合并到统一上传弹窗 ──
   const handleDataInputSubmit = async () => {
     setDataInputError("");
-    const avgWave = parseFloat(dataInputAvgWave);
-    const offlineAvgWave = parseFloat(dataInputOfflineAvgWave);
-    const totalAvgWave = parseFloat(dataInputTotalAvgWave);
 
     // 构建 siteDetails
     const siteIds = Object.keys(siteInputs);
     const roomHasData = (r: RoomInputRow) => {
       if (!r.typeName.trim()) return false;
-      const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
+      const hasAllocData = r.allocations && r.allocations.some((a) => a.allocated !== "" || a.used !== "");
       return !!(r.used || r.total || hasAllocData);
     };
     const hasRoomData = siteIds.some((sid) => {
       const d = siteInputs[sid];
       return d.rooms.some(roomHasData);
     });
-    const hasWave = !!dataInputAvgWave;
-    const hasOfflineWave = !!dataInputOfflineAvgWave;
-    const hasTotalWave = !!dataInputTotalAvgWave;
 
-    if (!hasRoomData && !hasWave && !hasOfflineWave && !hasTotalWave) {
-      setDataInputError("请至少填写一项数据");
+    if (!hasRoomData) {
+      setDataInputError("请至少填写一个房间数据");
       return;
     }
 
@@ -352,27 +266,27 @@ export function CockpitPage() {
         for (const r of d.rooms) {
           if (!r.typeName.trim() && !r.used && !r.total) continue;
           if (!r.typeName.trim()) { setDataInputError(`场地 "${d.siteName}" 存在空的房间类型名称`); return; }
-          const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
+          const hasAllocData = r.allocations && r.allocations.some((a) => a.allocated !== "" || a.used !== "");
           const total = parseInt(r.total, 10);
           if (!hasAllocData && r.used && (isNaN(parseInt(r.used, 10)) || parseInt(r.used, 10) < 0)) { setDataInputError(`"${r.typeName}" 已使用需为有效非负整数`); return; }
           if (r.total && (isNaN(total) || total < 0)) { setDataInputError(`"${r.typeName}" 总数需为有效非负整数`); return; }
           // 校验 allocations 中的每个值
           if (r.allocations) {
             for (const a of r.allocations) {
+              if (a.allocated && (isNaN(parseInt(a.allocated, 10)) || parseInt(a.allocated, 10) < 0)) {
+                setDataInputError(`"${r.typeName}" 中团队 "${a.orgName}" 分配数需为有效非负整数`); return;
+              }
               if (a.used && (isNaN(parseInt(a.used, 10)) || parseInt(a.used, 10) < 0)) {
-                setDataInputError(`"${r.typeName}" 中团队 "${a.orgName}" 占用数需为有效非负整数`); return;
+                setDataInputError(`"${r.typeName}" 中团队 "${a.orgName}" 使用数需为有效非负整数`); return;
               }
             }
           }
         }
       }
     }
-    if ((hasWave || hasOfflineWave || hasTotalWave) && !dataInputDate) {
-      setDataInputError("请选择人均音浪的归属日期"); return;
+    if (hasRoomData) {
+      // 校验
     }
-    if (hasWave && (isNaN(avgWave) || avgWave < 0)) { setDataInputError("线上人均音浪需为有效非负数"); return; }
-    if (hasOfflineWave && (isNaN(offlineAvgWave) || offlineAvgWave < 0)) { setDataInputError("线下人均音浪需为有效非负数"); return; }
-    if (hasTotalWave && (isNaN(totalAvgWave) || totalAvgWave < 0)) { setDataInputError("人均音浪需为有效非负数"); return; }
 
     setDataInputLoading(true);
     try {
@@ -390,20 +304,23 @@ export function CockpitPage() {
               siteId: sid,
               siteName: site?.name ?? d.siteName,
               rooms: d.rooms
-                .filter((r) => r.typeName.trim() && (r.used || r.total || (r.allocations && r.allocations.some((a) => a.used !== ""))))
+                .filter((r) => r.typeName.trim() && (r.used || r.total || (r.allocations && r.allocations.some((a) => a.allocated !== "" || a.used !== ""))))
                 .map((r) => {
-                  const hasAllocData = r.allocations && r.allocations.some((a) => a.used !== "");
+                  const hasAllocData = r.allocations && r.allocations.some((a) => a.allocated !== "" || a.used !== "");
+                  const allocTotal = r.allocations ? r.allocations.reduce((s, a) => s + (parseInt(a.allocated, 10) || 0), 0) : 0;
                   const allocUsed = r.allocations ? r.allocations.reduce((s, a) => s + (parseInt(a.used, 10) || 0), 0) : 0;
+                  const allocated = hasAllocData ? allocTotal : (parseInt(r.used, 10) || 0); // 旧数据兼容：没有 allocated 时用 used
                   const used = hasAllocData ? allocUsed : (parseInt(r.used, 10) || 0);
                   const out: any = {
                     typeName: r.typeName.trim(),
+                    allocated,
                     used,
                     total: parseInt(r.total, 10) || 0,
                   };
                   if (hasAllocData) {
                     out.allocations = r.allocations!
-                      .filter((a) => a.used !== "")
-                      .map((a) => ({ orgId: a.orgId, orgName: a.orgName, used: parseInt(a.used, 10) || 0 }));
+                      .filter((a) => a.allocated !== "" || a.used !== "")
+                      .map((a) => ({ orgId: a.orgId, orgName: a.orgName, allocated: parseInt(a.allocated, 10) || 0, used: parseInt(a.used, 10) || 0 }));
                   }
                   return out;
                 }),
@@ -411,53 +328,14 @@ export function CockpitPage() {
           });
         tasks.push(liveRoomCapacityApi.upsert({ siteDetails }, scopeOrgId));
       }
-      if (hasWave) {
-        tasks.push(anchorAvgWaveApi.upsert({ recordDate: dataInputDate, avgWaveValue: avgWave, waveType: "online" }, scopeOrgId));
-      }
-      if (hasOfflineWave) {
-        tasks.push(anchorAvgWaveApi.upsert({ recordDate: dataInputDate, avgWaveValue: offlineAvgWave, waveType: "offline" }, scopeOrgId));
-      }
-      if (hasTotalWave) {
-        tasks.push(anchorAvgWaveApi.upsert({ recordDate: dataInputDate, avgWaveValue: totalAvgWave, waveType: "total" }, scopeOrgId));
-      }
       await Promise.all(tasks);
       if (hasRoomData) loadRoomCapacity();
-      if (hasWave || hasOfflineWave || hasTotalWave) loadAvgWaveTrend();
-      loadHallTrend();
-      loadLossTrend();
       setDataUploadOpen(false);
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || "录入失败";
       setDataInputError(msg);
     } finally {
       setDataInputLoading(false);
-    }
-  };
-
-  // ── 厅个数上传 ──
-  // 厅个数上传已合并到统一上传弹窗 ──
-  const handleHallFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setHallUploadFile(file);
-  };
-  const handleHallConfirmUpload = async () => {
-    if (!hallUploadFile) return;
-    setHallUploading(true);
-    setHallUploadError("");
-    try {
-      const res = await dataOverviewApi.upload(hallUploadFile, scopeOrgId, hallUploadDate);
-      console.log("上传成功:", res);
-      setDataUploadOpen(false);
-      setHallUploadFile(null);
-      if (hallFileInputRef.current) hallFileInputRef.current.value = "";
-      loadHallTrend();
-      loadLossTrend();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "上传失败，请检查网络或重试";
-      setHallUploadError(msg);
-      console.error("上传失败:", e);
-    } finally {
-      setHallUploading(false);
     }
   };
 
@@ -702,13 +580,11 @@ export function CockpitPage() {
             <span className="pointer-events-none absolute inset-0 rounded-lg bg-white/20 animate-ping opacity-0 group-hover:opacity-30" />
             <button
               onDoubleClick={() => {
-                const yesterday = getBeijingDateStr(-1);
-                setHallUploadDate(yesterday);
-                setHallUploadFile(null);
-                setHallUploadError("");
-                setDataInputDate(yesterday);
-                setDataInputAvgWave(""); setDataInputOfflineAvgWave(""); setDataInputTotalAvgWave(""); setDataInputError("");
-                setDataUploadTab("excel");
+                setAnchorUploadDate(getBeijingDateStr(-1));
+                setAnchorUploadFile(null);
+                setAnchorUploadError("");
+                setDataInputError("");
+                setDataUploadTab("anchor");
                 setDataUploadOpen(true);
               }}
               title="双击打开上传"
@@ -1089,7 +965,13 @@ export function CockpitPage() {
                   {details.map((sd, si) => {
                     const siteName = sd.siteName || "未命名";
                     const rooms = sd.rooms ?? [];
-                    // 辅助：有 allocations 时 used = sum(allocations.used)，否则用旧字段
+                    // 辅助：有 allocations 时 allocated/used = sum(allocations)，否则用旧字段
+                    const getAllocated = (r: any) => {
+                      if (r.allocations && r.allocations.length > 0) {
+                        return r.allocations.reduce((s: number, a: any) => s + (a.allocated || 0), 0);
+                      }
+                      return r.allocated || 0;
+                    };
                     const getUsed = (r: any) => {
                       if (r.allocations && r.allocations.length > 0) {
                         return r.allocations.reduce((s: number, a: any) => s + (a.used || 0), 0);
@@ -1097,22 +979,24 @@ export function CockpitPage() {
                       return r.used || 0;
                     };
                     const grandTotal = rooms.reduce((s, r) => s + (r.total || 0), 0);
+                    const grandAllocated = rooms.reduce((s, r) => s + getAllocated(r), 0);
                     const grandUsed = rooms.reduce((s, r) => s + getUsed(r), 0);
                     const grandSpare = Math.max(0, grandTotal - grandUsed);
-                    // 聚合：该场地跨所有类型的团队占用
-                    const teamAgg = new Map<string, { orgId: string; orgName: string; used: number }>();
+                    // 聚合：该场地跨所有类型的团队分配与使用
+                    const teamAgg = new Map<string, { orgId: string; orgName: string; allocated: number; used: number }>();
                     rooms.forEach((r) => {
                       const rAllocs = (r as any).allocations as any[] | undefined;
                       if (!rAllocs) return;
                       rAllocs.forEach((a) => {
-                        const cur = teamAgg.get(a.orgId) ?? { orgId: a.orgId, orgName: a.orgName, used: 0 };
+                        const cur = teamAgg.get(a.orgId) ?? { orgId: a.orgId, orgName: a.orgName, allocated: 0, used: 0 };
+                        cur.allocated += a.allocated || 0;
                         cur.used += a.used || 0;
                         teamAgg.set(a.orgId, cur);
                       });
                     });
                     const sortedTeamAgg = Array.from(teamAgg.values())
-                      .filter((t) => t.used > 0)
-                      .sort((a, b) => b.used - a.used);
+                      .filter((t) => t.allocated > 0 || t.used > 0)
+                      .sort((a, b) => b.allocated - a.allocated);
                     const hasTeamAgg = sortedTeamAgg.length > 0;
                     return (
                       <div key={sd.siteId || si} className="shrink-0 snap-start rounded-2xl border border-slate-100 bg-gradient-to-br from-[#0a1a3a] to-[#102a5e] text-white px-5 py-4 shadow-sm flex flex-col" style={{ width: "calc(50% - 6px)" }}>
@@ -1125,12 +1009,12 @@ export function CockpitPage() {
                         <div className="space-y-2.5 flex-1">
                           {rooms.map((r, ri) => {
                             const usedVal = getUsed(r);
-                            const pct = r.total > 0 ? Math.round((usedVal / r.total) * 100) : 0;
+                            const usedPct = r.total > 0 ? Math.round((usedVal / r.total) * 100) : 0;
                             const colorIdx = ri % typeColors.length;
                             const hasAllocations = r.allocations && r.allocations.length > 0;
-                            // 悬停展示用：按 used 倒序
+                            // 悬停展示用：按 allocated 倒序
                             const sortedAllocs = hasAllocations
-                              ? [...r.allocations!].sort((a: any, b: any) => (b.used || 0) - (a.used || 0))
+                              ? [...r.allocations!].sort((a: any, b: any) => ((b.allocated || 0) + (b.used || 0)) - ((a.allocated || 0) + (a.used || 0)))
                               : [];
                             return (
                               <div
@@ -1140,39 +1024,35 @@ export function CockpitPage() {
                                 <div className="flex items-center gap-2 text-[13px] cursor-default">
                                   <span className="text-slate-200 font-semibold shrink-0 w-14 truncate">{r.typeName}</span>
                                   <div className="h-2 flex-1 rounded-full bg-slate-700/40 overflow-hidden">
-                                    <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${pct}%` }} />
+                                    <div className={`h-full rounded-full ${typeColors[colorIdx]}`} style={{ width: `${usedPct}%` }} />
                                   </div>
-                                  <span className="tabular-nums shrink-0">
+                                  <span className="tabular-nums shrink-0 flex items-center gap-1">
                                     <span className="text-white font-bold">{usedVal}</span>
                                     <span className="text-slate-500 font-medium">/{r.total}</span>
-                                    <span className="ml-1.5 text-[12px] text-slate-300 font-semibold">{pct}%</span>
                                   </span>
                                 </div>
                                 {/* 悬停 popover：仅在有团队分配时显示 */}
                                 {hasAllocations && (
                                   <div className="absolute left-12 top-full mt-1 z-20 invisible opacity-0 group-hover/row:visible group-hover/row:opacity-100 transition-opacity duration-150 pointer-events-none">
-                                    <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[180px] max-w-[260px]">
+                                    <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[220px] max-w-[300px]">
                                       <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between">
-                                        <span>团队占用明细</span>
+                                        <span>团队已使用/总数</span>
                                         <span className="text-slate-500">{r.typeName}</span>
                                       </div>
                                       <div className="space-y-1">
                                         {sortedAllocs.map((a: any, ai: number) => {
-                                          const aPct = r.total > 0 ? Math.round(((a.used || 0) / r.total) * 100) : 0;
+                                          const aAlloc = a.allocated || 0;
+                                          const aUsed = a.used || 0;
+                                          const aPct = r.total > 0 ? Math.round((aAlloc / r.total) * 100) : 0;
                                           return (
                                             <div key={ai} className="flex items-center gap-2 text-[11px]">
                                               <span className="text-slate-200 truncate flex-1">{a.orgName}</span>
-                                              <span className="tabular-nums text-sky-300 font-semibold w-8 text-right">{a.used || 0}</span>
+                                              <span className="tabular-nums text-emerald-300 font-semibold w-16 text-right" title="已使用/总数">{aUsed}/{aAlloc}</span>
                                               <span className="tabular-nums text-slate-500 w-10 text-right">{aPct}%</span>
                                             </div>
                                           );
                                         })}
                                       </div>
-                                      {r.allocations!.some((a: any) => !a.used) && (
-                                        <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-700">
-                                          共 {r.allocations!.length} 个团队，已填 {r.allocations!.filter((a: any) => a.used).length} 个
-                                        </div>
-                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -1184,37 +1064,41 @@ export function CockpitPage() {
                         <div className="relative group/summary mt-3 pt-2 border-t border-white/10">
                           <div className="flex items-center gap-3 text-[12px] text-slate-300 font-medium tabular-nums cursor-default">
                             <span>总 <strong className="text-white text-[15px] font-bold ml-0.5">{grandTotal}</strong></span>
-                            <span className="text-sky-300">已用 <strong className="text-sky-300 text-[15px] font-bold ml-0.5">{grandUsed}</strong></span>
-                            <span className="text-emerald-300">空余 <strong className="text-emerald-300 text-[15px] font-bold ml-0.5">{grandSpare}</strong></span>
+                            <span className="text-sky-300">已分配 <strong className="text-sky-300 text-[15px] font-bold ml-0.5">{grandAllocated}</strong></span>
+                            <span className="text-emerald-300">已使用 <strong className="text-emerald-300 text-[15px] font-bold ml-0.5">{grandUsed}</strong></span>
+                            <span className="text-amber-300">空余 <strong className="text-amber-300 text-[15px] font-bold ml-0.5">{grandSpare}</strong></span>
                           </div>
-                          {/* 悬停 popover：聚合所有类型的团队占用 */}
+                          {/* 悬停 popover：聚合所有类型的团队分配与使用 */}
                           {hasTeamAgg && (
                             <div className="absolute left-0 bottom-full mb-2 z-20 invisible opacity-0 group-hover/summary:visible group-hover/summary:opacity-100 transition-opacity duration-150 pointer-events-none">
-                              <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[200px] max-w-[280px]">
-                                <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between">
-                                  <span>团队整体占比</span>
-                                  <span className="text-slate-500">{siteName}</span>
-                                </div>
-                                <div className="space-y-1.5">
-                                  {sortedTeamAgg.map((t) => {
-                                    const tPct = grandTotal > 0 ? Math.round((t.used / grandTotal) * 100) : 0;
-                                    return (
-                                      <div key={t.orgId} className="flex items-center gap-2 text-[11px]">
-                                        <span className="text-slate-200 truncate flex-1" title={t.orgName}>{t.orgName}</span>
-                                        <span className="tabular-nums text-sky-300 font-semibold w-8 text-right">{t.used}</span>
-                                        <span className="tabular-nums text-slate-500 w-10 text-right">{tPct}%</span>
-                                        <div className="w-10 h-1 rounded-full bg-slate-700/60 overflow-hidden">
-                                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${tPct}%` }} />
+                                <div className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-xl border border-slate-700 px-3 py-2 min-w-[240px] max-w-[300px]">
+                                  <div className="text-[10px] text-slate-400 mb-1.5 flex items-center justify-between">
+                                    <span>团队整体占比（使用/分配）</span>
+                                    <span className="text-slate-500">{siteName}</span>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {sortedTeamAgg.map((t) => {
+                                      const tPct = grandTotal > 0 ? Math.round((t.allocated / grandTotal) * 100) : 0;
+                                      return (
+                                        <div key={t.orgId} className="flex items-center gap-2 text-[11px]">
+                                          <span className="text-slate-200 truncate flex-1" title={t.orgName}>{t.orgName}</span>
+                                          <span className="tabular-nums text-emerald-300 font-semibold w-7 text-right">{t.used}</span>
+                                          <span className="tabular-nums text-sky-300 font-semibold w-7 text-right">{t.allocated}</span>
+                                          <span className="tabular-nums text-slate-500 w-8 text-right">{tPct}%</span>
+                                          <div className="w-10 h-1 rounded-full bg-slate-700/60 overflow-hidden">
+                                            <div className="h-full rounded-full bg-sky-400" style={{ width: `${tPct}%` }} />
+                                          </div>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-700 tabular-nums">
+                                    已使用 <span className="text-emerald-300 font-semibold">{grandUsed}</span>
+                                    <span className="text-slate-500"> / 已分配 </span>
+                                    <span className="text-sky-300 font-semibold">{grandAllocated}</span>
+                                    <span className="text-slate-500"> / 总计 {grandTotal}</span>
+                                  </div>
                                 </div>
-                                <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-700 tabular-nums">
-                                  合计 <span className="text-sky-300 font-semibold">{grandUsed}</span>
-                                  <span className="text-slate-500"> / {grandTotal} ({grandTotal > 0 ? Math.round((grandUsed / grandTotal) * 100) : 0}%)</span>
-                                </div>
-                              </div>
                             </div>
                           )}
                         </div>
@@ -1229,207 +1113,18 @@ export function CockpitPage() {
         </>
       )}
 
-      {/* ── 主播运营 KPI 概览 ── */}
-      {showDashboard && (() => {
-        const pts = hallTrend?.points ?? [];
-        const latestItem = pts.length > 0 ? pts[pts.length - 1] : null;
-        const prevItem = pts.length > 1 ? pts[pts.length - 2] : null;
-        const formalCount = latestItem?.formalHallCount ?? 0;
-        const trainingCount = latestItem?.trainingHallCount ?? 0;
-        const formalChange = prevItem ? formalCount - prevItem.formalHallCount : 0;
-        const trainingChange = prevItem ? trainingCount - prevItem.trainingHallCount : 0;
-
-        // 厅运营明细
-        const operatorStats: HallOperatorStat[] = (hallTrend?.latest?.operatorStats as HallOperatorStat[]) ?? [];
-        const prevDayOperatorStats: HallOperatorStat[] = (hallTrend?.prevDay?.operatorStats as HallOperatorStat[]) ?? [];
-
-        // 主播流失数据
-        const lossLatest = lossTrend?.latest;
-        const lossCount = lossLatest?.lossWithin30Days ?? 0;
-        const lossYesterday = lossLatest?.lossYesterday ?? 0;
-
-        return (
-        <div className="space-y-3">
-          {/* KPI 卡片 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* 正式厅：悬停展示运营占比明细 */}
-            <div
-              ref={formalKpiRef}
-              onMouseEnter={() => setHoveredHallKpi("formal")}
-              onMouseLeave={() => setHoveredHallKpi(null)}
-              className="flex-1 min-w-[180px] relative"
-            >
-              <AnchorLiveKpiCard
-                icon={<Building2 size={18} />}
-                label="正式厅"
-                value={formalCount}
-                unit="个"
-                change={formalChange}
-                iconColor="text-blue-600"
-                iconBg="bg-blue-50"
-              />
-              {hoveredHallKpi === "formal" && operatorStats.length > 0 && (
-                <HallOperatorPopover
-                  field="formal"
-                  recordDate={hallTrend?.latest?.recordDate ?? ""}
-                  operators={operatorStats}
-                  prevDayOperators={prevDayOperatorStats}
-                  cardRef={formalKpiRef}
-                />
-              )}
-              {hoveredHallKpi === "formal" && operatorStats.length === 0 && (() => {
-                const r = formalKpiRef.current?.getBoundingClientRect();
-                if (!r) return null;
-                const VIEWPORT_W = window.innerWidth;
-                const showOnRight = VIEWPORT_W - r.right >= 360 + 12;
-                const emptyLeft = showOnRight ? r.right + 12 : Math.max(12, r.left - 360 - 12);
-                return (
-                  <div
-                    className="fixed z-50 rounded-xl bg-white border-2 border-slate-300 overflow-hidden"
-                    style={{
-                      top: r.top,
-                      left: emptyLeft,
-                      width: 360,
-                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18)',
-                    }}
-                  >
-                    <div className="flex items-center px-4 py-2 border-b border-slate-200 bg-slate-50">
-                      <span className="text-[13px] font-semibold text-slate-700">正式厅 · 按运营占比排序</span>
-                    </div>
-                    <div className="px-4 py-8 text-center">
-                      <p className="text-[12px] text-slate-400 mb-2">暂无运营明细</p>
-                      <p className="text-[11px] text-slate-300">请点击右上角「上传数据看板」录入每日快照</p>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-            {/* 训练厅：悬停展示运营占比明细 */}
-            <div
-              ref={trainingKpiRef}
-              onMouseEnter={() => setHoveredHallKpi("training")}
-              onMouseLeave={() => setHoveredHallKpi(null)}
-              className="flex-1 min-w-[180px] relative"
-            >
-              <AnchorLiveKpiCard
-                icon={<GraduationCap size={18} />}
-                label="训练厅"
-                value={trainingCount}
-                unit="个"
-                change={trainingChange}
-                iconColor="text-emerald-600"
-                iconBg="bg-emerald-50"
-              />
-              {hoveredHallKpi === "training" && operatorStats.length > 0 && (
-                <HallOperatorPopover
-                  field="training"
-                  recordDate={hallTrend?.latest?.recordDate ?? ""}
-                  operators={operatorStats}
-                  prevDayOperators={prevDayOperatorStats}
-                  cardRef={trainingKpiRef}
-                />
-              )}
-              {hoveredHallKpi === "training" && operatorStats.length === 0 && (() => {
-                const r = trainingKpiRef.current?.getBoundingClientRect();
-                if (!r) return null;
-                const VIEWPORT_W = window.innerWidth;
-                const showOnRight = VIEWPORT_W - r.right >= 360 + 12;
-                const emptyLeft = showOnRight ? r.right + 12 : Math.max(12, r.left - 360 - 12);
-                return (
-                <div
-                  className="fixed z-50 rounded-xl bg-white border-2 border-slate-300 overflow-hidden"
-                  style={{
-                    top: r.top,
-                    left: emptyLeft,
-                    width: 360,
-                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18)',
-                  }}
-                >
-                  <div className="flex items-center px-4 py-2 border-b border-slate-200 bg-slate-50">
-                    <span className="text-[13px] font-semibold text-slate-700">训练厅 · 按运营占比排序</span>
-                  </div>
-                  <div className="px-4 py-8 text-center">
-                    <p className="text-[12px] text-slate-400 mb-2">暂无运营明细</p>
-                    <p className="text-[11px] text-slate-300">请点击右上角「上传数据看板」录入每日快照</p>
-                  </div>
-                </div>
-                );
-              })()}
-            </div>
-            <div
-              ref={lossKpiRef}
-              onMouseEnter={() => setHoveredLossKpi(true)}
-              onMouseLeave={() => setHoveredLossKpi(false)}
-              className="flex-1 min-w-[180px] relative"
-            >
-            <AnchorLiveKpiCard
-              icon={<UserMinus size={18} />}
-              label="近30天主播流失"
-              value={lossCount || "--"}
-              unit="人"
-              change={lossYesterday}
-              changeLabel="昨日流失"
-              iconColor="text-red-500"
-              iconBg="bg-red-50"
-            />
-              {hoveredLossKpi && (
-                <LossTrendPopover
-                  lossDetail={(lossLatest?.lossDetail as Record<string, number>) || {}}
-                  lossOperatorDetail={(lossLatest?.lossOperatorDetail as Record<string, Record<string, number>>) || {}}
-                  anchorDate={lossLatest?.recordDate ?? ""}
-                  cardRef={lossKpiRef}
-                />
-              )}
-            </div>
-            <div
-              ref={waveKpiRef}
-              onMouseEnter={() => setHoveredWaveKpi(true)}
-              onMouseLeave={() => setHoveredWaveKpi(false)}
-              className="flex-1 min-w-[180px] relative"
-            >
-              <AnchorLiveKpiCard
-                icon={<Zap size={18} />}
-                label="线下人均音浪"
-                value={(() => {
-                  const off = avgWaveTrend?.offline?.latest;
-                  return off ? off.avgWaveValue.toFixed(1) : "--";
-                })()}
-                unit="万"
-                change={avgWaveTrend?.online?.latest ? Number(avgWaveTrend.online.latest.avgWaveValue.toFixed(1)) : 0}
-                changeLabel="线上"
-                secondaryChange={avgWaveTrend?.total?.latest ? Number(avgWaveTrend.total.latest.avgWaveValue.toFixed(1)) : 0}
-                secondaryLabel="人均"
-                trendChange={avgWaveTrend?.offline?.change}
-                iconColor="text-amber-600"
-                iconBg="bg-amber-50"
-              />
-              {hoveredWaveKpi && avgWaveTrend && (
-                <WaveTrendPopover
-                  online={avgWaveTrend.online}
-                  offline={avgWaveTrend.offline}
-                  total={avgWaveTrend.total}
-                  cardRef={waveKpiRef}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* 统一上传弹窗（厅数据/流失表 / 主播数据表 / 数值录入） */}
-          {dataUploadOpen && (() => {
-            const isExcel = dataUploadTab === "excel";
+      {/* ── 统一上传弹窗（流失表 / 主播数据表 / 数值录入） ── */}
+      {showDashboard && dataUploadOpen && (() => {
             const isAnchor = dataUploadTab === "anchor";
             const isManual = dataUploadTab === "manual";
             const close = () => {
-              if ((isExcel && hallUploading) || (isAnchor && anchorUploading) || (isManual && dataInputLoading)) return;
+              if ((isAnchor && anchorUploading) || (isManual && dataInputLoading)) return;
               setDataUploadOpen(false);
-              setHallUploadFile(null);
               setAnchorUploadFile(null);
-              if (hallFileInputRef.current) hallFileInputRef.current.value = "";
               if (anchorFileInputRef.current) anchorFileInputRef.current.value = "";
             };
-            const tabCls = (active: boolean, color: "blue" | "violet" | "amber") => {
+            const tabCls = (active: boolean, color: "violet" | "amber") => {
               if (!active) return "text-slate-500 hover:bg-slate-50";
-              if (color === "blue") return "text-feishu-blue border-b-2 border-feishu-blue bg-feishu-blue/5";
               if (color === "violet") return "text-violet-600 border-b-2 border-violet-400 bg-violet-50/50";
               return "text-amber-600 border-b-2 border-amber-400 bg-amber-50/50";
             };
@@ -1439,18 +1134,11 @@ export function CockpitPage() {
               onClick={close}
             >
               <div
-                className={`${isManual ? "w-[720px]" : "w-[480px]"} max-w-[95vw] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
+                className={`${isManual ? "w-[720px]" : "w-[400px]"} max-w-[95vw] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Tab 切换 */}
                 <div className="flex border-b border-slate-200">
-                  <button
-                    onClick={() => setDataUploadTab("excel")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 h-10 text-[12px] font-medium transition-colors ${tabCls(isExcel, "blue")}`}
-                  >
-                    <Upload size={13} />
-                    厅数据 / 流失表
-                  </button>
                   <button
                     onClick={() => setDataUploadTab("anchor")}
                     className={`flex-1 flex items-center justify-center gap-1.5 h-10 text-[12px] font-medium transition-colors ${tabCls(isAnchor, "violet")}`}
@@ -1467,74 +1155,14 @@ export function CockpitPage() {
                   </button>
                   <button
                     onClick={close}
-                    disabled={isExcel ? hallUploading : isAnchor ? anchorUploading : dataInputLoading}
+                    disabled={isAnchor ? anchorUploading : dataInputLoading}
                     className="flex items-center justify-center w-10 h-10 text-slate-400 hover:bg-slate-100 disabled:opacity-40"
                   >
                     <X size={16} />
                   </button>
                 </div>
 
-                {isExcel ? (
-                  /* ── 厅数据 / 流失表 ── */
-                  <>
-                    <div className="px-6 py-5 space-y-4">
-                      <div>
-                        <label className="flex items-center gap-1.5 text-[12px] font-medium text-slate-600 mb-1.5">
-                          <Calendar size={12} className="text-slate-400" />
-                          数据归属日期 <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          value={hallUploadDate}
-                          onChange={(e) => setHallUploadDate(e.target.value)}
-                          max={getBeijingDateStr(0)}
-                          className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] text-slate-700 focus:outline-none focus:border-feishu-blue focus:ring-2 focus:ring-feishu-blue/20"
-                        />
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          自动解析 <b>「厅个数」</b>和<b>「主播流失」</b>两个工作表
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="flex items-center gap-1.5 text-[12px] font-medium text-slate-600 mb-1.5">
-                          <FileSpreadsheet size={12} className="text-slate-400" />
-                          选择文件 <span className="text-red-500">*</span>
-                        </label>
-                        <input ref={hallFileInputRef} type="file" accept=".xlsx,.xls" onChange={handleHallFileChange} className="hidden" />
-                        <button
-                          onClick={() => hallFileInputRef.current?.click()}
-                          className="w-full h-20 rounded-lg border-2 border-dashed border-slate-200 hover:border-feishu-blue hover:bg-feishu-blue/5 transition-colors flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-feishu-blue"
-                        >
-                          {hallUploadFile ? (
-                            <>
-                              <FileSpreadsheet size={20} className="text-feishu-blue" />
-                              <span className="text-[12px] font-medium text-slate-700 truncate max-w-[300px]">{hallUploadFile.name}</span>
-                              <span className="text-[10px] text-slate-400">{(hallUploadFile.size / 1024).toFixed(1)} KB · 点击重新选择</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload size={20} />
-                              <span className="text-[12px]">点击选择 .xlsx / .xls 文件</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    {hallUploadError && (
-                      <div className="px-6 py-2 text-[12px] text-red-600 bg-red-50 border-b border-red-100">{hallUploadError}</div>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2 px-6 py-3 bg-slate-50 border-t border-slate-100">
-                      <button onClick={close} disabled={hallUploading} className="px-4 h-8 rounded-lg border border-slate-200 bg-white text-[12px] text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors">取消</button>
-                      <button onClick={handleHallConfirmUpload} disabled={hallUploading || !hallUploadFile || !hallUploadDate}
-                        className="flex items-center gap-1.5 px-4 h-8 rounded-lg bg-feishu-blue text-[12px] text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
-                      >
-                        {hallUploading ? <><RefreshCw size={12} className="animate-spin" />上传中…</> : <><Upload size={12} />确认上传</>}
-                      </button>
-                    </div>
-                  </>
-                ) : isAnchor ? (
+                {isAnchor ? (
                   /* ── 主播数据表 ── */
                   <>
                     <div className="px-6 py-5 space-y-4">
@@ -1665,27 +1293,30 @@ export function CockpitPage() {
                                     )}
                                   </div>
                                   {/* 房间类型表头 */}
-                                  <div className="grid grid-cols-[1fr_80px_88px_28px] gap-1.5 items-center text-[11px] text-slate-500 font-semibold">
+                                  <div className="grid grid-cols-[1fr_72px_80px_28px] gap-1.5 items-center text-[11px] text-slate-500 font-semibold">
                                     <span>类型名称</span>
                                     <span className="text-center">总数</span>
-                                    <span className="text-center">团队占用</span>
+                                    <span className="text-center">使用/分配</span>
                                     <span />
                                   </div>
                                   {/* 房间类型行 */}
                                   {input.rooms.map((row, ri) => {
-                                    // 从 allocations 自动计算 used
+                                    // 从 allocations 自动计算 allocated 和 used
+                                    const allocTotal = row.allocations
+                                      ? row.allocations.reduce((s, a) => s + (parseInt(a.allocated, 10) || 0), 0)
+                                      : 0;
                                     const allocUsed = row.allocations
                                       ? row.allocations.reduce((s, a) => s + (parseInt(a.used, 10) || 0), 0)
                                       : 0;
-                                    const hasAllocData = row.allocations && row.allocations.some((a) => a.used !== "");
+                                    const hasAllocData = row.allocations && row.allocations.some((a) => a.allocated !== "" || a.used !== "");
                                     const totalNum = parseInt(row.total, 10) || 0;
-                                    const allocExceed = hasAllocData && totalNum > 0 && allocUsed > totalNum;
-                                    const filledTeams = row.allocations ? row.allocations.filter((a) => a.used !== "").length : 0;
+                                    const allocExceed = hasAllocData && totalNum > 0 && allocTotal > totalNum;
+                                    const filledTeams = row.allocations ? row.allocations.filter((a) => a.allocated !== "" || a.used !== "").length : 0;
                                     // 最终 used：有分配数据时用分配合计，否则用旧的 used
                                     const finalUsed = hasAllocData ? allocUsed : (parseInt(row.used, 10) || 0);
                                     return (
                                       <div key={row.key}>
-                                        <div className="grid grid-cols-[1fr_80px_88px_28px] gap-1.5 items-center">
+                                        <div className="grid grid-cols-[1fr_72px_80px_28px] gap-1.5 items-center">
                                           <input
                                             type="text"
                                             value={row.typeName}
@@ -1721,19 +1352,19 @@ export function CockpitPage() {
                                                   ? "border-sky-300 bg-sky-50/50 text-sky-600 hover:bg-sky-50"
                                                   : "border-slate-200 bg-white text-slate-500 hover:border-sky-300 hover:bg-sky-50/30"
                                             }`}
-                                            title="点击编辑团队占用"
+                                            title="点击编辑团队分配与使用"
                                           >
                                             <span>{row.allocExpanded ? "▲" : "▼"}</span>
                                             <span className="tabular-nums">
                                               {hasAllocData
-                                                ? <><span className="text-sky-700">{allocUsed}</span><span className="text-slate-400">/</span><span className="text-slate-500">{row.allocations!.length}</span></>
+                                                ? <><span className="text-emerald-600 font-bold">{allocUsed}</span><span className="text-slate-400">/</span><span className="text-sky-700">{allocTotal}</span></>
                                                 : <>编辑</>}
                                             </span>
                                           </button>
                                           <button
                                             onClick={() => {
                                               const newRows = input.rooms.filter((_, i) => i !== ri);
-                                              if (newRows.length === 0) newRows.push({ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false });
+                                              if (newRows.length === 0) newRows.push({ key: nextRowKey(), typeName: "", used: "", total: "", allocations: [], allocExpanded: false, teamSelectorOpen: false });
                                               setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
                                             }}
                                             className="text-[11px] text-slate-400 hover:text-red-500"
@@ -1742,50 +1373,189 @@ export function CockpitPage() {
                                         {/* 团队分配编辑区 */}
                                         {row.allocExpanded && (
                                           <div className="mt-1.5 ml-0 p-2.5 bg-white rounded-lg border border-slate-200 space-y-2">
-                                            {/* 顶部摘要：已用/总数 + 提示 */}
+                                            {/* 顶部摘要：使用/分配/总数 + 提示 */}
                                             <div className="flex items-center justify-between text-[12px] pb-1.5 border-b border-slate-100">
-                                              <span className="text-slate-600 font-semibold">团队占用编辑 {allocExceed ? <span className="text-red-500 ml-1">⚠ 超出总数</span> : null}</span>
+                                              <span className="text-slate-600 font-semibold">团队分配与使用 {allocExceed ? <span className="text-red-500 ml-1">⚠ 分配超出总数</span> : null}</span>
                                               <span className="tabular-nums text-slate-600 font-medium">
-                                                已用 <span className={`font-bold ${allocExceed ? "text-red-500" : "text-sky-600"}`}>{finalUsed}</span>
-                                                {totalNum > 0 && <span className="text-slate-400"> / {totalNum} ({Math.round((finalUsed / totalNum) * 100)}%)</span>}
+                                                使用 <span className="font-bold text-emerald-600">{finalUsed}</span>
+                                                <span className="text-slate-400"> · 分配 </span>
+                                                <span className={`font-bold ${allocExceed ? "text-red-500" : "text-sky-600"}`}>{allocTotal}</span>
+                                                {totalNum > 0 && <span className="text-slate-400"> / {totalNum} ({Math.round((allocTotal / totalNum) * 100)}%)</span>}
                                                 {filledTeams > 0 && <span className="text-slate-400 ml-1.5">· 已填 {filledTeams} 队</span>}
                                               </span>
                                             </div>
-                                            {/* 团队列表（自适应列宽：1队→1列，2-3队→2列，4-6队→3列，7+队→4列） */}
+                                            {/* 团队选择工具栏 */}
+                                            <div className="flex items-center justify-between gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const newRows = [...input.rooms];
+                                                  newRows[ri] = { ...newRows[ri], teamSelectorOpen: !row.teamSelectorOpen };
+                                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                }}
+                                                className={`text-[11px] font-medium flex items-center gap-1 px-2 h-6 rounded transition-colors ${
+                                                  row.teamSelectorOpen
+                                                    ? "bg-sky-100 text-sky-700"
+                                                    : "text-sky-600 hover:bg-sky-50"
+                                                }`}
+                                                title="选择需要分配房间的团队"
+                                              >
+                                                <span className="text-[9px]">{row.teamSelectorOpen ? "▼" : "▶"}</span>
+                                                <span>选择团队</span>
+                                                <span className="text-slate-500 tabular-nums">({row.allocations.length}/{teamsUnderBase.length})</span>
+                                              </button>
+                                              {row.allocations.length > 0 && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const newRows = [...input.rooms];
+                                                    newRows[ri] = { ...newRows[ri], allocations: [], teamSelectorOpen: false };
+                                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                  }}
+                                                  className="text-[10px] text-slate-400 hover:text-red-500"
+                                                  title="清空所有已选团队"
+                                                >
+                                                  清空
+                                                </button>
+                                              )}
+                                            </div>
+                                            {/* 团队选择器弹层（多选） */}
+                                            {row.teamSelectorOpen && (
+                                              <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-2 space-y-1.5">
+                                                {teamsUnderBase.length === 0 ? (
+                                                  <div className="text-[11px] text-slate-400 text-center py-2">该基地下暂无团队，请先在「组织管理」创建</div>
+                                                ) : (
+                                                  <>
+                                                    <div className="flex items-center justify-between text-[10px] text-slate-500 pb-1 border-b border-sky-100">
+                                                      <span>勾选需要分配房间的团队</span>
+                                                      <div className="flex items-center gap-2">
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            const newRows = [...input.rooms];
+                                                            newRows[ri] = { ...newRows[ri], allocations: teamsUnderBase.map((t) => {
+                                                              const exist = newRows[ri].allocations.find((a) => a.orgId === t.orgId);
+                                                              return exist ?? { orgId: t.orgId, orgName: t.orgName, allocated: "", used: "" };
+                                                            }) };
+                                                            setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                          }}
+                                                          className="text-sky-600 hover:text-sky-700"
+                                                        >全选</button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            const newRows = [...input.rooms];
+                                                            newRows[ri] = { ...newRows[ri], allocations: [] };
+                                                            setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                          }}
+                                                          className="text-slate-500 hover:text-slate-700"
+                                                        >全不选</button>
+                                                      </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-[160px] overflow-y-auto">
+                                                      {teamsUnderBase.map((t) => {
+                                                        const checked = row.allocations.some((a) => a.orgId === t.orgId);
+                                                        return (
+                                                          <label key={t.orgId} className={`flex items-center gap-1.5 text-[12px] cursor-pointer rounded px-2 py-1 transition-colors ${checked ? "bg-sky-100 text-sky-800" : "hover:bg-white text-slate-700"}`}>
+                                                            <input
+                                                              type="checkbox"
+                                                              checked={checked}
+                                                              onChange={(e) => {
+                                                                const newRows = [...input.rooms];
+                                                                const newAllocs = e.target.checked
+                                                                  ? [...newRows[ri].allocations, { orgId: t.orgId, orgName: t.orgName, allocated: "", used: "" }]
+                                                                  : newRows[ri].allocations.filter((a) => a.orgId !== t.orgId);
+                                                                newRows[ri] = { ...newRows[ri], allocations: newAllocs };
+                                                                setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                              }}
+                                                              className="rounded border-slate-300 text-sky-500 focus:ring-sky-400 shrink-0"
+                                                            />
+                                                            <span className="truncate flex-1 min-w-0" title={t.orgName}>{t.orgName}</span>
+                                                          </label>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-sky-100">
+                                                      <span>已选 <span className="font-semibold text-sky-600">{row.allocations.length}</span> / {teamsUnderBase.length} 个团队</span>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          const newRows = [...input.rooms];
+                                                          newRows[ri] = { ...newRows[ri], teamSelectorOpen: false };
+                                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                        }}
+                                                        className="text-sky-600 hover:text-sky-700 font-medium"
+                                                      >
+                                                        完成
+                                                      </button>
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </div>
+                                            )}
+                                            {/* 团队分配输入列表（只显示已选中的团队） */}
                                             {row.allocations && row.allocations.length > 0 ? (
                                               <div
-                                                className="grid gap-x-2 gap-y-1.5"
-                                                style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${
-                                                  row.allocations.length === 1 ? 200 :
-                                                  row.allocations.length <= 3 ? 180 :
-                                                  row.allocations.length <= 6 ? 150 : 140
-                                                }px, 1fr))` }}
+                                                className={`grid gap-x-2 gap-y-1.5 ${row.allocations.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
                                               >
                                                 {row.allocations.map((a, ai) => (
-                                                  <div key={a.orgId} className="flex items-center gap-1.5 min-w-0 bg-slate-50/60 rounded px-2 py-1">
-                                                    <span className="text-[12px] font-medium text-slate-700 truncate flex-1 min-w-0" title={a.orgName}>{a.orgName}</span>
-                                                    <input
-                                                      type="number" min="0"
-                                                      value={a.used}
-                                                      onChange={(e) => {
+                                                  <div key={a.orgId} className="flex items-center gap-1.5 min-w-0 bg-slate-50/60 rounded px-2 py-1.5 group/team">
+                                                    <span className="text-[12px] font-semibold text-slate-700 truncate flex-1 min-w-0" title={a.orgName}>{a.orgName}</span>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                      <span className="text-[10px] text-emerald-600 font-semibold select-none">使用</span>
+                                                      <input
+                                                        type="number" min="0"
+                                                        value={a.used}
+                                                        onChange={(e) => {
+                                                          const newRows = [...input.rooms];
+                                                          const newAllocs = [...newRows[ri].allocations];
+                                                          newAllocs[ai] = { ...newAllocs[ai], used: e.target.value };
+                                                          newRows[ri] = { ...newRows[ri], allocations: newAllocs };
+                                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                        }}
+                                                        placeholder="使用"
+                                                        className="w-12 shrink-0 h-8 rounded border border-emerald-200 bg-white px-1 text-[12px] font-bold text-emerald-700 text-center focus:outline-none focus:border-emerald-400"
+                                                        title="使用间数"
+                                                      />
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                      <span className="text-[10px] text-sky-600 font-semibold select-none">分配</span>
+                                                      <input
+                                                        type="number" min="0"
+                                                        value={a.allocated}
+                                                        onChange={(e) => {
+                                                          const newRows = [...input.rooms];
+                                                          const newAllocs = [...newRows[ri].allocations];
+                                                          newAllocs[ai] = { ...newAllocs[ai], allocated: e.target.value };
+                                                          newRows[ri] = { ...newRows[ri], allocations: newAllocs };
+                                                          setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
+                                                        }}
+                                                        placeholder="分配"
+                                                        className="w-12 shrink-0 h-8 rounded border border-sky-200 bg-white px-1 text-[12px] font-bold text-sky-700 text-center focus:outline-none focus:border-sky-400"
+                                                        title="分配间数"
+                                                      />
+                                                    </div>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
                                                         const newRows = [...input.rooms];
-                                                        const newAllocs = [...newRows[ri].allocations];
-                                                        newAllocs[ai] = { ...newAllocs[ai], used: e.target.value };
-                                                        newRows[ri] = { ...newRows[ri], allocations: newAllocs };
+                                                        newRows[ri] = { ...newRows[ri], allocations: newRows[ri].allocations.filter((_, i) => i !== ai) };
                                                         setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
                                                       }}
-                                                      placeholder="0"
-                                                      className="w-14 shrink-0 h-8 rounded border border-slate-200 bg-white px-1 text-[12px] font-semibold text-slate-700 text-center focus:outline-none focus:border-sky-400"
-                                                    />
+                                                      className="opacity-0 group-hover/team:opacity-100 text-slate-300 hover:text-red-500 text-[12px] shrink-0 w-4"
+                                                      title="移除该团队"
+                                                    >
+                                                      ×
+                                                    </button>
                                                   </div>
                                                 ))}
                                               </div>
-                                            ) : (
-                                              <div className="text-[11px] text-slate-400 text-center py-2">该基地下暂无团队</div>
-                                            )}
+                                            ) : !row.teamSelectorOpen ? (
+                                              <div className="text-[11px] text-slate-400 text-center py-2">该房间类型未选择团队，点击「选择团队」开始分配</div>
+                                            ) : null}
                                             {/* 底部提示 */}
                                             <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-                                              <span>未填写的团队视为未占用；「已用」由团队占用自动合计</span>
+                                              <span>左框「分配」= 分配给该团队的间数；右框「使用」= 实际使用间数。「分配」合计不能超过总数</span>
                                             </div>
                                           </div>
                                         )}
@@ -1794,7 +1564,7 @@ export function CockpitPage() {
                                   })}
                                   <button
                                     onClick={() => {
-                                      const newRows = [...input.rooms, { key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }];
+                                      const newRows = [...input.rooms, { key: nextRowKey(), typeName: "", used: "", total: "", allocations: [], allocExpanded: false, teamSelectorOpen: false }];
                                       setSiteInputs((prev) => ({ ...prev, [site.id]: { ...prev[site.id], rooms: newRows } }));
                                     }}
                                     className="text-[11px] text-sky-600 hover:text-sky-700 font-medium"
@@ -1822,7 +1592,7 @@ export function CockpitPage() {
                                   try {
                                     const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
                                     setLiveRoomSites((prev) => [...prev, site]);
-                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }] } }));
+                                    setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: [], allocExpanded: false, teamSelectorOpen: false }] } }));
                                     setShowNewSiteInput(false);
                                     setNewSiteName("");
                                   } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }
@@ -1836,7 +1606,7 @@ export function CockpitPage() {
                                 try {
                                   const site = await liveRoomSiteApi.create({ name: newSiteName.trim() }, scopeOrgId);
                                   setLiveRoomSites((prev) => [...prev, site]);
-                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: teamsUnderBase.map((t) => ({ orgId: t.orgId, orgName: t.orgName, used: "" })), allocExpanded: false }] } }));
+                                  setSiteInputs((prev) => ({ ...prev, [site.id]: { siteName: site.name, rooms: [{ key: nextRowKey(), typeName: "", used: "", total: "", allocations: [], allocExpanded: false, teamSelectorOpen: false }] } }));
                                   setShowNewSiteInput(false);
                                   setNewSiteName("");
                                 } catch (e: any) { setDataInputError(e?.response?.data?.message || "创建失败"); }
@@ -1857,37 +1627,6 @@ export function CockpitPage() {
                         )}
                       </div>
 
-                      <div className="border-t border-slate-100" />
-
-                      {/* 人均音浪 */}
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Zap size={14} className="text-amber-500" />
-                          <span className="text-[13px] font-semibold text-slate-700">人均音浪 <span className="text-[10px] font-normal text-slate-400">(每日记录)</span></span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <label className="text-[11px] text-slate-500 mb-0.5 block"><Calendar size={10} className="inline mr-0.5 text-slate-400" />数据日期</label>
-                            <input type="date" value={dataInputDate} onChange={(e) => setDataInputDate(e.target.value)} max={getBeijingDateStr(0)}
-                              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" />
-                          </div>
-                          <div>
-                            <label className="text-[11px] text-slate-500 mb-0.5 block">线下人均音浪（万）</label>
-                            <input type="number" step="0.1" min="0" value={dataInputOfflineAvgWave} onChange={(e) => setDataInputOfflineAvgWave(e.target.value)} placeholder="8.3"
-                              className="w-24 h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" />
-                          </div>
-                          <div>
-                            <label className="text-[11px] text-slate-500 mb-0.5 block">线上人均音浪（万）</label>
-                            <input type="number" step="0.1" min="0" value={dataInputAvgWave} onChange={(e) => setDataInputAvgWave(e.target.value)} placeholder="12.5"
-                              className="w-24 h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" />
-                          </div>
-                          <div>
-                            <label className="text-[11px] text-slate-500 mb-0.5 block">人均音浪（万）</label>
-                            <input type="number" step="0.1" min="0" value={dataInputTotalAvgWave} onChange={(e) => setDataInputTotalAvgWave(e.target.value)} placeholder="10.4"
-                              className="w-24 h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20" />
-                          </div>
-                        </div>
-                      </div>
                     </div>
 
                     {dataInputError && (
@@ -1909,9 +1648,33 @@ export function CockpitPage() {
             );
           })()}
 
-        </div>
-        );
-      })()}
+
+      {/* ── 在职/离职人数音浪趋势 ── */}
+      {showDashboard && (
+        <StaffTurnoverCard
+          scopeOrgId={scopeOrgId ?? ""}
+          selectedBaseOrgId={selectedBaseOrgId}
+          needsBaseSelect={needsBaseSelect}
+        />
+      )}
+
+      {/* ── 留存率看板 ── */}
+      {showDashboard && (
+        <RetentionCard
+          scopeOrgId={scopeOrgId ?? ""}
+          selectedBaseOrgId={selectedBaseOrgId}
+          needsBaseSelect={needsBaseSelect}
+        />
+      )}
+
+      {/* ── 过程指标 ── */}
+      {showDashboard && (
+        <ProcessMetricCard
+          scopeOrgId={scopeOrgId ?? ""}
+          selectedBaseOrgId={selectedBaseOrgId}
+          needsBaseSelect={needsBaseSelect}
+        />
+      )}
 
       {/* ── 基地主播趋势图：独占一行 ── */}
       {showDashboard && (

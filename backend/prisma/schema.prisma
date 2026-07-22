@@ -172,46 +172,6 @@ model AnchorDailySummary {
   @@map("anchor_daily_summaries")
 }
 
-// 厅个数每日快照（用于"有效厅/训练厅"KPI + 按运营账号分组）
-model HallDailySummary {
-  id              String   @id @default(uuid())
-  baseOrgId       String   @map("base_org_id")
-  baseOrgName     String   @map("base_org_name")
-  recordDate      String   @map("record_date")
-  uploadedBy      String   @map("uploaded_by")
-  uploaderName    String   @map("uploader_name")
-  formalHallCount Int      @map("formal_hall_count")      // 正式厅（有效厅）总数
-  trainingHallCount Int    @map("training_hall_count")    // 训练厅总数
-  totalHallCount  Int      @map("total_hall_count")       // 厅总数
-  operatorStats   Json     @map("operator_stats")         // 按运营账号分组统计
-  rawRowCount     Int      @map("raw_row_count")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  @@unique([baseOrgId, recordDate])
-  @@map("hall_daily_summaries")
-}
-
-// 主播流失每日快照（近30天流失 + 昨日流失）
-model AnchorLossDailySummary {
-  id                String   @id @default(uuid())
-  baseOrgId         String   @unique @map("base_org_id")
-  baseOrgName       String   @map("base_org_name")
-  recordDate        String   @map("record_date")              // 最新上传的归属日期
-  uploadedBy        String   @map("uploaded_by")
-  uploaderName      String   @map("uploader_name")
-  lossWithin30Days  Int      @map("loss_within_30_days")
-  lossYesterday     Int      @map("loss_yesterday")
-  totalLossCount    Int      @map("total_loss_count")
-  lossDetail        Json     @default("{}") @map("loss_detail")           // {date: count}
-  lossOperatorDetail Json    @default("{}") @map("loss_operator_detail")  // {date: {operator: count}}
-  rawRowCount       Int      @map("raw_row_count")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-
-  @@map("anchor_loss_daily_summaries")
-}
-
 // 基地直播间空余 — 场地表（每个基地可有多场地，场地名可自定义）
 model LiveRoomSite {
   id           String   @id @default(uuid())
@@ -239,6 +199,82 @@ model LiveRoomCapacity {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("live_room_capacities")
+}
+
+// 在职/离职人数音浪趋势（按团队+日期覆盖上传，每月 1/5/10/15/20/25）
+model StaffTurnoverDaily {
+  id                   String   @id @default(uuid())
+  baseOrgId            String   @map("base_org_id")
+  baseOrgName          String   @map("base_org_name")
+  teamOrgId            String   @map("team_org_id")
+  teamOrgName          String   @map("team_org_name")
+  recordDate           String   @map("record_date")
+  lossCount            Int      @map("loss_count")
+  lossAvgWave          Float    @map("loss_avg_wave")
+  activeOnlineCount    Int      @map("active_online_count")
+  activeOnlineAvgWave  Float    @map("active_online_avg_wave")
+  activeOfflineCount   Int      @map("active_offline_count")
+  activeOfflineAvgWave Float    @map("active_offline_avg_wave")
+  uploadedBy           String   @map("uploaded_by")
+  uploaderName         String   @map("uploader_name")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@unique([teamOrgId, recordDate])
+  @@index([baseOrgId])
+  @@map("staff_turnover_dailies")
+}
+
+// 过程指标（按团队+厅+日期覆盖上传）
+model ProcessMetricDaily {
+  id           String   @id @default(uuid())
+  baseOrgId    String   @map("base_org_id")
+  baseOrgName  String   @map("base_org_name")
+  teamOrgId    String   @map("team_org_id")
+  teamOrgName  String   @map("team_org_name")
+  hallName     String   @map("hall_name")
+  percentage   Float    @map("percentage")
+  recordDate   String   @map("record_date")
+  uploadedBy   String   @map("uploaded_by")
+  uploaderName String   @map("uploader_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([teamOrgId, hallName, recordDate])
+  @@index([baseOrgId])
+  @@map("process_metric_dailies")
+}
+
+// 过程指标参与团队配置（按基地维度，同一基地所有用户共享）
+model ProcessMetricConfig {
+  baseOrgId String   @id @map("base_org_id")
+  teamIds   String   @map("team_ids") // JSON 数组字符串，如 '["id1","id2"]'
+  updatedBy String   @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("process_metric_configs")
+}
+
+// 留存率看板（按团队+月份覆盖上传，每月一条）
+model RetentionMonthly {
+  id            String   @id @default(uuid())
+  baseOrgId     String   @map("base_org_id")
+  baseOrgName   String   @map("base_org_name")
+  teamOrgId     String   @map("team_org_id")
+  teamOrgName   String   @map("team_org_name")
+  recordMonth   String   @map("record_month")       // 统计月份 YYYY-MM
+  loss3Days     Int      @map("loss_3_days")        // 3天流失人数
+  loss15Days    Int      @map("loss_15_days")       // 15天流失人数
+  loss30Days    Int      @map("loss_30_days")       // 30天流失人数
+  activeCount   Int      @map("active_count")       // 在职人数
+  uploadedBy    String   @map("uploaded_by")
+  uploaderName  String   @map("uploader_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([teamOrgId, recordMonth])
+  @@index([baseOrgId])
+  @@map("retention_monthlies")
 }
 
 // 人均音浪每日快照（每日更新：按 baseOrgId + recordDate 唯一，支持趋势）

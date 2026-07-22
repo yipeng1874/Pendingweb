@@ -698,170 +698,21 @@ export const anchorSummaryApi = {
   },
 };
 
-// ---------- 厅个数汇总 ----------
-
-export type HallOperatorStat = {
-  operator: string;
-  formalHallCount: number;
-  trainingHallCount: number;
-  totalCount: number;
-};
-
-export type HallDailySummary = {
-  id: string;
-  baseOrgId: string;
-  baseOrgName: string;
-  recordDate: string;
-  uploadedBy: string;
-  uploaderName: string;
-  formalHallCount: number;
-  trainingHallCount: number;
-  totalHallCount: number;
-  operatorStats: HallOperatorStat[];
-  rawRowCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type HallTrendPoint = {
-  recordDate: string;
-  formalHallCount: number;
-  trainingHallCount: number;
-  totalHallCount: number;
-};
-
-export type HallPrevDay = {
-  recordDate: string;
-  operatorStats: HallOperatorStat[];
-};
-
-export type HallTrendResponse = {
-  baseOrgId: string;
-  baseOrgName: string;
-  points: HallTrendPoint[];
-  latest: HallDailySummary | null;
-  prevDay: HallPrevDay | null;
-};
-
-export const hallSummaryApi = {
-  getLatest: (scopeOrgId?: string) => {
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    const q = params.toString();
-    return api.get<HallDailySummary | null>(`/hall-summary/latest${q ? `?${q}` : ""}`);
-  },
-  getTrend: (scopeOrgId?: string, days = 7) => {
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    params.set("days", String(days));
-    const q = params.toString();
-    return api.get<HallTrendResponse>(`/hall-summary/trend?${q}`);
-  },
-  upload: (file: File, scopeOrgId?: string, recordDate?: string) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    if (recordDate) formData.append("recordDate", recordDate);
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    if (recordDate) params.set("recordDate", recordDate);
-    const q = params.toString();
-    return api.postForm<HallDailySummary>(`/hall-summary/upload${q ? `?${q}` : ""}`, formData);
-  },
-};
-
-// ---------- 主播流失汇总 ----------
-
-export type AnchorLossDailySummary = {
-  id: string;
-  baseOrgId: string;
-  baseOrgName: string;
-  recordDate: string;
-  uploadedBy: string;
-  uploaderName: string;
-  lossWithin30Days: number;
-  lossYesterday: number;
-  totalLossCount: number;
-  rawRowCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AnchorLossTrendPoint = {
-  recordDate: string;
-  lossWithin30Days: number;
-  lossYesterday: number;
-  lossDetail: Record<string, number>;
-  lossOperatorDetail: Record<string, Record<string, number>>;
-};
-
-export type AnchorLossTrendResponse = {
-  baseOrgId: string;
-  baseOrgName: string;
-  points: AnchorLossTrendPoint[];
-  latest: Pick<AnchorLossDailySummary, "id" | "recordDate" | "lossWithin30Days" | "lossYesterday" | "totalLossCount"> & { lossDetail: Record<string, number>; lossOperatorDetail: Record<string, Record<string, number>> } | null;
-};
-
-export const anchorLossSummaryApi = {
-  getLatest: (scopeOrgId?: string) => {
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    const q = params.toString();
-    return api.get<AnchorLossDailySummary | null>(`/anchor-loss-summary/latest${q ? `?${q}` : ""}`);
-  },
-  getTrend: (scopeOrgId?: string, days = 7) => {
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    params.set("days", String(days));
-    const q = params.toString();
-    return api.get<AnchorLossTrendResponse>(`/anchor-loss-summary/trend?${q}`);
-  },
-  upload: (file: File, scopeOrgId?: string, recordDate?: string) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    if (recordDate) formData.append("recordDate", recordDate);
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    if (recordDate) params.set("recordDate", recordDate);
-    const q = params.toString();
-    return api.postForm<AnchorLossDailySummary>(`/anchor-loss-summary/upload${q ? `?${q}` : ""}`, formData);
-  },
-};
-
-// ---------- 数据看板统一上传 ----------
-
-export type DataOverviewUploadResult = {
-  recordDate: string;
-  baseOrgId: string;
-  hall?: { formalHallCount: number; trainingHallCount: number };
-  loss?: { lossWithin30Days: number; lossYesterday: number };
-};
-
-export const dataOverviewApi = {
-  upload: (file: File, scopeOrgId?: string, recordDate?: string) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    if (recordDate) formData.append("recordDate", recordDate);
-    const params = new URLSearchParams();
-    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
-    if (recordDate) params.set("recordDate", recordDate);
-    const q = params.toString();
-    return api.postForm<DataOverviewUploadResult>(`/data-overview/upload${q ? `?${q}` : ""}`, formData);
-  },
-};
-
 // ---------- 基地直播间空余 ----------
 
 export type RoomAllocation = {
   orgId: string;             // 组织架构 ID（团队）
   orgName: string;           // 团队名称
-  used: number;              // 该团队占用数
+  allocated: number;         // 分配给该团队的间数
+  used: number;              // 该团队实际使用的间数
 };
 
 export type RoomTypeDetail = {
   typeName: string;          // 自定义房间类型名
+  allocated: number;         // 分配总数（有 allocations 时等于其 sum，旧数据兼容）
   used: number;              // 已使用（有 allocations 时等于其 sum，旧数据兼容）
   total: number;             // 总数
-  allocations?: RoomAllocation[]; // 新增：按团队的占用明细
+  allocations?: RoomAllocation[]; // 按团队的分配与使用明细
 };
 
 export type SiteDetail = {
@@ -1010,5 +861,244 @@ export const anchorAvgWaveApi = {
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     const q = params.toString();
     return api.post<AnchorAvgWaveDaily>(`/anchor-avg-wave/upsert${q ? `?${q}` : ""}`, data);
+  },
+};
+
+// ---------- 在职/离职人数音浪趋势 ----------
+
+export type StaffTurnoverTeamInfo = {
+  orgId: string;
+  orgName: string;
+};
+
+export type StaffTurnoverTeamRecord = {
+  teamOrgId: string;
+  teamOrgName: string;
+  lossCount: number;
+  lossAvgWave: number;
+  activeOnlineCount: number;
+  activeOnlineAvgWave: number;
+  activeOfflineCount: number;
+  activeOfflineAvgWave: number;
+  activeTotalCount: number;
+  activeTotalAvgWave: number;
+};
+
+export type StaffTurnoverAggregated = {
+  lossCount: number;
+  lossAvgWave: number;
+  activeOnlineCount: number;
+  activeOnlineAvgWave: number;
+  activeOfflineCount: number;
+  activeOfflineAvgWave: number;
+  activeTotalCount: number;
+  activeTotalAvgWave: number;
+};
+
+export type StaffTurnoverDateEntry = {
+  recordDate: string;
+  aggregated: StaffTurnoverAggregated;
+  teams: StaffTurnoverTeamRecord[];
+};
+
+export type StaffTurnoverByDateResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  dateEntries: StaffTurnoverDateEntry[];
+};
+
+export type StaffTurnoverListResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  teams: StaffTurnoverTeamInfo[];
+};
+
+export type StaffTurnoverUpsertInput = {
+  teamOrgId: string;
+  teamOrgName: string;
+  recordDate: string;
+  lossCount: number;
+  lossAvgWave: number;
+  activeOnlineCount: number;
+  activeOnlineAvgWave: number;
+  activeOfflineCount: number;
+  activeOfflineAvgWave: number;
+};
+
+export const staffTurnoverApi = {
+  list: (scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.get<StaffTurnoverListResponse>(`/staff-turnover/list${q ? `?${q}` : ""}`);
+  },
+  getByDate: (scopeOrgId?: string, days = 6) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    params.set("days", String(days));
+    const q = params.toString();
+    return api.get<StaffTurnoverByDateResponse>(`/staff-turnover/by-date?${q}`);
+  },
+  upsert: (data: StaffTurnoverUpsertInput, scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.post(`/staff-turnover/upsert${q ? `?${q}` : ""}`, data);
+  },
+};
+
+// ────────── 留存率看板 ──────────
+
+export type RetentionTeamRecord = {
+  teamOrgId: string;
+  teamOrgName: string;
+  loss3Days: number;
+  loss15Days: number;
+  loss30Days: number;
+  activeCount: number;
+};
+
+export type RetentionAggregated = {
+  loss3Days: number;
+  loss15Days: number;
+  loss30Days: number;
+  activeCount: number;
+};
+
+export type RetentionMonthEntry = {
+  recordMonth: string;
+  aggregated: RetentionAggregated;
+  teams: RetentionTeamRecord[];
+};
+
+export type RetentionByMonthResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  monthEntries: RetentionMonthEntry[];
+};
+
+export type RetentionListResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  teams: { id: string; name: string }[];
+};
+
+export type RetentionUpsertInput = {
+  teamOrgId: string;
+  teamOrgName: string;
+  recordMonth: string;
+  loss3Days: number;
+  loss15Days: number;
+  loss30Days: number;
+  activeCount: number;
+};
+
+export const retentionApi = {
+  list: (scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.get<RetentionListResponse>(`/retention/list${q ? `?${q}` : ""}`);
+  },
+  getByMonth: (scopeOrgId?: string, months = 6) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    params.set("months", String(months));
+    const q = params.toString();
+    return api.get<RetentionByMonthResponse>(`/retention/by-month?${q}`);
+  },
+  upsert: (data: RetentionUpsertInput, scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const q = params.toString();
+    return api.post(`/retention/upsert${q ? `?${q}` : ""}`, data);
+  },
+};
+
+// ────────── 过程指标 ──────────
+
+export type ProcessMetricHall = {
+  hallName: string;
+  percentage: number;
+};
+
+export type ProcessMetricTeamEntry = {
+  teamOrgId: string;
+  teamOrgName: string;
+  halls: ProcessMetricHall[];
+};
+
+export type ProcessMetricDateEntry = {
+  recordDate: string;
+  teams: ProcessMetricTeamEntry[];
+};
+
+export type ProcessMetricByDateResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  dateEntries: ProcessMetricDateEntry[];
+};
+
+export type ProcessMetricUpsertItem = {
+  teamOrgId: string;
+  teamOrgName: string;
+  hallName: string;
+  percentage: number;
+  recordDate: string;
+};
+
+export type ProcessMetricLatestHallsResponse = {
+  teams: { teamOrgId: string; teamOrgName: string; halls: ProcessMetricHall[] }[];
+};
+
+export type ProcessMetricConfigResponse = {
+  baseOrgId: string;
+  baseOrgName: string;
+  teamIds: string[];
+};
+
+export const processMetricApi = {
+  getByDate: (scopeOrgId?: string, days = 6) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    params.set("days", String(days));
+    return api.get<ProcessMetricByDateResponse>(`/process-metric/by-date?${params.toString()}`);
+  },
+  upsert: (data: ProcessMetricUpsertItem, scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    return api.post(`/process-metric/upsert${params.toString() ? `?${params.toString()}` : ""}`, data);
+  },
+  upsertBatch: (items: ProcessMetricUpsertItem[], scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    return api.post(`/process-metric/upsert-batch${params.toString() ? `?${params.toString()}` : ""}`, { items });
+  },
+  getLatestHalls: (scopeOrgId?: string, teamOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    if (teamOrgId) params.set("teamOrgId", teamOrgId);
+    return api.get<ProcessMetricLatestHallsResponse>(`/process-metric/latest-halls?${params.toString()}`);
+  },
+  /** 读取参与团队配置（服务端共享，同一基地所有用户使用同一套配置） */
+  getConfig: (scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    return api.get<ProcessMetricConfigResponse>(`/process-metric/config?${params.toString()}`);
+  },
+  /** 保存参与团队配置 */
+  saveConfig: (teamIds: string[], scopeOrgId?: string) => {
+    const params = new URLSearchParams();
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    return api.put<ProcessMetricConfigResponse>(`/process-metric/config?${params.toString()}`, { teamIds });
+  },
+  /** 删除某条已保存的记录 */
+  deleteRecord: (params: { teamOrgId: string; hallName: string; recordDate: string; scopeOrgId?: string }) => {
+    const q = new URLSearchParams();
+    q.set("teamOrgId", params.teamOrgId);
+    q.set("hallName", params.hallName);
+    q.set("recordDate", params.recordDate);
+    if (params.scopeOrgId) q.set("scopeOrgId", params.scopeOrgId);
+    return api.delete<{ deleted: boolean }>(`/process-metric?${q.toString()}`);
   },
 };

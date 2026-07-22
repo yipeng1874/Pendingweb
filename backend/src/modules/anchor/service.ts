@@ -794,12 +794,59 @@ export const AnchorService = {
 
   async deleteProfile(profile: any) {
     return prisma.$transaction(async (tx) => {
-      await tx.userIdentity.deleteMany({ where: { anchorProfileId: profile.id, roleCode: "ANCHOR" } });
-      await tx.anchorRegistrationApplication.deleteMany({ where: { userId: profile.boundUserId ?? undefined } });
-      if (profile.boundUserId) {
-        await tx.user.update({ where: { id: profile.boundUserId }, data: { status: "disabled" } });
+      const profileId = profile.id;
+      const boundUserId = profile.boundUserId ?? null;
+
+      // 1) 清理 task_record_identity_links 中指向该主播档案 / 即将被删的 ANCHOR 身份的链路
+      //    - identityId 是非空外键，删 userIdentity 前必须先 delete
+      //    - anchorProfileId 是可空外键，但删 anchorProfile 前也要先 delete
+      //    二者在创建时都填了同一对 (identityId, anchorProfileId)，用 anchorProfileId 一并覆盖
+      const anchorIdentityIds = (
+        await tx.userIdentity.findMany({
+          where: { anchorProfileId: profileId, roleCode: "ANCHOR" },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      if (anchorIdentityIds.length > 0) {
+        // identityId 是非空外键，必须先 delete 这些链路才能删 userIdentity
+        await tx.taskRecordIdentityLink.deleteMany({
+          where: { identityId: { in: anchorIdentityIds } },
+        });
+        await tx.taskRecordIdentityLink.deleteMany({
+          where: { anchorProfileId: profileId },
+        });
+      } else {
+        // 即使没有 ANCHOR 身份，也兜底清一次 anchorProfileId 维度的链路
+        await tx.taskRecordIdentityLink.deleteMany({
+          where: { anchorProfileId: profileId },
+        });
       }
-      await tx.anchorProfile.delete({ where: { id: profile.id } });
+
+      // 2) 把 task_assignment_exclusions 上指向该主播档案的可空外键置 null
+      await tx.taskAssignmentExclusion.updateMany({
+        where: { anchorProfileId: profileId },
+        data: { anchorProfileId: null },
+      });
+
+      // 3) 删除该主播的 ANCHOR 身份（此时所有指向它的外键已清理）
+      await tx.userIdentity.deleteMany({
+        where: { anchorProfileId: profileId, roleCode: "ANCHOR" },
+      });
+
+      // 4) 只删该用户自己的注册申请（避免 userId: undefined 误清全表）
+      if (boundUserId) {
+        await tx.anchorRegistrationApplication.deleteMany({
+          where: { userId: boundUserId },
+        });
+        await tx.user.update({
+          where: { id: boundUserId },
+          data: { status: "disabled" },
+        });
+      }
+
+      // 5) 最后删档案本身（此时没有任何外键指向它）
+      await tx.anchorProfile.delete({ where: { id: profileId } });
     });
   },
 
