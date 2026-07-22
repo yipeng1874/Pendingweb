@@ -636,7 +636,14 @@ export const AnchorService = {
         throw error;
       }
 
-      // 同步更新该用户注册申请记录中的抖音号/UID，释放旧值供其他用户使用
+      // 管理员修改抖音号/UID 后，必须同步更新 anchor_registration_applications 表中的对应记录。
+      //
+      // 背景：assertNoAnchorRegistrationConflict 做唯一性校验时同时查了 anchorProfile 和
+      // anchorRegistrationApplication（状态为 pending/approved）两张表。如果只更新 anchorProfile，
+      // 旧抖音号仍然残留在注册申请表中，会导致其他用户无法用该抖音号注册。
+      //
+      // 策略：仅更新 status ∈ {pending, approved} 的记录（即参与冲突检测的记录），
+      // rejected/cancelled 的历史记录保持原样不被污染。整个操作在事务中，失败自动回滚。
       if (identityChanged && current.boundUserId) {
         await tx.anchorRegistrationApplication.updateMany({
           where: {
