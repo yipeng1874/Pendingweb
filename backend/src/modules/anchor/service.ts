@@ -636,6 +636,20 @@ export const AnchorService = {
         throw error;
       }
 
+      // 同步更新该用户注册申请记录中的抖音号/UID，释放旧值供其他用户使用
+      if (identityChanged && current.boundUserId) {
+        await tx.anchorRegistrationApplication.updateMany({
+          where: {
+            userId: current.boundUserId,
+            status: { in: ["pending", "approved"] },
+          },
+          data: {
+            douyinNo: nextDouyinNo,
+            douyinUid: nextDouyinUid,
+          },
+        });
+      }
+
       if (updated.boundUserId && nextNickname !== current.nickname) {
         await tx.user.update({ where: { id: updated.boundUserId }, data: { nickname: nextNickname } });
       }
