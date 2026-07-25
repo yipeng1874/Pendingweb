@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Users, RefreshCw, TrendingUp, Filter } from "lucide-react";
 import { anchorSummaryApi, type AnchorTrendResponse, type AnchorDailySummary, type OperatorStat } from "../../../services/task";
 import { useIdentityStore } from "../../../stores/identityStore";
@@ -30,28 +30,7 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
   // 运营明细悬停状态：当前悬停的字段（null = 无）
   const [hoveredField, setHoveredField] = useState<"total" | "within7" | "within20" | null>(null);
 
-  // 三张卡片的 DOM 引用，用于浮层定位
-  const totalCardRef = useRef<HTMLDivElement>(null);
-  const within7CardRef = useRef<HTMLDivElement>(null);
-  const within20CardRef = useRef<HTMLDivElement>(null);
-  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; height: number } | null>(null);
 
-  /** 计算浮层位置（出现在悬停卡片左侧） */
-  const updatePopoverPos = (field: "total" | "within7" | "within20") => {
-    const refMap = {
-      total: totalCardRef,
-      within7: within7CardRef,
-      within20: within20CardRef,
-    };
-    const el = refMap[field].current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setPopoverPos({
-      top: rect.top,
-      left: rect.left,
-      height: rect.height,
-    });
-  };
 
   const loadTrend = (sid?: string, pd?: number) => {
     setLoading(true);
@@ -90,7 +69,7 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
 
   return (
     <>
-      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
         {/* ── 标题行 ── */}
         <div className="flex items-center gap-3 px-5 h-14 border-b border-slate-100">
           <div className="flex items-center gap-2 shrink-0">
@@ -170,7 +149,7 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
           </div>
         ) : (
             <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div ref={totalCardRef}>
+              <div className="relative">
                 <BigStatCard
                   label="主播总数"
                   value={latest.totalCount}
@@ -181,15 +160,22 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
                   active={hoveredField === "total"}
                   onHoverChange={(active) => {
                     if (active) {
-                      updatePopoverPos("total");
                       setHoveredField("total");
                     } else {
                       setHoveredField((prev) => (prev === "total" ? null : prev));
                     }
                   }}
                 />
+                {hoveredField === "total" && latest && (latest.operatorStats as OperatorStat[])?.length > 0 && (
+                  <OperatorPopover
+                    field="total"
+                    recordDate={latest.recordDate}
+                    operators={latest.operatorStats as OperatorStat[]}
+                    probationDays={probationDays}
+                  />
+                )}
               </div>
-              <div ref={within7CardRef}>
+              <div className="relative">
                 <BigStatCard
                   label="7天内新增"
                   value={latest.within7Days}
@@ -200,15 +186,22 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
                   active={hoveredField === "within7"}
                   onHoverChange={(active) => {
                     if (active) {
-                      updatePopoverPos("within7");
                       setHoveredField("within7");
                     } else {
                       setHoveredField((prev) => (prev === "within7" ? null : prev));
                     }
                   }}
                 />
+                {hoveredField === "within7" && latest && (latest.operatorStats as OperatorStat[])?.length > 0 && (
+                  <OperatorPopover
+                    field="within7"
+                    recordDate={latest.recordDate}
+                    operators={latest.operatorStats as OperatorStat[]}
+                    probationDays={probationDays}
+                  />
+                )}
               </div>
-              <div ref={within20CardRef}>
+              <div className="relative">
                 <BigStatCard
                   label="20天内新增"
                   value={latest.within20Days}
@@ -219,13 +212,20 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
                   active={hoveredField === "within20"}
                   onHoverChange={(active) => {
                     if (active) {
-                      updatePopoverPos("within20");
                       setHoveredField("within20");
                     } else {
                       setHoveredField((prev) => (prev === "within20" ? null : prev));
                     }
                   }}
                 />
+                {hoveredField === "within20" && latest && (latest.operatorStats as OperatorStat[])?.length > 0 && (
+                  <OperatorPopover
+                    field="within20"
+                    recordDate={latest.recordDate}
+                    operators={latest.operatorStats as OperatorStat[]}
+                    probationDays={probationDays}
+                  />
+                )}
               </div>
             </div>
         )}
@@ -244,15 +244,6 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
         )}
       </div>
 
-      {/* ── 运营明细浮层（悬停显示，贴在悬停卡片左侧） ── */}
-      {hoveredField && popoverPos && latest && (latest.operatorStats as OperatorStat[])?.length > 0 && (
-        <OperatorPopover
-          field={hoveredField}
-          recordDate={latest.recordDate}
-          operators={latest.operatorStats as OperatorStat[]}
-          pos={popoverPos}
-        />
-      )}
     </>
   );
 }
@@ -306,11 +297,26 @@ function BigStatCard({
 
 
 
-/** 运营行 */
-function OperatorRow({ op }: { op: OperatorStat }) {
-  const total = op.onlineCount + op.offlineCount;
-  const onlinePct = total > 0 ? Math.round((op.onlineCount / total) * 100) : 0;
-  const offlinePct = total > 0 ? 100 - onlinePct : 0;
+/** 运营行：根据 mode 选择展示的 3 列数据维度（合计/线上/线下） */
+function OperatorRow({
+  op,
+  mode,
+}: {
+  op: OperatorStat;
+  mode: "total" | "within7" | "within20";
+}) {
+  // 比例条始终展示该运营整体的线上/线下占比（作为背景参考，不随 mode 变化）
+  const overallTotal = op.onlineCount + op.offlineCount;
+  const onlinePct = overallTotal > 0 ? Math.round((op.onlineCount / overallTotal) * 100) : 0;
+  const offlinePct = overallTotal > 0 ? 100 - onlinePct : 0;
+
+  // 根据 mode 决定 3 列数字（合计 / 线上 / 线下）
+  const labelMap = {
+    total: { sum: "主播总数", sumVal: op.totalCount, onlineVal: op.onlineCount, offlineVal: op.offlineCount },
+    within7: { sum: "7天新增", sumVal: op.within7Days, onlineVal: op.within7DaysOnline ?? 0, offlineVal: op.within7DaysOffline ?? 0 },
+    within20: { sum: "20天新增", sumVal: op.within20Days, onlineVal: op.within20DaysOnline ?? 0, offlineVal: op.within20DaysOffline ?? 0 },
+  } as const;
+  const cur = labelMap[mode];
 
   return (
     <div className="flex items-center gap-3 px-5 h-10 hover:bg-slate-50 transition-colors overflow-hidden">
@@ -318,7 +324,7 @@ function OperatorRow({ op }: { op: OperatorStat }) {
         {op.name}
       </span>
 
-      {total > 0 ? (
+      {overallTotal > 0 ? (
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <span className="text-[10px] text-red-400 tabular-nums shrink-0 whitespace-nowrap">线下 {offlinePct}%</span>
           <div className="flex-1 h-1.5 rounded-full overflow-hidden flex min-w-0">
@@ -339,36 +345,30 @@ function OperatorRow({ op }: { op: OperatorStat }) {
 
       <div className="flex items-center gap-2 shrink-0 whitespace-nowrap text-[11px]">
         <span className="text-slate-500 tabular-nums">
-          合计 <strong className="text-slate-700">{op.totalCount}</strong>
+          {cur.sum} <strong className="text-slate-700">{cur.sumVal}</strong>
         </span>
         <span className="text-emerald-600 tabular-nums">
-          线上 <strong>{op.onlineCount}</strong>
+          线上 <strong>{cur.onlineVal}</strong>
         </span>
         <span className="text-slate-400 tabular-nums">
-          线下 <strong>{op.offlineCount}</strong>
-        </span>
-        <span className="text-amber-600 tabular-nums">
-          7天 <strong>{op.within7Days}</strong>
-        </span>
-        <span className="text-blue-400 tabular-nums">
-          20天 <strong>{op.within20Days}</strong>
+          线下 <strong>{cur.offlineVal}</strong>
         </span>
       </div>
     </div>
   );
 }
 
-/** 运营明细浮层（悬停显示，固定在悬停卡片左侧） */
+/** 运营明细浮层（悬停显示，与卡片宽度一致，紧贴卡片下方） */
 function OperatorPopover({
   field,
   recordDate,
   operators,
-  pos,
+  probationDays = 0,
 }: {
   field: "total" | "within7" | "within20";
   recordDate: string;
   operators: OperatorStat[];
-  pos: { top: number; left: number; height: number };
+  probationDays?: number;
 }) {
   // 根据悬停字段选择排序键
   const sorted = [...operators].sort((a, b) => {
@@ -383,36 +383,25 @@ function OperatorPopover({
     within20: "20天内新增 · 按新增数排序",
   };
 
-  // 浮层宽度
-  const POPOVER_WIDTH = 560;
-  // 浮层与卡片右边缘的间距
-  const GAP = 12;
-  // 浮层顶部与卡片顶部对齐
-  const top = pos.top;
-  // 浮层左侧 = 卡片左侧 - 浮层宽度 - 间距
-  const left = pos.left - POPOVER_WIDTH - GAP;
-
   return (
     <div
-      className="fixed z-50 rounded-xl bg-white overflow-hidden border-2 border-slate-300"
-      style={{
-        top,
-        left: Math.max(12, left),
-        width: POPOVER_WIDTH,
-        boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
-      }}
+      className="absolute z-30 left-0 right-0 top-full mt-2 rounded-xl bg-white overflow-hidden border-2 border-slate-300"
+      style={{ boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)" }}
     >
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-slate-50">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold text-slate-700">{titleMap[field]}</span>
           <span className="text-[11px] text-slate-500">
             归属日期 {recordDate} · 共 {operators.length} 人
+            {field === "total" && probationDays > 0 && (
+              <span className="ml-1 text-amber-600">（已剔除试用期 {probationDays} 天）</span>
+            )}
           </span>
         </div>
       </div>
       <div className="max-h-[320px] overflow-y-auto divide-y divide-slate-100">
         {sorted.map((op) => (
-          <OperatorRow key={op.name} op={op} />
+          <OperatorRow key={op.name} op={op} mode={field} />
         ))}
       </div>
     </div>

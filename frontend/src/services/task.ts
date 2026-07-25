@@ -628,7 +628,11 @@ export type OperatorStat = {
   onlineCount: number;
   offlineCount: number;
   within7Days: number;
+  within7DaysOnline: number;
+  within7DaysOffline: number;
   within20Days: number;
+  within20DaysOnline: number;
+  within20DaysOffline: number;
   dailyNew: number;
 };
 

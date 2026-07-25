@@ -122,7 +122,11 @@ export type OperatorStat = {
   onlineCount: number;
   offlineCount: number;
   within7Days: number;
+  within7DaysOnline: number;
+  within7DaysOffline: number;
   within20Days: number;
+  within20DaysOnline: number;
+  within20DaysOffline: number;
   dailyNew: number;
 };
 
@@ -219,8 +223,8 @@ anchorSummaryRoutes.post(
 
     const operatorMap = new Map<string, OperatorStat>();
 
-    // 原始明细数据（每条主播的入职日期 + 类型），供前端动态试用期过滤
-    const rawAnchors: { joinDate: string | null; isOnline: boolean }[] = [];
+    // 原始明细数据（每条主播的入职日期 + 类型 + 运营），供前端动态试用期过滤
+    const rawAnchors: { joinDate: string | null; isOnline: boolean; operatorName: string }[] = [];
 
     for (const row of rows) {
       const operatorName = String(row["所属运营"] ?? "").trim() || "未知运营";
@@ -241,6 +245,7 @@ anchorSummaryRoutes.post(
       rawAnchors.push({
         joinDate: joinDate ? joinDate.toISOString().slice(0, 10) : null,
         isOnline,
+        operatorName,
       });
 
       totalCount++;
@@ -261,7 +266,11 @@ anchorSummaryRoutes.post(
           onlineCount: 0,
           offlineCount: 0,
           within7Days: 0,
+          within7DaysOnline: 0,
+          within7DaysOffline: 0,
           within20Days: 0,
+          within20DaysOnline: 0,
+          within20DaysOffline: 0,
           dailyNew: 0,
         });
       }
@@ -270,8 +279,16 @@ anchorSummaryRoutes.post(
       if (isOnline) opStat.onlineCount++;
       else opStat.offlineCount++;
       if (joinDate) {
-        if (isWithinDays(joinDate, 7, refDate)) opStat.within7Days++;
-        if (isWithinDays(joinDate, 20, refDate)) opStat.within20Days++;
+        if (isWithinDays(joinDate, 7, refDate)) {
+          opStat.within7Days++;
+          if (isOnline) opStat.within7DaysOnline++;
+          else opStat.within7DaysOffline++;
+        }
+        if (isWithinDays(joinDate, 20, refDate)) {
+          opStat.within20Days++;
+          if (isOnline) opStat.within20DaysOnline++;
+          else opStat.within20DaysOffline++;
+        }
         if (isSameDay(joinDate, refDate)) opStat.dailyNew++;
       }
     }
@@ -387,23 +404,30 @@ anchorSummaryRoutes.get(
     // 最新一条作为 summary 信息
     const latestRaw = records.length > 0 ? records[records.length - 1] : null;
 
-    // 动态试用期过滤：对每条 record 重算 totalCount / onlineCount / offlineCount
+    // 动态试用期过滤：对每条 record 重算 totalCount / onlineCount / offlineCount / operatorStats
     const points = records.map((r) => {
       let filteredTotal = r.totalCount;
       let filteredOnline = r.onlineCount;
       let filteredOffline = r.offlineCount;
       let probationExcluded = 0;
 
-      if (probationDays > 0 && r.rawAnchors) {
-        const anchors = r.rawAnchors as { joinDate: string | null; isOnline: boolean }[];
+      // 试用期过滤后重新聚合的 operatorStats（按运营）
+      let filteredOperatorStats: OperatorStat[] | null = null;
+
+      // 始终从 rawAnchors 重新聚合 operatorStats，确保 7天/20天 线上线下字段始终有值
+      // （旧数据中数据库 operatorStats 没有这 4 个新字段；试用期只影响过滤，不影响是否重算）
+      if (r.rawAnchors) {
+        const anchors = r.rawAnchors as { joinDate: string | null; isOnline: boolean; operatorName?: string }[];
         filteredTotal = 0;
         filteredOnline = 0;
         filteredOffline = 0;
         const refDate = new Date(r.recordDate);
 
+        const opMap = new Map<string, OperatorStat>();
+
         for (const a of anchors) {
           // 试用期内：跳过
-          if (a.joinDate) {
+          if (probationDays > 0 && a.joinDate) {
             const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
             const diffDays = diffMs / 86400000;
             if (diffDays >= 0 && diffDays < probationDays) {
@@ -414,6 +438,85 @@ anchorSummaryRoutes.get(
           filteredTotal++;
           if (a.isOnline) filteredOnline++;
           else filteredOffline++;
+        }
+
+        // 按运营聚合：优先使用 rawAnchors 中的 operatorName（仅新版上传的数据含此字段）
+        const hasOp = anchors.some((a) => typeof a.operatorName === "string" && a.operatorName.length > 0);
+        if (hasOp) {
+          for (const a of anchors) {
+            const opName = (a.operatorName ?? "").trim() || "未知运营";
+            // 试用期内：跳过
+            if (probationDays > 0 && a.joinDate) {
+              const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
+              const diffDays = diffMs / 86400000;
+              if (diffDays >= 0 && diffDays < probationDays) continue;
+            }
+            if (!opMap.has(opName)) {
+              opMap.set(opName, {
+                name: opName,
+                totalCount: 0,
+                onlineCount: 0,
+                offlineCount: 0,
+                within7Days: 0,
+                within7DaysOnline: 0,
+                within7DaysOffline: 0,
+                within20Days: 0,
+                within20DaysOnline: 0,
+                within20DaysOffline: 0,
+                dailyNew: 0,
+              });
+            }
+            const op = opMap.get(opName)!;
+            op.totalCount++;
+            if (a.isOnline) op.onlineCount++;
+            else op.offlineCount++;
+            if (a.joinDate) {
+              const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
+              const diffDays = diffMs / 86400000;
+              if (diffDays >= 0 && diffDays < 7) {
+                op.within7Days++;
+                if (a.isOnline) op.within7DaysOnline++;
+                else op.within7DaysOffline++;
+              }
+              if (diffDays >= 0 && diffDays < 20) {
+                op.within20Days++;
+                if (a.isOnline) op.within20DaysOnline++;
+                else op.within20DaysOffline++;
+              }
+            }
+          }
+          filteredOperatorStats = Array.from(opMap.values()).sort((a, b) => b.totalCount - a.totalCount);
+        } else {
+          // 旧数据：rawAnchors 中无 operatorName，对原 operatorStats 做比例缩放，保证浮窗合计 ≈ 卡片总数
+          // 新字段（within7DaysOnline 等）旧数据中一定是 0/null，统一用 inferSplit 按 online/offline 比例推算
+          const orig = r.operatorStats as OperatorStat[];
+          const origTotal = r.totalCount;
+          if (orig && origTotal > 0) {
+            const scale = filteredTotal / origTotal;
+            const inferSplit = (total7: number, totalAll: number, split: number) => {
+              if (totalAll <= 0) return 0;
+              return Math.round(total7 * (split / totalAll));
+            };
+            filteredOperatorStats = orig.map((op) => {
+              const scaledTotal = Math.round(op.totalCount * scale);
+              const scaledOnline = Math.round(op.onlineCount * scale);
+              const scaledOffline = Math.round(op.offlineCount * scale);
+              const w7Scaled = Math.round((op.within7Days ?? 0) * scale);
+              const w20Scaled = Math.round((op.within20Days ?? 0) * scale);
+              return {
+                ...op,
+                totalCount: scaledTotal,
+                onlineCount: scaledOnline,
+                offlineCount: scaledOffline,
+                within7Days: w7Scaled,
+                within7DaysOnline: inferSplit(w7Scaled, scaledTotal, scaledOnline),
+                within7DaysOffline: inferSplit(w7Scaled, scaledTotal, scaledOffline),
+                within20Days: w20Scaled,
+                within20DaysOnline: inferSplit(w20Scaled, scaledTotal, scaledOnline),
+                within20DaysOffline: inferSplit(w20Scaled, scaledTotal, scaledOffline),
+              };
+            });
+          }
         }
       }
 
@@ -427,6 +530,7 @@ anchorSummaryRoutes.get(
         dailyNew: r.dailyNew,
         probationDays: probationDays,
         probationExcluded,
+        operatorStats: filteredOperatorStats ?? (r.operatorStats as OperatorStat[]),
       };
     });
 
@@ -449,7 +553,7 @@ anchorSummaryRoutes.get(
             within7Days: latestRaw.within7Days,
             within20Days: latestRaw.within20Days,
             dailyNew: latestRaw.dailyNew,
-            operatorStats: latestRaw.operatorStats,
+            operatorStats: latest?.operatorStats ?? (latestRaw.operatorStats as OperatorStat[]),
             rawRowCount: latestRaw.rawRowCount,
             createdAt: latestRaw.createdAt,
             updatedAt: latestRaw.updatedAt,
