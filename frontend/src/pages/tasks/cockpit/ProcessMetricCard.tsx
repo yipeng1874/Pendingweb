@@ -249,7 +249,9 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
         <div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{loadError}</div>
       )}
 
-      {dateEntries.length > 0 && teams.length > 0 ? (<>
+      {dateEntries.length > 0 && teams.length > 0 ? (() => {
+          const recentDates = dateEntries.slice(-6);
+          return (<>
         {/* ── 团队完成率矩阵（日期 × 团队）── */}
         <div className="rounded-xl border border-slate-100 bg-white p-3">
           <div className="flex items-center justify-between mb-2">
@@ -260,9 +262,9 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             <table className="min-w-full text-[12px] border-collapse">
               <thead>
                 <tr className="border-b border-slate-100">
-                  <th className="text-left px-2 py-2 text-slate-400 font-normal sticky left-0 bg-white z-10 w-20">团队</th>
-                  {dateEntries.map((d) => (
-                    <th key={d.recordDate} className="text-center px-2 py-2 text-slate-400 font-normal min-w-[100px]">
+                  <th className="text-left px-2 py-2 text-slate-400 font-normal sticky left-0 bg-white z-10 w-16">团队</th>
+                  {recentDates.map((d) => (
+                    <th key={d.recordDate} className="text-center px-2 py-2 text-slate-400 font-normal min-w-[85px]">
                       {formatDateHeader(d.recordDate)}
                     </th>
                   ))}
@@ -272,7 +274,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                 {participatingTeams.map((team) => (
                   <tr key={team.orgId} className="border-b border-slate-50 hover:bg-slate-50/50">
                     <td className="px-2 py-2 text-slate-700 font-medium sticky left-0 bg-white z-10">{team.orgName}</td>
-                    {dateEntries.map((d) => {
+                    {recentDates.map((d) => {
                       const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
                       const p = t && t.halls.length > 0 ? teamAvg(t) : undefined;
                       return (
@@ -286,7 +288,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                 {/* ── 每日均值行 ── */}
                 <tr className="border-t-2 border-slate-200 bg-slate-50/60">
                   <td className="px-2 py-2 text-slate-500 font-medium sticky left-0 bg-slate-50/60 z-10 text-[12px]">每日均值</td>
-                  {dateEntries.map((d) => {
+                  {recentDates.map((d) => {
                     const vals = participatingTeams
                       .map((team) => {
                         const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
@@ -305,7 +307,8 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             </table>
           </div>
         </div>
-      </>) : (!loading && <div className="text-center py-10 text-[12px] text-slate-400">暂无数据，请点击右上角"上传数据"录入</div>)}
+      </>);
+        })() : (!loading && <div className="text-center py-10 text-[12px] text-slate-400">暂无数据，请点击右上角"上传数据"录入</div>)}
       {loading && <div className="text-center py-10"><RefreshCw size={18} className="animate-spin text-slate-400 mx-auto" /></div>}
     </div>
 
