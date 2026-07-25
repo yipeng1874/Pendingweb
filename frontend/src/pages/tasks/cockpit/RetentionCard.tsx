@@ -251,6 +251,7 @@ export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }
           <div className="flex items-center justify-between mb-2">
             <button onClick={() => setDataTableOpen((v) => !v)} className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 hover:text-slate-900">
               {dataTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />} 数据明细表（{viewTeamName}·点击行切换月份）
+              <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
             </button>
             <span className="text-[11px] text-slate-400">跨度 {monthEntries.length} / 5 个月</span>
           </div>
@@ -285,6 +286,7 @@ export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }
         {!viewTeamId && currentEntry && currentEntry.teams.length > 0 && <div className="space-y-2">
           <button onClick={() => setTeamTableOpen((v) => !v)} className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 hover:text-slate-900">
             {teamTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />} {selectedMonth} 团队明细
+            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
           </button>
           {teamTableOpen && <div className="overflow-x-auto">
             <table className="w-full text-[13px] border-collapse">

@@ -880,6 +880,10 @@ export type StaffTurnoverTeamRecord = {
   teamOrgName: string;
   lossCount: number;
   lossAvgWave: number;
+  lossOnlineCount: number;
+  lossOnlineAvgWave: number;
+  lossOfflineCount: number;
+  lossOfflineAvgWave: number;
   activeOnlineCount: number;
   activeOnlineAvgWave: number;
   activeOfflineCount: number;
@@ -891,6 +895,10 @@ export type StaffTurnoverTeamRecord = {
 export type StaffTurnoverAggregated = {
   lossCount: number;
   lossAvgWave: number;
+  lossOnlineCount: number;
+  lossOnlineAvgWave: number;
+  lossOfflineCount: number;
+  lossOfflineAvgWave: number;
   activeOnlineCount: number;
   activeOnlineAvgWave: number;
   activeOfflineCount: number;
@@ -921,8 +929,10 @@ export type StaffTurnoverUpsertInput = {
   teamOrgId: string;
   teamOrgName: string;
   recordDate: string;
-  lossCount: number;
-  lossAvgWave: number;
+  lossOnlineCount: number;
+  lossOnlineAvgWave: number;
+  lossOfflineCount: number;
+  lossOfflineAvgWave: number;
   activeOnlineCount: number;
   activeOnlineAvgWave: number;
   activeOfflineCount: number;
@@ -1062,7 +1072,7 @@ export type ProcessMetricConfigResponse = {
 };
 
 export const processMetricApi = {
-  getByDate: (scopeOrgId?: string, days = 6) => {
+  getByDate: (scopeOrgId?: string, days = 7) => {
     const params = new URLSearchParams();
     if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
     params.set("days", String(days));

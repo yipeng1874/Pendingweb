@@ -1649,6 +1649,11 @@ export function CockpitPage() {
           })()}
 
 
+      {/* ── 基地主播趋势图：独占一行 ── */}
+      {showDashboard && (
+        <AnchorSummaryCard scopeOrgId={scopeOrgId} />
+      )}
+
       {/* ── 在职/离职人数音浪趋势 ── */}
       {showDashboard && (
         <StaffTurnoverCard
@@ -1674,11 +1679,6 @@ export function CockpitPage() {
           selectedBaseOrgId={selectedBaseOrgId}
           needsBaseSelect={needsBaseSelect}
         />
-      )}
-
-      {/* ── 基地主播趋势图：独占一行 ── */}
-      {showDashboard && (
-        <AnchorSummaryCard scopeOrgId={scopeOrgId} />
       )}
 
       {showDashboard && (

@@ -69,7 +69,8 @@ staffTurnoverRoutes.post(
 
     const {
       teamOrgId, teamOrgName, recordDate,
-      lossCount, lossAvgWave,
+      lossOnlineCount, lossOnlineAvgWave,
+      lossOfflineCount, lossOfflineAvgWave,
       activeOnlineCount, activeOnlineAvgWave,
       activeOfflineCount, activeOfflineAvgWave,
     } = req.body ?? {};
@@ -81,12 +82,21 @@ staffTurnoverRoutes.post(
       return fail(res, "INVALID_RECORD_DATE", "请提供有效的日期（YYYY-MM-DD）", 400);
     }
     if (
-      lossCount == null || lossAvgWave == null ||
+      lossOnlineCount == null || lossOnlineAvgWave == null ||
+      lossOfflineCount == null || lossOfflineAvgWave == null ||
       activeOnlineCount == null || activeOnlineAvgWave == null ||
       activeOfflineCount == null || activeOfflineAvgWave == null
     ) {
-      return fail(res, "MISSING_PARAMS", "请填写所有 6 个字段", 400);
+      return fail(res, "MISSING_PARAMS", "请填写所有 8 个字段（离职 4 + 在职 4）", 400);
     }
+
+    // 离职合计 = 线上 + 线下；离职总音浪 = 人数加权平均
+    const _lossOnline = Number(lossOnlineCount) || 0;
+    const _lossOffline = Number(lossOfflineCount) || 0;
+    const _lossTotal = _lossOnline + _lossOffline;
+    const _lossTotalWave = _lossTotal > 0
+      ? ((Number(lossOnlineAvgWave) || 0) * _lossOnline + (Number(lossOfflineAvgWave) || 0) * _lossOffline) / _lossTotal
+      : 0;
 
     const uploader = await prisma.user.findUnique({
       where: { id: req.userId },
@@ -103,8 +113,12 @@ staffTurnoverRoutes.post(
         teamOrgId: String(teamOrgId),
         teamOrgName: String(teamOrgName),
         recordDate: String(recordDate),
-        lossCount: Number(lossCount),
-        lossAvgWave: Number(lossAvgWave),
+        lossCount: _lossTotal,
+        lossAvgWave: _lossTotalWave,
+        lossOnlineCount: _lossOnline,
+        lossOnlineAvgWave: Number(lossOnlineAvgWave) || 0,
+        lossOfflineCount: _lossOffline,
+        lossOfflineAvgWave: Number(lossOfflineAvgWave) || 0,
         activeOnlineCount: Number(activeOnlineCount),
         activeOnlineAvgWave: Number(activeOnlineAvgWave),
         activeOfflineCount: Number(activeOfflineCount),
@@ -115,8 +129,12 @@ staffTurnoverRoutes.post(
       update: {
         baseOrgName: baseOrg.name,
         teamOrgName: String(teamOrgName),
-        lossCount: Number(lossCount),
-        lossAvgWave: Number(lossAvgWave),
+        lossCount: _lossTotal,
+        lossAvgWave: _lossTotalWave,
+        lossOnlineCount: _lossOnline,
+        lossOnlineAvgWave: Number(lossOnlineAvgWave) || 0,
+        lossOfflineCount: _lossOffline,
+        lossOfflineAvgWave: Number(lossOfflineAvgWave) || 0,
         activeOnlineCount: Number(activeOnlineCount),
         activeOnlineAvgWave: Number(activeOnlineAvgWave),
         activeOfflineCount: Number(activeOfflineCount),
@@ -197,7 +215,9 @@ staffTurnoverRoutes.get(
       const teamRecords = Array.from(teamMap.values());
 
       // 汇总聚合（人数直接求和，音浪用加权平均 = Σ(人均×人数) / Σ人数）
-      const totalLoss = teamRecords.reduce((s, r) => s + r.lossCount, 0);
+      const totalLossOnline = teamRecords.reduce((s, r) => s + (r.lossOnlineCount || 0), 0);
+      const totalLossOffline = teamRecords.reduce((s, r) => s + (r.lossOfflineCount || 0), 0);
+      const totalLoss = totalLossOnline + totalLossOffline;
       const totalOnline = teamRecords.reduce((s, r) => s + r.activeOnlineCount, 0);
       const totalOffline = teamRecords.reduce((s, r) => s + r.activeOfflineCount, 0);
       const totalActive = totalOnline + totalOffline;  // 线上+线下合计
@@ -211,7 +231,16 @@ staffTurnoverRoutes.get(
       const aggregated = {
         lossCount: totalLoss,
         lossAvgWave: totalLoss > 0
-          ? teamRecords.reduce((s, r) => s + (r.lossAvgWave ?? 0) * (r.lossCount || 0), 0) / totalLoss
+          ? (teamRecords.reduce((s, r) => s + (r.lossOnlineAvgWave ?? 0) * (r.lossOnlineCount || 0), 0)
+            + teamRecords.reduce((s, r) => s + (r.lossOfflineAvgWave ?? 0) * (r.lossOfflineCount || 0), 0)) / totalLoss
+          : 0,
+        lossOnlineCount: totalLossOnline,
+        lossOnlineAvgWave: totalLossOnline > 0
+          ? teamRecords.reduce((s, r) => s + (r.lossOnlineAvgWave ?? 0) * (r.lossOnlineCount || 0), 0) / totalLossOnline
+          : 0,
+        lossOfflineCount: totalLossOffline,
+        lossOfflineAvgWave: totalLossOffline > 0
+          ? teamRecords.reduce((s, r) => s + (r.lossOfflineAvgWave ?? 0) * (r.lossOfflineCount || 0), 0) / totalLossOffline
           : 0,
         activeOnlineCount: totalOnline,
         activeOnlineAvgWave: totalOnline > 0
@@ -230,11 +259,19 @@ staffTurnoverRoutes.get(
         const activeTotalWave = activeTotal > 0
           ? ((r.activeOnlineAvgWave ?? 0) * (r.activeOnlineCount || 0) + (r.activeOfflineAvgWave ?? 0) * (r.activeOfflineCount || 0)) / activeTotal
           : 0;
+        const lossTotal = (r.lossOnlineCount || 0) + (r.lossOfflineCount || 0);
+        const lossTotalWave = lossTotal > 0
+          ? ((r.lossOnlineAvgWave ?? 0) * (r.lossOnlineCount || 0) + (r.lossOfflineAvgWave ?? 0) * (r.lossOfflineCount || 0)) / lossTotal
+          : 0;
         return {
           teamOrgId: r.teamOrgId,
           teamOrgName: r.teamOrgName,
-          lossCount: r.lossCount,
-          lossAvgWave: r.lossAvgWave,
+          lossCount: lossTotal,
+          lossAvgWave: lossTotalWave,
+          lossOnlineCount: r.lossOnlineCount || 0,
+          lossOnlineAvgWave: r.lossOnlineAvgWave || 0,
+          lossOfflineCount: r.lossOfflineCount || 0,
+          lossOfflineAvgWave: r.lossOfflineAvgWave || 0,
           activeOnlineCount: r.activeOnlineCount,
           activeOnlineAvgWave: r.activeOnlineAvgWave,
           activeOfflineCount: r.activeOfflineCount,

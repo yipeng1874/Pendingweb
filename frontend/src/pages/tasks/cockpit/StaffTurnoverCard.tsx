@@ -17,7 +17,7 @@ const CURRENT_YEAR = NOW.getFullYear();
 const CURRENT_MONTH = NOW.getMonth() + 1;
 const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
-const DAY_OPTIONS = [1, 5, 10, 15, 20, 25];
+const DAY_OPTIONS = [1, 10, 20];
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
 
@@ -79,23 +79,72 @@ function WaveTooltip({ active, payload, label }: any) {
   );
 }
 
-/** 柱顶数值标签：人数（整数） */
+/** 柱顶数值标签：人数（整数）— 文字放在柱状内（右端/顶部），短柱自动外溢 */
 function CountBarLabel(props: any) {
-  const { x, y, width, value } = props;
+  const { x, y, width, height, value } = props;
   if (value === undefined || value === null || value <= 0) return null;
+  const isHorizontal = (width || 0) > (height || 0);
+  let textX: number;
+  let textY: number;
+  let anchor: "start" | "middle" | "end";
+  let fill: string;
+  if (isHorizontal) {
+    // 横柱：估算文字宽度，太短则放到柱外
+    const textStr = String(Math.round(Number(value) || 0));
+    const estTextWidth = textStr.length * 7;
+    if ((width || 0) >= estTextWidth + 8) {
+      textX = x + width - 4;
+      anchor = "end";
+      fill = "#ffffff";
+    } else {
+      textX = x + width + 4;
+      anchor = "start";
+      fill = "#0f172a";
+    }
+    textY = y + height / 2 + 4;
+  } else {
+    // 竖柱：放在柱内顶部
+    textX = x + width / 2;
+    textY = y + 13;
+    anchor = "middle";
+    fill = "#ffffff";
+  }
   return (
-    <text x={x + width / 2} y={y - 4} textAnchor="middle" fontSize={11} fontWeight={600} fill="#0f172a" style={{ pointerEvents: "none" }}>
+    <text x={textX} y={textY} textAnchor={anchor} fontSize={11} fontWeight={600} fill={fill} style={{ pointerEvents: "none" }}>
       {Math.round(Number(value) || 0)}
     </text>
   );
 }
 
-/** 柱顶数值标签：音浪（X.XX万） */
+/** 柱顶数值标签：音浪（X.XX万）— 文字放在柱状内（右端/顶部），短柱自动外溢 */
 function WaveBarLabel(props: any) {
-  const { x, y, width, value } = props;
+  const { x, y, width, height, value } = props;
   if (value === undefined || value === null || value <= 0) return null;
+  const isHorizontal = (width || 0) > (height || 0);
+  let textX: number;
+  let textY: number;
+  let anchor: "start" | "middle" | "end";
+  let fill: string;
+  if (isHorizontal) {
+    // "X.XX万" 约 5 字符 * 6 = 30px，需要 38+ 才放得下
+    if ((width || 0) >= 38) {
+      textX = x + width - 4;
+      anchor = "end";
+      fill = "#ffffff";
+    } else {
+      textX = x + width + 4;
+      anchor = "start";
+      fill = "#0f172a";
+    }
+    textY = y + height / 2 + 3;
+  } else {
+    textX = x + width / 2;
+    textY = y + 11;
+    anchor = "middle";
+    fill = "#ffffff";
+  }
   return (
-    <text x={x + width / 2} y={y - 4} textAnchor="middle" fontSize={10} fontWeight={600} fill="#0f172a" style={{ pointerEvents: "none" }}>
+    <text x={textX} y={textY} textAnchor={anchor} fontSize={10} fontWeight={600} fill={fill} style={{ pointerEvents: "none" }}>
       {(Number(value) || 0).toFixed(2)}万
     </text>
   );
@@ -129,8 +178,10 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   type FormRow = {
     teamOrgId: string;
     teamOrgName: string;
-    lossCount: string;
-    lossAvgWave: string;
+    lossOnlineCount: string;
+    lossOnlineAvgWave: string;
+    lossOfflineCount: string;
+    lossOfflineAvgWave: string;
     onlineCount: string;
     onlineAvgWave: string;
     offlineCount: string;
@@ -190,8 +241,10 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       return {
         teamOrgId: t.orgId,
         teamOrgName: t.orgName,
-        lossCount: existing ? String(existing.lossCount) : "",
-        lossAvgWave: existing ? String(existing.lossAvgWave) : "",
+        lossOnlineCount: existing ? String(existing.lossOnlineCount) : "",
+        lossOnlineAvgWave: existing ? String(existing.lossOnlineAvgWave) : "",
+        lossOfflineCount: existing ? String(existing.lossOfflineCount) : "",
+        lossOfflineAvgWave: existing ? String(existing.lossOfflineAvgWave) : "",
         onlineCount: existing ? String(existing.activeOnlineCount) : "",
         onlineAvgWave: existing ? String(existing.activeOnlineAvgWave) : "",
         offlineCount: existing ? String(existing.activeOfflineCount) : "",
@@ -212,7 +265,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const clearAllFormRows = () => {
     setFormRows((prev) => prev.map((r) => ({
       ...r,
-      lossCount: "", lossAvgWave: "",
+      lossOnlineCount: "", lossOnlineAvgWave: "",
+      lossOfflineCount: "", lossOfflineAvgWave: "",
       onlineCount: "", onlineAvgWave: "",
       offlineCount: "", offlineAvgWave: "",
     })));
@@ -222,6 +276,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const currentEntry = dateEntries.find((e) => e.recordDate === selectedDate);
   const summary: StaffTurnoverAggregated = currentEntry?.aggregated ?? {
     lossCount: 0, lossAvgWave: 0,
+    lossOnlineCount: 0, lossOnlineAvgWave: 0,
+    lossOfflineCount: 0, lossOfflineAvgWave: 0,
     activeOnlineCount: 0, activeOnlineAvgWave: 0,
     activeOfflineCount: 0, activeOfflineAvgWave: 0,
     activeTotalCount: 0, activeTotalAvgWave: 0,
@@ -235,22 +291,30 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       recordDate: e.recordDate,
       lossCount: e.aggregated.lossCount,
       lossAvgWave: e.aggregated.lossAvgWave,
+      lossOnlineCount: e.aggregated.lossOnlineCount,
+      lossOnlineAvgWave: e.aggregated.lossOnlineAvgWave,
+      lossOfflineCount: e.aggregated.lossOfflineCount,
+      lossOfflineAvgWave: e.aggregated.lossOfflineAvgWave,
       onlineCount: e.aggregated.activeOnlineCount,
       onlineAvgWave: e.aggregated.activeOnlineAvgWave,
       offlineCount: e.aggregated.activeOfflineCount,
       offlineAvgWave: e.aggregated.activeOfflineAvgWave,
       totalCount: e.aggregated.activeTotalCount,
       totalAvgWave: e.aggregated.activeTotalAvgWave,
-      t1LossCount: tA?.lossCount ?? 0,
-      t1LossAvgWave: tA?.lossAvgWave ?? 0,
+      t1LossOnlineCount: tA?.lossOnlineCount ?? 0,
+      t1LossOnlineAvgWave: tA?.lossOnlineAvgWave ?? 0,
+      t1LossOfflineCount: tA?.lossOfflineCount ?? 0,
+      t1LossOfflineAvgWave: tA?.lossOfflineAvgWave ?? 0,
       t1OnlineCount: tA?.activeOnlineCount ?? 0,
       t1OnlineAvgWave: tA?.activeOnlineAvgWave ?? 0,
       t1OfflineCount: tA?.activeOfflineCount ?? 0,
       t1OfflineAvgWave: tA?.activeOfflineAvgWave ?? 0,
       t1TotalCount: tA?.activeTotalCount ?? 0,
       t1TotalAvgWave: tA?.activeTotalAvgWave ?? 0,
-      t2LossCount: tB?.lossCount ?? 0,
-      t2LossAvgWave: tB?.lossAvgWave ?? 0,
+      t2LossOnlineCount: tB?.lossOnlineCount ?? 0,
+      t2LossOnlineAvgWave: tB?.lossOnlineAvgWave ?? 0,
+      t2LossOfflineCount: tB?.lossOfflineCount ?? 0,
+      t2LossOfflineAvgWave: tB?.lossOfflineAvgWave ?? 0,
       t2OnlineCount: tB?.activeOnlineCount ?? 0,
       t2OnlineAvgWave: tB?.activeOnlineAvgWave ?? 0,
       t2OfflineCount: tB?.activeOfflineCount ?? 0,
@@ -275,7 +339,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     setSubmitError("");
     if (!formDate) { setSubmitError("请选择日期"); return; }
     const validRows = formRows.filter((r) =>
-      r.lossCount !== "" || r.lossAvgWave !== "" ||
+      r.lossOnlineCount !== "" || r.lossOnlineAvgWave !== "" ||
+      r.lossOfflineCount !== "" || r.lossOfflineAvgWave !== "" ||
       r.onlineCount !== "" || r.onlineAvgWave !== "" ||
       r.offlineCount !== "" || r.offlineAvgWave !== ""
     );
@@ -293,8 +358,10 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             teamOrgId: r.teamOrgId,
             teamOrgName: r.teamOrgName,
             recordDate: formDate,
-            lossCount: Number(r.lossCount) || 0,
-            lossAvgWave: Number(r.lossAvgWave) || 0,
+            lossOnlineCount: Number(r.lossOnlineCount) || 0,
+            lossOnlineAvgWave: Number(r.lossOnlineAvgWave) || 0,
+            lossOfflineCount: Number(r.lossOfflineCount) || 0,
+            lossOfflineAvgWave: Number(r.lossOfflineAvgWave) || 0,
             activeOnlineCount: Number(r.onlineCount) || 0,
             activeOnlineAvgWave: Number(r.onlineAvgWave) || 0,
             activeOfflineCount: Number(r.offlineCount) || 0,
@@ -390,11 +457,104 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           <>
             {/* ── 2×2 网格：四象限独立单 Y 轴 ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* ── 图 1：离职 · 人数 ── */}
+              {/* ── 图 1：在职 · 人数 ── */}
+              <div className="rounded-xl border border-slate-100 bg-white p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="text-[13px] font-medium text-slate-700">在职人数趋势</div>
+                  
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={combinedChartData} layout="vertical" margin={{ top: 5, right: 55, left: 20, bottom: 5 }} barGap={1}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" tick={{ fontSize: 12 }} label={{ value: "人", position: "insideBottom", style: { fontSize: 12 }, offset: -5 }} />
+                    <YAxis type="category" dataKey="recordDate" tick={{ fontSize: 12 }} width={90} />
+                    <YAxis yAxisId="right" type="category" dataKey="recordDate" orientation="right" tick={(props: any) => { const d = combinedChartData[props.index]; if (!d) return <text />; return <text x={props.x + 4} y={props.y + 4} textAnchor="start" fontSize={11} fontWeight={600} fill="#475569">{(d.onlineCount + d.offlineCount)}人</text>; }} tickLine={false} axisLine={false} width={45} />
+                    <Tooltip content={<CountTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} content={(props: any) => {
+                      const totalAll = combinedChartData.reduce((s, d) => s + (d.onlineCount || 0) + (d.offlineCount || 0), 0);
+                      return (
+                        <div className="flex items-center justify-center gap-4 flex-wrap" style={{ ...props.style, paddingTop: 2 }}>
+                          {props.payload?.map((entry: any, idx: number) => (
+                            <span
+                              key={`item-${idx}`}
+                              className="flex items-center gap-1.5 cursor-pointer text-slate-600 hover:text-slate-800"
+                              onClick={() => toggleKey(String(entry.dataKey))}
+                            >
+                              <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: entry.color }} />
+                              <span>{entry.value}</span>
+                            </span>
+                          ))}
+                          <span className="flex items-center gap-1 text-slate-700 font-medium border-l border-slate-200 pl-3">
+                            在职合计：<span className="font-bold text-slate-800">{totalAll}人</span>
+                          </span>
+                        </div>
+                      );
+                    }} />
+                    {!isTwoTeamCompare && <Bar dataKey="onlineCount" name="线上人数" hide={hiddenKeys.has("onlineCount")} fill={COLORS.online} radius={[0, 4, 4, 0]} barSize={14} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
+                      <LabelList dataKey="onlineCount" position="right" content={<CountBarLabel />} />
+                    </Bar>}
+                    {!isTwoTeamCompare && <Bar dataKey="offlineCount" name="线下人数" hide={hiddenKeys.has("offlineCount")} fill={COLORS.offline} radius={[0, 4, 4, 0]} barSize={14} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
+                      <LabelList dataKey="offlineCount" position="right" content={<CountBarLabel />} />
+                    </Bar>}
+                    {contrastTeamA && (
+                      <>
+                        <Bar dataKey="t1OnlineCount" name={`${teamAName} 线上人数`} hide={hiddenKeys.has("t1OnlineCount")} fill={COLORS.aOnline} fillOpacity={0.9} radius={[0, 4, 4, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                        <Bar dataKey="t1OfflineCount" name={`${teamAName} 线下人数`} hide={hiddenKeys.has("t1OfflineCount")} fill={COLORS.aOffline} fillOpacity={0.9} radius={[0, 4, 4, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                        <Bar dataKey="t1TotalCount" name={`${teamAName} 合计人数`} hide={hiddenKeys.has("t1TotalCount")} fill={COLORS.aTotal} fillOpacity={0.9} radius={[0, 4, 4, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                      </>
+                    )}
+                    {contrastTeamB && (
+                      <>
+                        <Bar dataKey="t2OnlineCount" name={`${teamBName} 线上人数`} hide={hiddenKeys.has("t2OnlineCount")} fill={COLORS.bOnline} fillOpacity={0.85} radius={[0, 4, 4, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                        <Bar dataKey="t2OfflineCount" name={`${teamBName} 线下人数`} hide={hiddenKeys.has("t2OfflineCount")} fill={COLORS.bOffline} fillOpacity={0.85} radius={[0, 4, 4, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                        <Bar dataKey="t2TotalCount" name={`${teamBName} 合计人数`} hide={hiddenKeys.has("t2TotalCount")} fill={COLORS.bTotal} fillOpacity={0.85} radius={[0, 4, 4, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
+                      </>
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* ── 图 2：在职 · 人均音浪 ── */}
+              <div className="rounded-xl border border-slate-100 bg-white p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="text-[13px] font-medium text-slate-700">在职人均音浪趋势</div>
+                  
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={combinedChartData} layout="vertical" margin={{ top: 5, right: 60, left: 20, bottom: 5 }} barGap={1}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" tick={{ fontSize: 12 }} label={{ value: "万", position: "insideBottom", style: { fontSize: 12 }, offset: -5 }} />
+                    <YAxis type="category" dataKey="recordDate" tick={{ fontSize: 12 }} width={90} />
+                    <YAxis yAxisId="right" type="category" dataKey="recordDate" orientation="right" tick={(props: any) => { const d = combinedChartData[props.index]; if (!d) return <text />; return <text x={props.x + 4} y={props.y + 4} textAnchor="start" fontSize={11} fontWeight={600} fill="#475569">{d.totalAvgWave?.toFixed(2)}万</text>; }} tickLine={false} axisLine={false} width={50} />
+                    <Tooltip content={<WaveTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
+                    {!isTwoTeamCompare && <Bar dataKey="onlineAvgWave" name="线上音浪" hide={hiddenKeys.has("onlineAvgWave")} fill={COLORS.online} fillOpacity={0.5} radius={[0, 4, 4, 0]} barSize={14}>
+                      <LabelList dataKey="onlineAvgWave" position="right" content={<WaveBarLabel />} />
+                    </Bar>}
+                    {!isTwoTeamCompare && <Bar dataKey="offlineAvgWave" name="线下音浪" hide={hiddenKeys.has("offlineAvgWave")} fill={COLORS.offline} fillOpacity={0.5} radius={[0, 4, 4, 0]} barSize={14}>
+                      <LabelList dataKey="offlineAvgWave" position="right" content={<WaveBarLabel />} />
+                    </Bar>}
+                    {contrastTeamA && (
+                      <>
+                        <Bar dataKey="t1OnlineAvgWave" name={`${teamAName} 线上音浪`} hide={hiddenKeys.has("t1OnlineAvgWave")} fill={COLORS.aOnline} fillOpacity={0.85} radius={[0, 4, 4, 0]} barSize={11} />
+                        <Bar dataKey="t1OfflineAvgWave" name={`${teamAName} 线下音浪`} hide={hiddenKeys.has("t1OfflineAvgWave")} fill={COLORS.aOffline} fillOpacity={0.85} radius={[0, 4, 4, 0]} barSize={11} />
+                      </>
+                    )}
+                    {contrastTeamB && (
+                      <>
+                        <Bar dataKey="t2OnlineAvgWave" name={`${teamBName} 线上音浪`} hide={hiddenKeys.has("t2OnlineAvgWave")} fill={COLORS.bOnline} fillOpacity={0.75} radius={[0, 4, 4, 0]} barSize={8} />
+                        <Bar dataKey="t2OfflineAvgWave" name={`${teamBName} 线下音浪`} hide={hiddenKeys.has("t2OfflineAvgWave")} fill={COLORS.bOffline} fillOpacity={0.75} radius={[0, 4, 4, 0]} barSize={8} />
+                      </>
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* ── 图 3：离职 · 人数 ── */}
               <div className="rounded-xl border border-slate-100 bg-white p-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="text-[13px] font-medium text-slate-700">离职人数趋势</div>
-                  <span className="text-[11px] text-slate-400">点击柱可切换日期</span>
+                  
                 </div>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={combinedChartData} margin={{ top: 24, right: 10, left: 0, bottom: 5 }} barGap={2}>
@@ -403,24 +563,33 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     <YAxis tick={{ fontSize: 12, width: 30 }} label={{ value: "人", position: "insideLeft", style: { fontSize: 12 }, offset: -5 }} />
                     <Tooltip content={<CountTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
-                    {!isTwoTeamCompare && <Bar dataKey="lossCount" name="离职人数" hide={hiddenKeys.has("lossCount")} fill={COLORS.loss} radius={[4, 4, 0, 0]} barSize={24} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
-                      <LabelList dataKey="lossCount" position="top" content={<CountBarLabel />} />
+                    {!isTwoTeamCompare && <Bar dataKey="lossOnlineCount" name="离职线上人数" hide={hiddenKeys.has("lossOnlineCount")} fill={COLORS.online} radius={[4, 4, 0, 0]} barSize={18} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
+                      <LabelList dataKey="lossOnlineCount" position="top" content={<CountBarLabel />} />
+                    </Bar>}
+                    {!isTwoTeamCompare && <Bar dataKey="lossOfflineCount" name="离职线下人数" hide={hiddenKeys.has("lossOfflineCount")} fill={COLORS.offline} radius={[4, 4, 0, 0]} barSize={18} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
+                      <LabelList dataKey="lossOfflineCount" position="top" content={<CountBarLabel />} />
                     </Bar>}
                     {contrastTeamA && (
-                      <Bar dataKey="t1LossCount" name={`${teamAName} 离职人数`} hide={hiddenKeys.has("t1LossCount")} fill={COLORS.aLoss} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={14} />
+                      <>
+                        <Bar dataKey="t1LossOnlineCount" name={`${teamAName} 离职线上`} hide={hiddenKeys.has("t1LossOnlineCount")} fill={COLORS.aOnline} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={10} />
+                        <Bar dataKey="t1LossOfflineCount" name={`${teamAName} 离职线下`} hide={hiddenKeys.has("t1LossOfflineCount")} fill={COLORS.aOffline} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={10} />
+                      </>
                     )}
                     {contrastTeamB && (
-                      <Bar dataKey="t2LossCount" name={`${teamBName} 离职人数`} hide={hiddenKeys.has("t2LossCount")} fill={COLORS.bLoss} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={10} />
+                      <>
+                        <Bar dataKey="t2LossOnlineCount" name={`${teamBName} 离职线上`} hide={hiddenKeys.has("t2LossOnlineCount")} fill={COLORS.bOnline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={7} />
+                        <Bar dataKey="t2LossOfflineCount" name={`${teamBName} 离职线下`} hide={hiddenKeys.has("t2LossOfflineCount")} fill={COLORS.bOffline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={7} />
+                      </>
                     )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* ── 图 2：离职 · 人均音浪 ── */}
+              {/* ── 图 4：离职 · 人均音浪 ── */}
               <div className="rounded-xl border border-slate-100 bg-white p-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="text-[13px] font-medium text-slate-700">离职人均音浪趋势</div>
-                  <span className="text-[11px] text-slate-400">点击图例可隐藏</span>
+                  
                 </div>
                 <ResponsiveContainer width="100%" height={220}>
                   <ComposedChart data={combinedChartData} margin={{ top: 24, right: 10, left: 0, bottom: 5 }}>
@@ -429,96 +598,25 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     <YAxis tick={{ fontSize: 12, width: 30 }} label={{ value: "万", position: "insideLeft", style: { fontSize: 12 }, offset: -5 }} />
                     <Tooltip content={<WaveTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
-                    {!isTwoTeamCompare && <Bar dataKey="lossAvgWave" name="离职音浪" hide={hiddenKeys.has("lossAvgWave")} fill={COLORS.loss} fillOpacity={0.45} radius={[4, 4, 0, 0]} barSize={16}>
-                      <LabelList dataKey="lossAvgWave" position="top" content={<WaveBarLabel />} />
+                    {!isTwoTeamCompare && <Bar dataKey="lossOnlineAvgWave" name="离职线上音浪" hide={hiddenKeys.has("lossOnlineAvgWave")} fill={COLORS.online} fillOpacity={0.5} radius={[4, 4, 0, 0]} barSize={12}>
+                      <LabelList dataKey="lossOnlineAvgWave" position="top" content={<WaveBarLabel />} />
+                    </Bar>}
+                    {!isTwoTeamCompare && <Bar dataKey="lossOfflineAvgWave" name="离职线下音浪" hide={hiddenKeys.has("lossOfflineAvgWave")} fill={COLORS.offline} fillOpacity={0.5} radius={[4, 4, 0, 0]} barSize={12}>
+                      <LabelList dataKey="lossOfflineAvgWave" position="top" content={<WaveBarLabel />} />
                     </Bar>}
                     {contrastTeamA && (
-                      <Bar dataKey="t1LossAvgWave" name={`${teamAName} 离职音浪`} hide={hiddenKeys.has("t1LossAvgWave")} fill={COLORS.aLoss} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={12} />
+                      <>
+                        <Bar dataKey="t1LossOnlineAvgWave" name={`${teamAName} 离职线上音浪`} hide={hiddenKeys.has("t1LossOnlineAvgWave")} fill={COLORS.aOnline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={9} />
+                        <Bar dataKey="t1LossOfflineAvgWave" name={`${teamAName} 离职线下音浪`} hide={hiddenKeys.has("t1LossOfflineAvgWave")} fill={COLORS.aOffline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={9} />
+                      </>
                     )}
                     {contrastTeamB && (
-                      <Bar dataKey="t2LossAvgWave" name={`${teamBName} 离职音浪`} hide={hiddenKeys.has("t2LossAvgWave")} fill={COLORS.bLoss} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={8} />
+                      <>
+                        <Bar dataKey="t2LossOnlineAvgWave" name={`${teamBName} 离职线上音浪`} hide={hiddenKeys.has("t2LossOnlineAvgWave")} fill={COLORS.bOnline} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={6} />
+                        <Bar dataKey="t2LossOfflineAvgWave" name={`${teamBName} 离职线下音浪`} hide={hiddenKeys.has("t2LossOfflineAvgWave")} fill={COLORS.bOffline} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={6} />
+                      </>
                     )}
                   </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* ── 图 3：在职 · 人数 ── */}
-              <div className="rounded-xl border border-slate-100 bg-white p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="text-[13px] font-medium text-slate-700">在职人数趋势</div>
-                  <span className="text-[11px] text-slate-400">点击柱可切换日期</span>
-                </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={combinedChartData} margin={{ top: 24, right: 10, left: 0, bottom: 5 }} barGap={1}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="recordDate" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12, width: 30 }} label={{ value: "人", position: "insideLeft", style: { fontSize: 12 }, offset: -5 }} />
-                    <Tooltip content={<CountTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
-                    {!isTwoTeamCompare && <Bar dataKey="onlineCount" name="线上人数" hide={hiddenKeys.has("onlineCount")} fill={COLORS.online} radius={[4, 4, 0, 0]} barSize={14} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
-                      <LabelList dataKey="onlineCount" position="top" content={<CountBarLabel />} />
-                    </Bar>}
-                    {!isTwoTeamCompare && <Bar dataKey="offlineCount" name="线下人数" hide={hiddenKeys.has("offlineCount")} fill={COLORS.offline} radius={[4, 4, 0, 0]} barSize={14} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
-                      <LabelList dataKey="offlineCount" position="top" content={<CountBarLabel />} />
-                    </Bar>}
-                    {!isTwoTeamCompare && <Bar dataKey="totalCount" name="在职合计人数" hide={hiddenKeys.has("totalCount")} fill={COLORS.total} radius={[4, 4, 0, 0]} barSize={14} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }}>
-                      <LabelList dataKey="totalCount" position="top" content={<CountBarLabel />} />
-                    </Bar>}
-                    {contrastTeamA && (
-                      <>
-                        <Bar dataKey="t1OnlineCount" name={`${teamAName} 线上人数`} hide={hiddenKeys.has("t1OnlineCount")} fill={COLORS.aOnline} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                        <Bar dataKey="t1OfflineCount" name={`${teamAName} 线下人数`} hide={hiddenKeys.has("t1OfflineCount")} fill={COLORS.aOffline} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                        <Bar dataKey="t1TotalCount" name={`${teamAName} 合计人数`} hide={hiddenKeys.has("t1TotalCount")} fill={COLORS.aTotal} fillOpacity={0.9} radius={[4, 4, 0, 0]} barSize={11} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                      </>
-                    )}
-                    {contrastTeamB && (
-                      <>
-                        <Bar dataKey="t2OnlineCount" name={`${teamBName} 线上人数`} hide={hiddenKeys.has("t2OnlineCount")} fill={COLORS.bOnline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                        <Bar dataKey="t2OfflineCount" name={`${teamBName} 线下人数`} hide={hiddenKeys.has("t2OfflineCount")} fill={COLORS.bOffline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                        <Bar dataKey="t2TotalCount" name={`${teamBName} 合计人数`} hide={hiddenKeys.has("t2TotalCount")} fill={COLORS.bTotal} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={8} onClick={(d: any) => { const dt = d?.recordDate ?? d?.payload?.recordDate; if (dt) setSelectedDate(dt); }} />
-                      </>
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* ── 图 4：在职 · 人均音浪 ── */}
-              <div className="rounded-xl border border-slate-100 bg-white p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="text-[13px] font-medium text-slate-700">在职人均音浪趋势</div>
-                  <span className="text-[11px] text-slate-400">点击图例可隐藏</span>
-                </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={combinedChartData} margin={{ top: 24, right: 10, left: 0, bottom: 5 }} barGap={1}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="recordDate" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12, width: 30 }} label={{ value: "万", position: "insideLeft", style: { fontSize: 12 }, offset: -5 }} />
-                    <Tooltip content={<WaveTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
-                    {!isTwoTeamCompare && <Bar dataKey="onlineAvgWave" name="线上音浪" hide={hiddenKeys.has("onlineAvgWave")} fill={COLORS.online} fillOpacity={0.5} radius={[4, 4, 0, 0]} barSize={14}>
-                      <LabelList dataKey="onlineAvgWave" position="top" content={<WaveBarLabel />} />
-                    </Bar>}
-                    {!isTwoTeamCompare && <Bar dataKey="offlineAvgWave" name="线下音浪" hide={hiddenKeys.has("offlineAvgWave")} fill={COLORS.offline} fillOpacity={0.5} radius={[4, 4, 0, 0]} barSize={14}>
-                      <LabelList dataKey="offlineAvgWave" position="top" content={<WaveBarLabel />} />
-                    </Bar>}
-                    {!isTwoTeamCompare && <Bar dataKey="totalAvgWave" name="在职音浪均值" hide={hiddenKeys.has("totalAvgWave")} fill={COLORS.total} fillOpacity={0.5} radius={[4, 4, 0, 0]} barSize={14}>
-                      <LabelList dataKey="totalAvgWave" position="top" content={<WaveBarLabel />} />
-                    </Bar>}
-                    {contrastTeamA && (
-                      <>
-                        <Bar dataKey="t1OnlineAvgWave" name={`${teamAName} 线上音浪`} hide={hiddenKeys.has("t1OnlineAvgWave")} fill={COLORS.aOnline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={11} />
-                        <Bar dataKey="t1OfflineAvgWave" name={`${teamAName} 线下音浪`} hide={hiddenKeys.has("t1OfflineAvgWave")} fill={COLORS.aOffline} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={11} />
-                        <Bar dataKey="t1TotalAvgWave" name={`${teamAName} 音浪均值`} hide={hiddenKeys.has("t1TotalAvgWave")} fill={COLORS.aTotal} fillOpacity={0.85} radius={[4, 4, 0, 0]} barSize={11} />
-                      </>
-                    )}
-                    {contrastTeamB && (
-                      <>
-                        <Bar dataKey="t2OnlineAvgWave" name={`${teamBName} 线上音浪`} hide={hiddenKeys.has("t2OnlineAvgWave")} fill={COLORS.bOnline} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={8} />
-                        <Bar dataKey="t2OfflineAvgWave" name={`${teamBName} 线下音浪`} hide={hiddenKeys.has("t2OfflineAvgWave")} fill={COLORS.bOffline} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={8} />
-                        <Bar dataKey="t2TotalAvgWave" name={`${teamBName} 音浪均值`} hide={hiddenKeys.has("t2TotalAvgWave")} fill={COLORS.bTotal} fillOpacity={0.75} radius={[4, 4, 0, 0]} barSize={8} />
-                      </>
-                    )}
-                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -532,6 +630,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                 >
                   {dataTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                   数据明细表（点击行切换日期查看团队）
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
                 </button>
                 <span className="text-[11px] text-slate-400">
                   跨度 {dateEntries.length} / 6 周期
@@ -543,12 +642,15 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                   <thead>
                     <tr className="border-b border-slate-200">
                       <th className="text-left px-3 py-2 text-slate-500 font-medium" rowSpan={2}>日期</th>
-                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-100">离职</th>
+                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-100">离职线上</th>
+                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-100">离职线下</th>
                       <th colSpan={2} className="text-center px-3 py-2 text-blue-500 font-medium border-l border-slate-100">在职线上</th>
                       <th colSpan={2} className="text-center px-3 py-2 text-amber-500 font-medium border-l border-slate-100">在职线下</th>
                       <th colSpan={2} className="text-center px-3 py-2 text-indigo-500 font-medium border-l border-slate-100">在职合计</th>
                     </tr>
                     <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-100">人数</th>
+                      <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-100">人数</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-100">人数</th>
@@ -576,10 +678,16 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                             {e.recordDate}
                           </td>
                           <td className="text-center px-3 py-2 text-red-600 font-semibold tabular-nums border-l border-slate-100">
-                            {e.aggregated.lossCount || 0}
+                            {e.aggregated.lossOnlineCount || 0}
                           </td>
                           <td className="text-center px-3 py-2 text-red-500 tabular-nums">
-                            {fmt(e.aggregated.lossAvgWave)}
+                            {fmt(e.aggregated.lossOnlineAvgWave)}
+                          </td>
+                          <td className="text-center px-3 py-2 text-red-600 font-semibold tabular-nums border-l border-slate-100">
+                            {e.aggregated.lossOfflineCount || 0}
+                          </td>
+                          <td className="text-center px-3 py-2 text-red-500 tabular-nums">
+                            {fmt(e.aggregated.lossOfflineAvgWave)}
                           </td>
                           <td className="text-center px-3 py-2 text-blue-600 font-semibold tabular-nums border-l border-slate-100">
                             {e.aggregated.activeOnlineCount || 0}
@@ -617,29 +725,41 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                 >
                   {teamTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                   {selectedDate} 团队明细
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
                 </button>
                 {teamTableOpen && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-[13px] border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="text-left px-3 py-2 text-slate-500 font-medium">团队</th>
-                        <th className="text-center px-3 py-2 text-red-500 font-medium">离职人数</th>
-                        <th className="text-center px-3 py-2 text-red-500 font-medium">离职音浪</th>
-                        <th className="text-center px-3 py-2 text-blue-500 font-medium">线上人数</th>
-                        <th className="text-center px-3 py-2 text-blue-500 font-medium">线上音浪</th>
-                        <th className="text-center px-3 py-2 text-amber-500 font-medium">线下人数</th>
-                        <th className="text-center px-3 py-2 text-amber-500 font-medium">线下音浪</th>
-                        <th className="text-center px-3 py-2 text-indigo-500 font-medium">在职合计人数</th>
-                        <th className="text-center px-3 py-2 text-indigo-500 font-medium">在职音浪均值</th>
+                        <th className="text-left px-3 py-2 text-slate-500 font-medium" rowSpan={2}>团队</th>
+                        <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium">离职线上</th>
+                        <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium">离职线下</th>
+                        <th colSpan={2} className="text-center px-3 py-2 text-blue-500 font-medium">在职线上</th>
+                        <th colSpan={2} className="text-center px-3 py-2 text-amber-500 font-medium">在职线下</th>
+                        <th colSpan={2} className="text-center px-3 py-2 text-indigo-500 font-medium">在职合计</th>
+                      </tr>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人数</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人数</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人数</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人数</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人数</th>
+                        <th className="text-center px-2 py-1 text-slate-400 font-normal">人均音浪</th>
                       </tr>
                     </thead>
                     <tbody>
                       {currentEntry.teams.map((t: StaffTurnoverTeamRecord, i: number) => (
                         <tr key={t.teamOrgId} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
                           <td className="px-3 py-2 text-slate-700 font-medium">{t.teamOrgName}</td>
-                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.lossCount}</td>
-                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{fmt(t.lossAvgWave)}</td>
+                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.lossOnlineCount}</td>
+                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{fmt(t.lossOnlineAvgWave)}</td>
+                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.lossOfflineCount}</td>
+                          <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{fmt(t.lossOfflineAvgWave)}</td>
                           <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.activeOnlineCount}</td>
                           <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{fmt(t.activeOnlineAvgWave)}</td>
                           <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.activeOfflineCount}</td>
@@ -651,8 +771,10 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                       {/* 汇总行 */}
                       <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
                         <td className="px-3 py-2 text-slate-700">合计</td>
-                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{summary.lossCount}</td>
-                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{fmt(summary.lossAvgWave)}</td>
+                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{summary.lossOnlineCount}</td>
+                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{fmt(summary.lossOnlineAvgWave)}</td>
+                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{summary.lossOfflineCount}</td>
+                        <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{fmt(summary.lossOfflineAvgWave)}</td>
                         <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{summary.activeOnlineCount}</td>
                         <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{fmt(summary.activeOnlineAvgWave)}</td>
                         <td className="text-center px-3 py-2 text-slate-700 tabular-nums">{summary.activeOfflineCount}</td>
@@ -726,7 +848,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     共 <span className="font-semibold text-slate-700">{teams.length}</span> 个团队
                     {(() => {
                       const filledCount = formRows.filter((r) =>
-                        r.lossCount !== "" || r.lossAvgWave !== "" ||
+                        r.lossOnlineCount !== "" || r.lossOnlineAvgWave !== "" ||
+                        r.lossOfflineCount !== "" || r.lossOfflineAvgWave !== "" ||
                         r.onlineCount !== "" || r.onlineAvgWave !== "" ||
                         r.offlineCount !== "" || r.offlineAvgWave !== ""
                       ).length;
@@ -752,12 +875,15 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-slate-50 border-b border-slate-200">
                       <th className="text-left px-3 py-2 text-slate-500 font-medium sticky left-0 bg-slate-50 min-w-[140px] border-r border-slate-200">团队</th>
-                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-200">离职</th>
+                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-200">离职线上</th>
+                      <th colSpan={2} className="text-center px-3 py-2 text-red-500 font-medium border-l border-slate-200">离职线下</th>
                       <th colSpan={2} className="text-center px-3 py-2 text-blue-500 font-medium border-l border-slate-200">在职线上</th>
                       <th colSpan={2} className="text-center px-3 py-2 text-amber-500 font-medium border-l border-slate-200">在职线下</th>
                     </tr>
                     <tr className="bg-slate-50 border-b border-slate-200">
                       <th className="sticky left-0 bg-slate-50 border-r border-slate-200"></th>
+                      <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-200 min-w-[80px]">人数</th>
+                      <th className="text-center px-2 py-1 text-slate-400 font-normal min-w-[80px]">人均音浪</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-200 min-w-[80px]">人数</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal min-w-[80px]">人均音浪</th>
                       <th className="text-center px-2 py-1 text-slate-400 font-normal border-l border-slate-200 min-w-[80px]">人数</th>
@@ -771,10 +897,16 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                       <tr key={r.teamOrgId} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}>
                         <td className={`px-3 py-1.5 text-slate-700 font-medium sticky left-0 border-r border-slate-100 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>{r.teamOrgName}</td>
                         <td className="px-1 py-1 border-l border-slate-100">
-                          <input type="number" value={r.lossCount} onChange={(e) => updateFormRow(idx, "lossCount", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <input type="number" value={r.lossOnlineCount} onChange={(e) => updateFormRow(idx, "lossOnlineCount", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
                         </td>
                         <td className="px-1 py-1">
-                          <input type="number" step="0.01" value={r.lossAvgWave} onChange={(e) => updateFormRow(idx, "lossAvgWave", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <input type="number" step="0.01" value={r.lossOnlineAvgWave} onChange={(e) => updateFormRow(idx, "lossOnlineAvgWave", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        </td>
+                        <td className="px-1 py-1 border-l border-slate-100">
+                          <input type="number" value={r.lossOfflineCount} onChange={(e) => updateFormRow(idx, "lossOfflineCount", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input type="number" step="0.01" value={r.lossOfflineAvgWave} onChange={(e) => updateFormRow(idx, "lossOfflineAvgWave", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
                         </td>
                         <td className="px-1 py-1 border-l border-slate-100">
                           <input type="number" value={r.onlineCount} onChange={(e) => updateFormRow(idx, "onlineCount", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />

@@ -24,14 +24,20 @@ function formatDateHeader(date: string) {
 }
 
 /** 蓝色渐变进度条单元格 */
-function ProgressCell({ percent }: { percent?: number }) {
+function ProgressCell({ percent, variant = "blue" }: { percent?: number; variant?: "blue" | "amber" | "green" }) {
+  const colorMap: Record<string, { bg: string; border: string; from: string; to: string }> = {
+    blue:  { bg: "#eef2ff", border: "#dbeafe", from: "#93c5fd", to: "#3b82f6" },
+    amber: { bg: "#fff7ed", border: "#fed7aa", from: "#fdba74", to: "#f97316" },
+    green: { bg: "#f0fdf4", border: "#bbf7d0", from: "#86efac", to: "#22c55e" },
+  };
+  const c = colorMap[variant];
   if (percent == null) return <span className="text-slate-300 text-[12px]">—</span>;
   const w = Math.max(2, Math.min(100, Math.round(percent)));
   return (
-    <div className="relative w-full h-7 rounded bg-[#eef2ff] border border-[#dbeafe] overflow-hidden">
+    <div className="relative w-full h-7 rounded overflow-hidden" style={{ backgroundColor: c.bg, border: `1px solid ${c.border}` }}>
       <div
-        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#93c5fd] to-[#3b82f6] rounded-l"
-        style={{ width: `${w}%` }}
+        className="absolute inset-y-0 left-0 rounded-l"
+        style={{ width: `${w}%`, background: `linear-gradient(to right, ${c.from}, ${c.to})` }}
       />
       <span className="absolute inset-0 flex items-center justify-end pr-2 text-slate-800 tabular-nums font-medium text-[12px]">
         {Math.round(percent)}%
@@ -196,18 +202,25 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     const teamName = teams.find((t) => t.orgId === teamId)?.orgName ?? "";
     const rows = teamHalls.get(teamId) ?? [];
     const items: { teamOrgId: string; teamOrgName: string; hallName: string; percentage: number; recordDate: string }[] = [];
+    let invalidPct = false;
     for (const r of rows) {
       let p = parseFloat(r.percentage);
       // 0 < p ≤ 1 视为比例（如 0.7 = 70%），自动 ×100
       if (!isNaN(p) && p > 0 && p <= 1) p = p * 100;
-      if (r.hallName.trim() && !isNaN(p)) items.push({ teamOrgId: teamId, teamOrgName: teamName, hallName: r.hallName.trim(), percentage: p, recordDate: formDate });
+      if (r.hallName.trim() && !isNaN(p)) {
+        if (p < 0 || p > 100) { invalidPct = true; continue; }
+        items.push({ teamOrgId: teamId, teamOrgName: teamName, hallName: r.hallName.trim(), percentage: p, recordDate: formDate });
+      }
     }
-    if (items.length === 0) { setTeamSavedHint((p) => ({ ...p, [teamId]: "请至少填写一个厅" })); return; }
+    if (items.length === 0) {
+      setTeamSavedHint((p) => ({ ...p, [teamId]: invalidPct ? "百分比应在 0-100 之间" : "请至少填写一个厅" }));
+      return;
+    }
 
-    setSubmitting(true); setSubmittingTeamId(teamId); let s = 0, f = 0;
+    setSubmitting(true); setSubmittingTeamId(teamId); let s = 0; const errors: string[] = [];
     try {
-      for (let i = 0; i < items.length; i++) { setSubmitProgress(`正在提交 ${i + 1}/${items.length}`); try { await processMetricApi.upsert(items[i], sid); s++; } catch { f++; } }
-      if (f > 0) setTeamSavedHint((p) => ({ ...p, [teamId]: `保存完成：成功 ${s}，失败 ${f}` }));
+      for (let i = 0; i < items.length; i++) { setSubmitProgress(`正在提交 ${i + 1}/${items.length}`); try { await processMetricApi.upsert(items[i], sid); s++; } catch (e: any) { errors.push(e?.response?.data?.message || e?.message || "未知错误"); } }
+      if (errors.length > 0) setTeamSavedHint((p) => ({ ...p, [teamId]: `失败：${errors[0]}` }));
       else {
         setTeamSavedHint((p) => ({ ...p, [teamId]: `✓ 已保存 ${s} 条` }));
         // 清空该团队已保存的厅行（保留其他团队）
@@ -250,7 +263,33 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       )}
 
       {dateEntries.length > 0 && teams.length > 0 ? (() => {
-          const recentDates = dateEntries.slice(-6);
+          const recentDates = dateEntries.slice(-7);
+
+          // ── 本周/上周综合计算 ──
+          const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+          const beijingDay = beijingNow.getDay();
+          const daysThisWeek = beijingDay === 0 ? 7 : beijingDay;
+          const thisMonday = new Date(beijingNow);
+          thisMonday.setDate(beijingNow.getDate() - (beijingDay === 0 ? 6 : beijingDay - 1));
+          const toStr = (d: Date) => d.toISOString().slice(0, 10);
+          const genRange = (s: Date, e: Date) => { const a: string[] = []; const c = new Date(s); while (c <= e) { a.push(toStr(c)); c.setDate(c.getDate() + 1); } return a; };
+          const thisWeekDays = genRange(thisMonday, beijingNow);
+          const lastSunday = new Date(thisMonday); lastSunday.setDate(thisMonday.getDate() - 1);
+          const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
+          const lastWeekDays = genRange(lastMonday, lastSunday);
+
+          function calcWeekAvg(orgId: string, days: string[], den: number): number | undefined {
+            if (!den) return undefined;
+            let s = 0;
+            for (const ds of days) {
+              const de = dateEntries.find(x => x.recordDate === ds);
+              if (!de) continue;
+              const t = de.teams.find(x => x.teamOrgId === orgId);
+              if (!t || t.halls.length === 0) continue;
+              s += teamAvg(t);
+            }
+            return s / den;
+          }
           return (<>
         {/* ── 团队完成率矩阵（日期 × 团队）── */}
         <div className="rounded-xl border border-slate-100 bg-white p-3">
@@ -258,53 +297,117 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             <div className="text-[13px] font-medium text-slate-700">团队完成率</div>
             <span className="text-[11px] text-slate-400">均值 = Σ厅完成率 / 厅数</span>
           </div>
-          <div className="overflow-x-auto -mx-1 px-1">
-            <table className="min-w-full text-[12px] border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left px-2 py-2 text-slate-400 font-normal sticky left-0 bg-white z-10 w-16">团队</th>
+          <div className="flex">
+            {/* ── 左侧：团队名（固定不滚动）── */}
+            <div className="shrink-0 z-10 bg-white border-r border-slate-100">
+              <div className="text-left px-2 py-2 text-slate-400 text-[12px] font-normal h-[44px] flex items-center border-b border-slate-100" style={{ minWidth: "56px" }}>团队</div>
+              {participatingTeams.map((team) => (
+                <div key={team.orgId} className="px-2 py-2 text-slate-700 font-medium text-[12px] h-[44px] flex items-center border-b border-slate-50">
+                  {team.orgName}
+                </div>
+              ))}
+              <div className="px-2 py-2 text-slate-500 font-medium text-[12px] h-[44px] flex items-center bg-slate-50/60">
+                每日均值
+              </div>
+            </div>
+
+            {/* ── 每日:综合 = 4:2 比例区域 ── */}
+            <div className="flex-1 min-w-0 flex">
+            {/* ── 中间：7 天数据（窄屏时横向滚动）── */}
+            <div className={`flex-[4] min-w-0 overflow-x-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400`}>
+              <table className="w-full text-[12px] border-collapse table-fixed">
+                <colgroup>
                   {recentDates.map((d) => (
-                    <th key={d.recordDate} className="text-center px-2 py-2 text-slate-400 font-normal min-w-[85px]">
-                      {formatDateHeader(d.recordDate)}
-                    </th>
+                    <col key={d.recordDate} style={{ width: `${100 / recentDates.length}%` }} />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {participatingTeams.map((team) => (
-                  <tr key={team.orgId} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-2 py-2 text-slate-700 font-medium sticky left-0 bg-white z-10">{team.orgName}</td>
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {recentDates.map((d) => (
+                      <th key={d.recordDate} className="text-center px-2 py-2 text-slate-400 font-normal">
+                        {formatDateHeader(d.recordDate)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {participatingTeams.map((team) => {
+                    return (
+                      <tr key={team.orgId} className="border-b border-slate-50 hover:bg-slate-50/50">
+                        {recentDates.map((d) => {
+                          const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
+                          const p = t && t.halls.length > 0 ? teamAvg(t) : undefined;
+                          return (
+                            <td key={d.recordDate} className="px-1.5 py-2">
+                              <ProgressCell percent={p} />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                  {/* ── 每日均值行 ── */}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50/60">
                     {recentDates.map((d) => {
-                      const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
-                      const p = t && t.halls.length > 0 ? teamAvg(t) : undefined;
+                      const vals = participatingTeams
+                        .map((team) => {
+                          const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
+                          return t && t.halls.length > 0 ? teamAvg(t) : undefined;
+                        })
+                        .filter((v): v is number => v != null);
+                      const avg = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : undefined;
                       return (
                         <td key={d.recordDate} className="px-1.5 py-2">
-                          <ProgressCell percent={p} />
+                          <ProgressCell percent={avg} />
                         </td>
                       );
                     })}
                   </tr>
-                ))}
-                {/* ── 每日均值行 ── */}
-                <tr className="border-t-2 border-slate-200 bg-slate-50/60">
-                  <td className="px-2 py-2 text-slate-500 font-medium sticky left-0 bg-slate-50/60 z-10 text-[12px]">每日均值</td>
-                  {recentDates.map((d) => {
-                    const vals = participatingTeams
-                      .map((team) => {
-                        const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
-                        return t && t.halls.length > 0 ? teamAvg(t) : undefined;
-                      })
-                      .filter((v): v is number => v != null);
-                    const avg = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : undefined;
-                    return (
-                      <td key={d.recordDate} className="px-1.5 py-2">
-                        <ProgressCell percent={avg} />
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── 右侧：本周综合 + 上周综合 ── */}
+            <div className="flex-[2] shrink-0 z-10 bg-white border-l border-slate-200">
+              {/* 表头 */}
+              <div className="flex border-b border-slate-100">
+                <div className="flex-1 text-center px-2 py-2 text-amber-500 font-medium text-[12px] h-[44px] flex items-center justify-center">本周综合</div>
+                <div className="flex-1 text-center px-2 py-2 text-emerald-500 font-medium text-[12px] h-[44px] flex items-center justify-center">上周综合</div>
+              </div>
+              {/* 团队数据行 */}
+              {participatingTeams.map((team) => {
+                const wAvg = calcWeekAvg(team.orgId, thisWeekDays, daysThisWeek);
+                const lAvg = calcWeekAvg(team.orgId, lastWeekDays, 7);
+                return (
+                  <div key={team.orgId} className="flex border-b border-slate-50">
+                    <div className="flex-1 px-1.5 py-2">
+                      <ProgressCell percent={wAvg} variant="amber" />
+                    </div>
+                    <div className="flex-1 px-1.5 py-2">
+                      <ProgressCell percent={lAvg} variant="green" />
+                    </div>
+                  </div>
+                );
+              })}
+              {/* 每日均值行 */}
+              <div className="flex bg-slate-50/60">
+                <div className="flex-1 px-1.5 py-2">
+                  {(() => {
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, thisWeekDays, daysThisWeek)).filter((v): v is number => v != null);
+                    const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
+                    return <ProgressCell percent={a} variant="amber" />;
+                  })()}
+                </div>
+                <div className="flex-1 px-1.5 py-2">
+                  {(() => {
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastWeekDays, 7)).filter((v): v is number => v != null);
+                    const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
+                    return <ProgressCell percent={a} variant="green" />;
+                  })()}
+                </div>
+              </div>
+            </div>
+            </div>
           </div>
         </div>
       </>);
