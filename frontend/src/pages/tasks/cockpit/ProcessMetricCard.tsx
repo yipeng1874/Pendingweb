@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Upload, TrendingUp, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, ClipboardPaste, Check } from "lucide-react";
+import { Upload, TrendingUp, X, RefreshCw, ChevronDown, Plus, Trash2, ClipboardPaste, Check } from "lucide-react";
 import { processMetricApi, type ProcessMetricDateEntry } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
 
@@ -14,27 +13,31 @@ const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const ALL_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 function pad2(n: number) { return String(n).padStart(2, "0"); }
 
-const LINE_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#eab308", "#e11d48", "#a855f7", "#06b6d4", "#ec4899", "#84cc16", "#f43f5e"];
-
-function CountTooltip({ active, payload, label }: any) {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-2.5 text-[12px]">
-      <div className="font-medium text-slate-700 mb-1.5">{label}</div>
-      {payload.map((p: any) => (
-        <div key={p.dataKey} className="flex items-center gap-1.5 py-0.5">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />
-          <span className="text-slate-500">{p.name}：</span>
-          <span className="font-semibold text-slate-700 tabular-nums">{Number(p.value).toFixed(0)}%</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** 计算团队均值 = sum(hall.percentage) / hall.count */
 function teamAvg(team: { halls: { percentage: number }[] }): number {
   return team.halls.length > 0 ? team.halls.reduce((s, h) => s + h.percentage, 0) / team.halls.length : 0;
+}
+
+/** "2026-07-22" → "7月22日" */
+function formatDateHeader(date: string) {
+  return date.slice(5).replace(/^(\d{2})-(\d{2})$/, "$1月$2日");
+}
+
+/** 蓝色渐变进度条单元格 */
+function ProgressCell({ percent }: { percent?: number }) {
+  if (percent == null) return <span className="text-slate-300 text-[12px]">—</span>;
+  const w = Math.max(2, Math.min(100, Math.round(percent)));
+  return (
+    <div className="relative w-full h-7 rounded bg-[#eef2ff] border border-[#dbeafe] overflow-hidden">
+      <div
+        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#93c5fd] to-[#3b82f6] rounded-l"
+        style={{ width: `${w}%` }}
+      />
+      <span className="absolute inset-0 flex items-center justify-end pr-2 text-slate-800 tabular-nums font-medium text-[12px]">
+        {Math.round(percent)}%
+      </span>
+    </div>
+  );
 }
 
 export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }: Props) {
@@ -42,9 +45,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [baseOrgName, setBaseOrgName] = useState("");
-  const [selectedDate, setSelectedDate] = useState<string>("");
-  const [dataTableOpen, setDataTableOpen] = useState(false);
-  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
 
   const [teams, setTeams] = useState<{ orgId: string; orgName: string }[]>([]);
 
@@ -72,8 +72,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const formDate = `${formYear}-${pad2(formMonth)}-${pad2(formDay)}`;
   const sid = needsBaseSelect ? selectedBaseOrgId ?? scopeOrgId : scopeOrgId;
 
-  const toggleKey = (k: string) => setHiddenKeys((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-
   const loadData = async () => {
     if (!sid) return;
     setLoading(true);
@@ -96,7 +94,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       setTeams(teamList);
       const entries = byDateRes.dateEntries ?? [];
       setDateEntries(entries);
-      if (entries.length > 0) setSelectedDate(entries[entries.length - 1].recordDate);
 
       // 参与团队配置：优先使用服务端配置，首次空配置时自动检测保存到服务端
       if (config && config.teamIds.length > 0) {
@@ -182,8 +179,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     setTeamHalls((prev) => { const n = new Map(prev); const rows = [...(n.get(teamId) ?? [])]; rows.splice(idx, 1); n.set(teamId, rows); return n; });
   };
 
-  const currentEntry = dateEntries.find((e) => e.recordDate === selectedDate);
-
   /** 实际"参与过程指标"的团队（始终基于服务端共享配置） */
   const participatingTeams = teams.filter((t) => participatingTeamIds.includes(t.orgId));
 
@@ -195,13 +190,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       return next;
     });
   };
-
-  /** 折线图数据：每日期 + 每团队一条线 */
-  const chartData = dateEntries.map((e) => {
-    const point: Record<string, any> = { recordDate: e.recordDate };
-    for (const t of e.teams) point[t.teamOrgId] = Math.round(teamAvg(t));
-    return point;
-  });
 
   const handleTeamSubmit = async (teamId: string) => {
     setSubmitError("");
@@ -262,63 +250,60 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       )}
 
       {dateEntries.length > 0 && teams.length > 0 ? (<>
-        {/* ── 多线折线图 ── */}
+        {/* ── 团队完成率矩阵（日期 × 团队）── */}
         <div className="rounded-xl border border-slate-100 bg-white p-3">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-[13px] font-medium text-slate-700">团队完成率趋势</div>
-            <span className="text-[11px] text-slate-400">点击图例隐藏/显示 · 均值 = Σ厅完成率 / 厅数</span>
+            <div className="text-[13px] font-medium text-slate-700">团队完成率</div>
+            <span className="text-[11px] text-slate-400">均值 = Σ厅完成率 / 厅数</span>
           </div>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="recordDate" tick={{ fontSize: 12 }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 12, width: 30 }} label={{ value: "%", position: "insideLeft", style: { fontSize: 12 }, offset: -5 }} />
-              <Tooltip content={<CountTooltip />} />
-              <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} />
-              {participatingTeams.map((t, i) => (
-                <Line key={t.orgId} type="monotone" dataKey={t.orgId} name={t.orgName} hide={hiddenKeys.has(t.orgId)} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} dot={{ r: 4, fill: LINE_COLORS[i % LINE_COLORS.length], strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6, onClick: (_: any, p: any) => { if (p?.payload?.recordDate) setSelectedDate(p.payload.recordDate); } }} connectNulls />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 日期切换 */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          {dateEntries.map((e) => (
-            <button key={e.recordDate} onClick={() => setSelectedDate(e.recordDate)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${e.recordDate === selectedDate ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-              {e.recordDate}
-            </button>
-          ))}
-        </div>
-
-        {/* 数据明细表 */}
-        <div>
-          <button onClick={() => setDataTableOpen((v) => !v)} className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 hover:text-slate-900">
-            {dataTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />} {selectedDate} 数据明细
-          </button>
-          {dataTableOpen && currentEntry && <div className="overflow-x-auto mt-2">
-            <table className="w-full text-[13px] border-collapse">
-              <thead><tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-3 py-2 text-slate-500 font-medium">团队</th>
-                <th className="text-center px-3 py-2 text-slate-500 font-medium">厅数</th>
-                <th className="text-center px-3 py-2 text-slate-500 font-medium">团队均值</th>
-              </tr></thead>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="min-w-full text-[12px] border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left px-2 py-2 text-slate-400 font-normal sticky left-0 bg-white z-10 w-20">团队</th>
+                  {dateEntries.map((d) => (
+                    <th key={d.recordDate} className="text-center px-2 py-2 text-slate-400 font-normal min-w-[100px]">
+                      {formatDateHeader(d.recordDate)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
-                {currentEntry.teams
-                  .filter((t) => participatingTeamIds.includes(t.teamOrgId))
-                  .map((t) => {
-                    const avg = teamAvg(t);
-                    const colorClass = avg >= 80 ? "text-green-700" : avg >= 60 ? "text-blue-700" : avg >= 40 ? "text-yellow-700" : "text-red-700";
-                    return (<tr key={t.teamOrgId} className="border-b border-slate-50">
-                      <td className="px-3 py-2 text-slate-700 font-medium">{t.teamOrgName}</td>
-                      <td className="px-3 py-2 text-center text-slate-600 tabular-nums">{t.halls.length}</td>
-                      <td className={`px-3 py-2 text-center font-bold tabular-nums ${colorClass}`}>{avg.toFixed(0)}%</td>
-                    </tr>);
+                {participatingTeams.map((team) => (
+                  <tr key={team.orgId} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-2 py-2 text-slate-700 font-medium sticky left-0 bg-white z-10">{team.orgName}</td>
+                    {dateEntries.map((d) => {
+                      const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
+                      const p = t && t.halls.length > 0 ? teamAvg(t) : undefined;
+                      return (
+                        <td key={d.recordDate} className="px-1.5 py-2">
+                          <ProgressCell percent={p} />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {/* ── 每日均值行 ── */}
+                <tr className="border-t-2 border-slate-200 bg-slate-50/60">
+                  <td className="px-2 py-2 text-slate-500 font-medium sticky left-0 bg-slate-50/60 z-10 text-[12px]">每日均值</td>
+                  {dateEntries.map((d) => {
+                    const vals = participatingTeams
+                      .map((team) => {
+                        const t = d.teams.find((t2) => t2.teamOrgId === team.orgId);
+                        return t && t.halls.length > 0 ? teamAvg(t) : undefined;
+                      })
+                      .filter((v): v is number => v != null);
+                    const avg = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : undefined;
+                    return (
+                      <td key={d.recordDate} className="px-1.5 py-2">
+                        <ProgressCell percent={avg} />
+                      </td>
+                    );
                   })}
+                </tr>
               </tbody>
             </table>
-          </div>}
+          </div>
         </div>
       </>) : (!loading && <div className="text-center py-10 text-[12px] text-slate-400">暂无数据，请点击右上角"上传数据"录入</div>)}
       {loading && <div className="text-center py-10"><RefreshCw size={18} className="animate-spin text-slate-400 mx-auto" /></div>}
