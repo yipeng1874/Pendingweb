@@ -48,6 +48,14 @@ async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any
   return base;
 }
 
+const liveRoomSiteSelect = {
+  id: true,
+  baseOrgId: true,
+  baseOrgName: true,
+  name: true,
+  sort: true,
+} as const;
+
 export const liveRoomCapacityRoutes = Router();
 liveRoomCapacityRoutes.use(authRequired, identityRequired);
 
@@ -67,12 +75,19 @@ liveRoomCapacityRoutes.get(
       return fail(res, "SCOPE_ERROR", "基地鉴权失败", 403);
     }
 
-    const sites = await prisma.liveRoomSite.findMany({
-      where: { baseOrgId: baseOrg.id },
-      orderBy: { sort: "asc" },
-    });
+    try {
+      const sites = await prisma.liveRoomSite.findMany({
+        where: { baseOrgId: baseOrg.id },
+        orderBy: { sort: "asc" },
+      });
 
-    return ok(res, sites);
+      return ok(res, sites);
+    } catch (e: any) {
+      if (e?.code === "P2020" && String(e?.meta?.details ?? "").includes("updated_at")) {
+        return fail(res, "INVALID_DATETIME", "场地数据存在非法更新时间，请修复 live_room_sites.updated_at", 500);
+      }
+      throw e;
+    }
   }
 );
 
