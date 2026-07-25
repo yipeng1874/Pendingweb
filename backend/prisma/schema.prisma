@@ -248,10 +248,11 @@ model ProcessMetricDaily {
 // 过程指标参与团队配置（按基地维度，同一基地所有用户共享）
 model ProcessMetricConfig {
   baseOrgId String   @id @map("base_org_id")
-  teamIds   String   @map("team_ids") // JSON 数组字符串，如 '["id1","id2"]'
+  teamIds   String   @map("team_ids") @db.Text // JSON 数组字符串，如 '["id1","id2"]'
   updatedBy String   @map("updated_by")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
   @@map("process_metric_configs")
 }
 
