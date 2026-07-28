@@ -85,7 +85,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     try {
       const [orgTree, byDateRes, config] = await Promise.all([
         fetchOrgTree(),
-        processMetricApi.getByDate(sid),
+        processMetricApi.getByDate(sid, 14),
         processMetricApi.getConfig(sid).catch(() => null),
       ]);
       setBaseOrgName(byDateRes.baseOrgName ?? "");
