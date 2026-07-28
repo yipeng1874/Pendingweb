@@ -268,7 +268,6 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           // ── 本周/上周综合计算 ──
           const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
           const beijingDay = beijingNow.getDay();
-          const daysThisWeek = beijingDay === 0 ? 7 : beijingDay;
           const thisMonday = new Date(beijingNow);
           thisMonday.setDate(beijingNow.getDate() - (beijingDay === 0 ? 6 : beijingDay - 1));
           const toStr = (d: Date) => d.toISOString().slice(0, 10);
@@ -278,17 +277,19 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
           const lastWeekDays = genRange(lastMonday, lastSunday);
 
-          function calcWeekAvg(orgId: string, days: string[], den: number): number | undefined {
-            if (!den) return undefined;
+          /** 计算周均值：Σ每日完成率 / 完成率非0的天数 */
+          function calcWeekAvg(orgId: string, days: string[]): number | undefined {
             let s = 0;
+            let cnt = 0;
             for (const ds of days) {
               const de = dateEntries.find(x => x.recordDate === ds);
               if (!de) continue;
               const t = de.teams.find(x => x.teamOrgId === orgId);
               if (!t || t.halls.length === 0) continue;
               s += teamAvg(t);
+              cnt++;
             }
-            return s / den;
+            return cnt > 0 ? s / cnt : undefined;
           }
           return (<>
         {/* ── 团队完成率矩阵（日期 × 团队）── */}
@@ -376,8 +377,8 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
               </div>
               {/* 团队数据行 */}
               {participatingTeams.map((team) => {
-                const wAvg = calcWeekAvg(team.orgId, thisWeekDays, daysThisWeek);
-                const lAvg = calcWeekAvg(team.orgId, lastWeekDays, 7);
+                const wAvg = calcWeekAvg(team.orgId, thisWeekDays);
+                const lAvg = calcWeekAvg(team.orgId, lastWeekDays);
                 return (
                   <div key={team.orgId} className="flex border-b border-slate-50">
                     <div className="flex-1 px-1.5 py-2">
@@ -393,14 +394,14 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
               <div className="flex bg-slate-50/60">
                 <div className="flex-1 px-1.5 py-2">
                   {(() => {
-                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, thisWeekDays, daysThisWeek)).filter((v): v is number => v != null);
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, thisWeekDays)).filter((v): v is number => v != null);
                     const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
                     return <ProgressCell percent={a} variant="amber" />;
                   })()}
                 </div>
                 <div className="flex-1 px-1.5 py-2">
                   {(() => {
-                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastWeekDays, 7)).filter((v): v is number => v != null);
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastWeekDays)).filter((v): v is number => v != null);
                     const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
                     return <ProgressCell percent={a} variant="green" />;
                   })()}
