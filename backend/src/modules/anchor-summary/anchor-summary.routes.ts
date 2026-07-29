@@ -473,7 +473,12 @@ anchorSummaryRoutes.get(
 
         for (const a of anchors) {
           // TEAM_ADMIN：过滤非本团队的运营
-          if (teamOrgName && typeof a.operatorName === "string" && !matchOperatorByChar(teamOrgName, a.operatorName)) continue;
+          //  - 有 operatorName：必须与团队名匹配
+          //  - 没有 operatorName（旧数据）：无法归类到本团队，跳过
+          if (teamOrgName) {
+            const opName = (a.operatorName ?? "").trim();
+            if (!opName || !matchOperatorByChar(teamOrgName, opName)) continue;
+          }
           // 试用期内：跳过
           if (probationDays > 0 && a.joinDate) {
             const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();

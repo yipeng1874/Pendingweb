@@ -90,7 +90,7 @@ export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }
   const { currentIdentity } = useIdentityStore();
   const isTeamAdmin = currentIdentity?.roleCode === "TEAM_ADMIN" && !!currentIdentity?.orgId;
   const [monthEntries, setMonthEntries] = useState<RetentionMonthEntry[]>([]);
-  const [viewTeamId, setViewTeamId] = useState<string>(isTeamAdmin ? currentIdentity!.orgId : "");   // 切换查看的团队（空=全部汇总；TEAM_ADMIN 强制为自己）
+  const [viewTeamId, setViewTeamId] = useState<string>(isTeamAdmin ? currentIdentity!.orgId ?? "" : "");   // 切换查看的团队（空=全部汇总；TEAM_ADMIN 强制为自己）
   const [loading, setLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [dataTableOpen, setDataTableOpen] = useState(false);
