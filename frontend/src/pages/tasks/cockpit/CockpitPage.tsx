@@ -1780,28 +1780,28 @@ export function CockpitPage() {
                       // 引导线起点（扇区外边缘）
                       const sinA = Math.sin(-midAngle * RADIAN);
                       const cosA = Math.cos(-midAngle * RADIAN);
-                      const sx = cx + (outerRadius + 6) * cosA;
-                      const sy = cy + (outerRadius + 6) * sinA;
+                      const sx = cx + (outerRadius + 4) * cosA;
+                      const sy = cy + (outerRadius + 4) * sinA;
                       // 引导线折点
-                      const mx = cx + (outerRadius + 26) * cosA;
-                      const my = cy + (outerRadius + 26) * sinA;
+                      const mx = cx + (outerRadius + 16) * cosA;
+                      const my = cy + (outerRadius + 16) * sinA;
                       // 水平延伸终点
                       const isRight = mx > cx;
-                      const ex = mx + (isRight ? 20 : -20);
+                      const ex = mx + (isRight ? 12 : -12);
                       const ey = my;
                       const anchor = isRight ? "start" : "end";
-                      const tx = isRight ? ex + 5 : ex - 5;
+                      const tx = isRight ? ex + 2 : ex - 2;
                       return (
                         <g>
                           {/* 折线引导线 */}
-                          <path d={`M${sx},${sy} L${mx},${my} L${ex},${ey}`} stroke="#cbd5e1" strokeWidth={1.2} fill="none" />
-                          <circle cx={ex} cy={ey} r={2} fill="#cbd5e1" />
+                          <path d={`M${sx},${sy} L${mx},${my} L${ex},${ey}`} stroke="#cbd5e1" strokeWidth={1} fill="none" />
+                          <circle cx={ex} cy={ey} r={1.8} fill="#cbd5e1" />
                           {/* 团队名 */}
-                          <text x={tx} y={ey - 8} textAnchor={anchor} fontSize={12} fontWeight={600} fill="#334155">
+                          <text x={tx} y={ey - 7} textAnchor={anchor} fontSize={11} fontWeight={600} fill="#334155">
                             {name}
                           </text>
                           {/* 完成率 */}
-                          <text x={tx} y={ey + 8} textAnchor={anchor} fontSize={13} fontWeight={700} fill={rateColor(teamRate)}>
+                          <text x={tx} y={ey + 7} textAnchor={anchor} fontSize={12} fontWeight={700} fill={rateColor(teamRate)}>
                             {teamRate}%
                           </text>
                         </g>
@@ -1839,13 +1839,13 @@ export function CockpitPage() {
                     return (
                       <div className="h-[340px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <PieChart margin={{ top: 30, right: 80, bottom: 30, left: 80 }}>
+                          <PieChart margin={{ top: 24, right: 64, bottom: 24, left: 64 }}>
                             <Pie
                               data={chartData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={68}
-                              outerRadius={100}
+                              innerRadius={56}
+                              outerRadius={84}
                               paddingAngle={2}
                               dataKey="value"
                               strokeWidth={0}
@@ -1860,10 +1860,10 @@ export function CockpitPage() {
                             <Tooltip content={<CustomTooltip />} />
                             {/* 中心：整体完成率 */}
                             <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle">
-                              <tspan x="50%" dy="-9" fontSize="26" fontWeight="700" fill={rateColor(rate)}>
+                              <tspan x="50%" dy="-7" fontSize="22" fontWeight="700" fill={rateColor(rate)}>
                                 {rate.toFixed(1)}%
                               </tspan>
-                              <tspan x="50%" dy="22" fontSize="12" fill="#94a3b8">
+                              <tspan x="50%" dy="20" fontSize={11} fill="#94a3b8">
                                 今日完成率
                               </tspan>
                             </text>

@@ -17,7 +17,7 @@ const CURRENT_YEAR = NOW.getFullYear();
 const CURRENT_MONTH = NOW.getMonth() + 1;
 const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
-const DAY_OPTIONS = [1, 10, 20];
+const DAY_OPTIONS = [1, 5, 10, 15, 20, 25];
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
 
@@ -284,7 +284,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   };
 
   // 合并整体 + 最多两个对比团队数据（同一图表数据源）
-  const combinedChartData = dateEntries.map((e) => {
+  const displayEntries = dateEntries.slice(-3);
+  const combinedChartData = displayEntries.map((e) => {
     const tA = contrastTeamA ? e.teams.find((x) => x.teamOrgId === contrastTeamA) : null;
     const tB = contrastTeamB ? e.teams.find((x) => x.teamOrgId === contrastTeamB) : null;
     return {
@@ -471,7 +472,6 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     <YAxis yAxisId="right" type="category" dataKey="recordDate" orientation="right" tick={(props: any) => { const d = combinedChartData[props.index]; if (!d) return <text />; return <text x={props.x + 4} y={props.y + 4} textAnchor="start" fontSize={11} fontWeight={600} fill="#475569">{(d.onlineCount + d.offlineCount)}人</text>; }} tickLine={false} axisLine={false} width={45} />
                     <Tooltip content={<CountTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(o: any) => { if (o?.dataKey) toggleKey(String(o.dataKey)); }} content={(props: any) => {
-                      const totalAll = combinedChartData.reduce((s, d) => s + (d.onlineCount || 0) + (d.offlineCount || 0), 0);
                       return (
                         <div className="flex items-center justify-center gap-4 flex-wrap" style={{ ...props.style, paddingTop: 2 }}>
                           {props.payload?.map((entry: any, idx: number) => (
@@ -484,9 +484,6 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                               <span>{entry.value}</span>
                             </span>
                           ))}
-                          <span className="flex items-center gap-1 text-slate-700 font-medium border-l border-slate-200 pl-3">
-                            在职合计：<span className="font-bold text-slate-800">{totalAll}人</span>
-                          </span>
                         </div>
                       );
                     }} />
@@ -633,7 +630,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                   <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
                 </button>
                 <span className="text-[11px] text-slate-400">
-                  跨度 {dateEntries.length} / 6 周期
+                  跨度 {displayEntries.length} / 3 周期
                 </span>
               </div>
               {dataTableOpen && (
@@ -662,7 +659,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     </tr>
                   </thead>
                   <tbody>
-                    {dateEntries.map((e) => {
+                    {displayEntries.map((e) => {
                       const isSelected = e.recordDate === selectedDate;
                       return (
                         <tr

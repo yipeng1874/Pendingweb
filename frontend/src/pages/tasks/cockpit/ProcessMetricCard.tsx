@@ -24,11 +24,12 @@ function formatDateHeader(date: string) {
 }
 
 /** 蓝色渐变进度条单元格 */
-function ProgressCell({ percent, variant = "blue" }: { percent?: number; variant?: "blue" | "amber" | "green" }) {
+function ProgressCell({ percent, variant = "blue" }: { percent?: number; variant?: "blue" | "amber" | "green" | "purple" }) {
   const colorMap: Record<string, { bg: string; border: string; from: string; to: string }> = {
-    blue:  { bg: "#eef2ff", border: "#dbeafe", from: "#93c5fd", to: "#3b82f6" },
-    amber: { bg: "#fff7ed", border: "#fed7aa", from: "#fdba74", to: "#f97316" },
-    green: { bg: "#f0fdf4", border: "#bbf7d0", from: "#86efac", to: "#22c55e" },
+    blue:   { bg: "#eef2ff", border: "#dbeafe", from: "#93c5fd", to: "#3b82f6" },
+    amber:  { bg: "#fff7ed", border: "#fed7aa", from: "#fdba74", to: "#f97316" },
+    green:  { bg: "#f0fdf4", border: "#bbf7d0", from: "#86efac", to: "#22c55e" },
+    purple: { bg: "#faf5ff", border: "#e9d5ff", from: "#c084fc", to: "#9333ea" },
   };
   const c = colorMap[variant];
   if (percent == null) return <span className="text-slate-300 text-[12px]">—</span>;
@@ -82,10 +83,15 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     if (!sid) return;
     setLoading(true);
     setLoadError("");
+    // 计算查询天数：覆盖本月 + 上月（最坏情况 = 今天 1 号，上月 31 天）
+    const _now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+    const _lastMonthStart = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+    const _daysNeeded = Math.ceil((_now.getTime() - _lastMonthStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const queryDays = Math.min(_daysNeeded, 60);  // 后端上限 60
     try {
       const [orgTree, byDateRes, config] = await Promise.all([
         fetchOrgTree(),
-        processMetricApi.getByDate(sid, 14),
+        processMetricApi.getByDate(sid, queryDays),
         processMetricApi.getConfig(sid).catch(() => null),
       ]);
       setBaseOrgName(byDateRes.baseOrgName ?? "");
@@ -265,7 +271,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       {dateEntries.length > 0 && teams.length > 0 ? (() => {
           const recentDates = dateEntries.slice(-7);
 
-          // ── 本周/上周综合计算 ──
+          // ── 本周/上周/上月综合计算 ──
           const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
           const beijingDay = beijingNow.getDay();
           const thisMonday = new Date(beijingNow);
@@ -276,8 +282,11 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           const lastSunday = new Date(thisMonday); lastSunday.setDate(thisMonday.getDate() - 1);
           const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
           const lastWeekDays = genRange(lastMonday, lastSunday);
+          const lastMonthStart = new Date(beijingNow.getFullYear(), beijingNow.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(beijingNow.getFullYear(), beijingNow.getMonth(), 0);  // 上月最后一天
+          const lastMonthDays = genRange(lastMonthStart, lastMonthEnd);
 
-          /** 计算周均值：Σ每日完成率 / 完成率非0的天数 */
+          /** 计算综合：Σ每日完成率 / 完成率非0的天数（适用于周/月汇总） */
           function calcWeekAvg(orgId: string, days: string[]): number | undefined {
             let s = 0;
             let cnt = 0;
@@ -368,17 +377,19 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
               </table>
             </div>
 
-            {/* ── 右侧：本周综合 + 上周综合 ── */}
-            <div className="flex-[2] shrink-0 z-10 bg-white border-l border-slate-200">
+            {/* ── 右侧：本周综合 + 上周综合 + 上月综合 ── */}
+            <div className="flex-[3] shrink-0 z-10 bg-white border-l border-slate-200">
               {/* 表头 */}
               <div className="flex border-b border-slate-100">
                 <div className="flex-1 text-center px-2 py-2 text-amber-500 font-medium text-[12px] h-[44px] flex items-center justify-center">本周综合</div>
                 <div className="flex-1 text-center px-2 py-2 text-emerald-500 font-medium text-[12px] h-[44px] flex items-center justify-center">上周综合</div>
+                <div className="flex-1 text-center px-2 py-2 text-purple-500 font-medium text-[12px] h-[44px] flex items-center justify-center">上月综合</div>
               </div>
               {/* 团队数据行 */}
               {participatingTeams.map((team) => {
                 const wAvg = calcWeekAvg(team.orgId, thisWeekDays);
                 const lAvg = calcWeekAvg(team.orgId, lastWeekDays);
+                const mAvg = calcWeekAvg(team.orgId, lastMonthDays);
                 return (
                   <div key={team.orgId} className="flex border-b border-slate-50">
                     <div className="flex-1 px-1.5 py-2">
@@ -386,6 +397,9 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     </div>
                     <div className="flex-1 px-1.5 py-2">
                       <ProgressCell percent={lAvg} variant="green" />
+                    </div>
+                    <div className="flex-1 px-1.5 py-2">
+                      <ProgressCell percent={mAvg} variant="purple" />
                     </div>
                   </div>
                 );
@@ -404,6 +418,13 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastWeekDays)).filter((v): v is number => v != null);
                     const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
                     return <ProgressCell percent={a} variant="green" />;
+                  })()}
+                </div>
+                <div className="flex-1 px-1.5 py-2">
+                  {(() => {
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastMonthDays)).filter((v): v is number => v != null);
+                    const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
+                    return <ProgressCell percent={a} variant="purple" />;
                   })()}
                 </div>
               </div>

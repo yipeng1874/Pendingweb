@@ -198,7 +198,7 @@ processMetricRoutes.get(
     } catch { return fail(res, "SCOPE_ERROR", "基地鉴权失败", 403); }
 
     const rawDays = parseInt(req.query.days as string, 10);
-    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 30) : 6;
+    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 60) : 6;
 
     const allRecords = await prisma.processMetricDaily.findMany({
       where: { baseOrgId: baseOrg.id },
