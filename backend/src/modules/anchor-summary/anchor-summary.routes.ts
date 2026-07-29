@@ -40,6 +40,19 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
+/** TEAM_ADMIN 匹配：团队名与运营名至少 2 字相同即命中 */
+function matchOperatorByChar(teamName: string, operatorName: string): boolean {
+  const t = teamName.trim();
+  const o = operatorName.trim();
+  if (!t || !o) return false;
+  let cnt = 0;
+  for (const ch of t) {
+    if (o.includes(ch)) cnt++;
+    if (cnt >= 2) return true;
+  }
+  return false;
+}
+
 /** 解析 BASE 级别作用域（与 report.routes.ts 保持一致） */
 async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any) {
   const roleCode = identity?.roleCode;
@@ -365,6 +378,29 @@ anchorSummaryRoutes.get(
       orderBy: { recordDate: "desc" },
     });
 
+    // TEAM_ADMIN：根据团队名与运营名相似匹配过滤数据
+    if (record && req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+      const teamOrg = await prisma.orgUnit.findFirst({
+        where: { id: req.identity.orgId, status: "active" },
+        select: { name: true },
+      });
+      if (teamOrg) {
+        const teamName = teamOrg.name;
+        const origOps = (record.operatorStats as OperatorStat[]) ?? [];
+        const filteredOps = origOps.filter(op => matchOperatorByChar(teamName, op.name));
+        return ok(res, {
+          ...record,
+          totalCount: filteredOps.reduce((s, o) => s + o.totalCount, 0),
+          onlineCount: filteredOps.reduce((s, o) => s + o.onlineCount, 0),
+          offlineCount: filteredOps.reduce((s, o) => s + o.offlineCount, 0),
+          within7Days: filteredOps.reduce((s, o) => s + (o.within7Days ?? 0), 0),
+          within20Days: filteredOps.reduce((s, o) => s + (o.within20Days ?? 0), 0),
+          dailyNew: filteredOps.reduce((s, o) => s + (o.dailyNew ?? 0), 0),
+          operatorStats: filteredOps,
+        });
+      }
+    }
+
     return ok(res, record ?? null);
   }
 );
@@ -404,6 +440,16 @@ anchorSummaryRoutes.get(
     // 最新一条作为 summary 信息
     const latestRaw = records.length > 0 ? records[records.length - 1] : null;
 
+    // TEAM_ADMIN：获取团队名称用于运营名相似匹配过滤
+    let teamOrgName: string | null = null;
+    if (req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+      const teamOrg = await prisma.orgUnit.findFirst({
+        where: { id: req.identity.orgId, status: "active" },
+        select: { name: true },
+      });
+      teamOrgName = teamOrg?.name ?? null;
+    }
+
     // 动态试用期过滤：对每条 record 重算 totalCount / onlineCount / offlineCount / operatorStats
     const points = records.map((r) => {
       let filteredTotal = r.totalCount;
@@ -426,6 +472,8 @@ anchorSummaryRoutes.get(
         const opMap = new Map<string, OperatorStat>();
 
         for (const a of anchors) {
+          // TEAM_ADMIN：过滤非本团队的运营
+          if (teamOrgName && typeof a.operatorName === "string" && !matchOperatorByChar(teamOrgName, a.operatorName)) continue;
           // 试用期内：跳过
           if (probationDays > 0 && a.joinDate) {
             const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
@@ -445,6 +493,8 @@ anchorSummaryRoutes.get(
         if (hasOp) {
           for (const a of anchors) {
             const opName = (a.operatorName ?? "").trim() || "未知运营";
+            // TEAM_ADMIN：过滤非本团队的运营
+            if (teamOrgName && !matchOperatorByChar(teamOrgName, opName)) continue;
             // 试用期内：跳过
             if (probationDays > 0 && a.joinDate) {
               const diffMs = refDate.getTime() - new Date(a.joinDate).getTime();
@@ -518,16 +568,32 @@ anchorSummaryRoutes.get(
             });
           }
         }
+
+        // TEAM_ADMIN：对旧数据（rawAnchors 中无 operatorName）也按运营名过滤
+        if (teamOrgName && filteredOperatorStats) {
+          filteredOperatorStats = filteredOperatorStats.filter(op => matchOperatorByChar(teamOrgName, op.name));
+        }
       }
+
+      // TEAM_ADMIN：从过滤后的 operatorStats 重算聚合数据
+      const pointWithin7Days = (teamOrgName && filteredOperatorStats)
+        ? filteredOperatorStats.reduce((s, o) => s + (o.within7Days ?? 0), 0)
+        : r.within7Days;
+      const pointWithin20Days = (teamOrgName && filteredOperatorStats)
+        ? filteredOperatorStats.reduce((s, o) => s + (o.within20Days ?? 0), 0)
+        : r.within20Days;
+      const pointDailyNew = (teamOrgName && filteredOperatorStats)
+        ? filteredOperatorStats.reduce((s, o) => s + (o.dailyNew ?? 0), 0)
+        : r.dailyNew;
 
       return {
         recordDate: r.recordDate,
         totalCount: filteredTotal,
         onlineCount: filteredOnline,
         offlineCount: filteredOffline,
-        within7Days: r.within7Days,
-        within20Days: r.within20Days,
-        dailyNew: r.dailyNew,
+        within7Days: pointWithin7Days,
+        within20Days: pointWithin20Days,
+        dailyNew: pointDailyNew,
         probationDays: probationDays,
         probationExcluded,
         operatorStats: filteredOperatorStats ?? (r.operatorStats as OperatorStat[]),
@@ -550,9 +616,9 @@ anchorSummaryRoutes.get(
             totalCount: latest?.totalCount ?? latestRaw.totalCount,
             onlineCount: latest?.onlineCount ?? latestRaw.onlineCount,
             offlineCount: latest?.offlineCount ?? latestRaw.offlineCount,
-            within7Days: latestRaw.within7Days,
-            within20Days: latestRaw.within20Days,
-            dailyNew: latestRaw.dailyNew,
+            within7Days: latest?.within7Days ?? latestRaw.within7Days,
+            within20Days: latest?.within20Days ?? latestRaw.within20Days,
+            dailyNew: latest?.dailyNew ?? latestRaw.dailyNew,
             operatorStats: latest?.operatorStats ?? (latestRaw.operatorStats as OperatorStat[]),
             rawRowCount: latestRaw.rawRowCount,
             createdAt: latestRaw.createdAt,

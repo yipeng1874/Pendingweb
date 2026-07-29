@@ -353,6 +353,28 @@ liveRoomCapacityRoutes.get(
       where: { baseOrgId: baseOrg.id },
     });
 
+    // TEAM_ADMIN 仅能看到自己团队的 allocations，其他团队明细须过滤
+    if (record && req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+      const teamOrgId = req.identity.orgId;
+      const filtered = {
+        ...record,
+        siteDetails: Array.isArray(record.siteDetails)
+          ? record.siteDetails.map((site: any) => ({
+              ...site,
+              rooms: Array.isArray(site.rooms)
+                ? site.rooms.map((room: any) => ({
+                    ...room,
+                    allocations: Array.isArray(room.allocations)
+                      ? room.allocations.filter((a: any) => a.orgId === teamOrgId)
+                      : room.allocations,
+                  }))
+                : site.rooms,
+            }))
+          : record.siteDetails,
+      };
+      return ok(res, filtered);
+    }
+
     return ok(res, record ?? null);
   }
 );

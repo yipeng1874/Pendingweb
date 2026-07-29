@@ -3,6 +3,7 @@ import { BarChart, Bar, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Res
 import { Upload, TrendingUp, X, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { staffTurnoverApi, type StaffTurnoverDateEntry, type StaffTurnoverTeamRecord, type StaffTurnoverAggregated } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
+import { useIdentityStore } from "../../../stores/identityStore";
 
 type Props = {
   scopeOrgId?: string;
@@ -151,6 +152,7 @@ function WaveBarLabel(props: any) {
 }
 
 export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }: Props) {
+  const { currentIdentity } = useIdentityStore();
   const [dateEntries, setDateEntries] = useState<StaffTurnoverDateEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -219,9 +221,13 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       setTeams(teamList);
 
       const entries = byDateRes.dateEntries ?? [];
-      setDateEntries(entries);
-      if (entries.length > 0) {
-        setSelectedDate(entries[entries.length - 1].recordDate);
+      // TEAM_ADMIN 前端兜底：仅保留本团队明细（汇总随之只剩自己）
+      const filteredEntries = currentIdentity?.roleCode === "TEAM_ADMIN" && currentIdentity?.orgId
+        ? entries.map((e) => ({ ...e, teams: (e.teams ?? []).filter((t) => t.teamOrgId === currentIdentity.orgId) }))
+        : entries;
+      setDateEntries(filteredEntries);
+      if (filteredEntries.length > 0) {
+        setSelectedDate(filteredEntries[filteredEntries.length - 1].recordDate);
       }
     } catch { /* 静默 */ }
     finally { setLoading(false); }

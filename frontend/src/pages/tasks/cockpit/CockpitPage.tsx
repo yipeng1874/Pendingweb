@@ -160,7 +160,23 @@ export function CockpitPage() {
   const loadRoomCapacity = (sid?: string) => {
     if (!showDashboard) return;
     liveRoomCapacityApi.getLatest(sid ?? scopeOrgId)
-      .then(setRoomCapacity)
+      .then((data) => {
+        // TEAM_ADMIN 前端兜底：仅保留本团队的 allocations
+        if (data && currentIdentity?.roleCode === "TEAM_ADMIN" && currentIdentity?.orgId) {
+          const teamOrgId = currentIdentity.orgId;
+          data = {
+            ...data,
+            siteDetails: (data.siteDetails ?? []).map((site) => ({
+              ...site,
+              rooms: (site.rooms ?? []).map((room) => ({
+                ...room,
+                allocations: (room.allocations ?? []).filter((a) => a.orgId === teamOrgId),
+              })),
+            })),
+          };
+        }
+        setRoomCapacity(data);
+      })
       .catch(() => setRoomCapacity(null));
   };
   useEffect(() => {

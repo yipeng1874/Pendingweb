@@ -187,7 +187,12 @@ retentionRoutes.get(
 
     const monthEntries = sortedMonths.map((recordMonth) => {
       const teamMap = monthMap.get(recordMonth)!;
-      const teamRecords = Array.from(teamMap.values());
+      let teamRecords = Array.from(teamMap.values());
+
+      // TEAM_ADMIN 仅能看到自己团队的明细，汇总也随之只剩自己
+      if (req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+        teamRecords = teamRecords.filter((r) => r.teamOrgId === req.identity.orgId);
+      }
 
       // 汇总聚合（四个字段都是人数，直接求和）
       const totalLoss3Days = teamRecords.reduce((s, r) => s + r.loss3Days, 0);

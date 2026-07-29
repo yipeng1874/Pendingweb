@@ -3,6 +3,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Respons
 import { Upload, TrendingUp, X, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { retentionApi, type RetentionMonthEntry, type RetentionTeamRecord, type RetentionAggregated } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
+import { useIdentityStore } from "../../../stores/identityStore";
 
 type Props = {
   scopeOrgId?: string;
@@ -86,10 +87,12 @@ function BarInnerLabel(props: any) {
 }
 
 export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }: Props) {
+  const { currentIdentity } = useIdentityStore();
+  const isTeamAdmin = currentIdentity?.roleCode === "TEAM_ADMIN" && !!currentIdentity?.orgId;
   const [monthEntries, setMonthEntries] = useState<RetentionMonthEntry[]>([]);
+  const [viewTeamId, setViewTeamId] = useState<string>(isTeamAdmin ? currentIdentity!.orgId : "");   // 切换查看的团队（空=全部汇总；TEAM_ADMIN 强制为自己）
   const [loading, setLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [viewTeamId, setViewTeamId] = useState<string>("");   // 切换查看的团队（空=全部汇总）
   const [dataTableOpen, setDataTableOpen] = useState(false);
   const [teamTableOpen, setTeamTableOpen] = useState(false);
 
@@ -122,8 +125,12 @@ export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }
         teamList.unshift({ orgId: baseOrg.id, orgName: baseOrg.name });
       setTeams(teamList);
       const entries = byMonthRes.monthEntries ?? [];
-      setMonthEntries(entries);
-      if (entries.length > 0) setSelectedMonth(entries[entries.length - 1].recordMonth);
+      // TEAM_ADMIN 前端兜底：仅保留本团队明细（汇总随之只剩自己）
+      const filteredEntries = isTeamAdmin
+        ? entries.map((e) => ({ ...e, teams: (e.teams ?? []).filter((t) => t.teamOrgId === currentIdentity!.orgId) }))
+        : entries;
+      setMonthEntries(filteredEntries);
+      if (filteredEntries.length > 0) setSelectedMonth(filteredEntries[filteredEntries.length - 1].recordMonth);
     } catch { /* 静默 */ }
     finally { setLoading(false); }
   };
@@ -200,12 +207,14 @@ export function RetentionCard({ scopeOrgId, selectedBaseOrgId, needsBaseSelect }
           <span className="text-[14px] font-semibold text-slate-700">留存率看板</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-400">查看团队</span>
-          <select value={viewTeamId} onChange={(e) => setViewTeamId(e.target.value)} className="appearance-none rounded-md border border-slate-300 px-2 py-1 text-[12px] text-slate-700 bg-white hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer min-w-[140px]">
-            <option value="">全部团队汇总</option>
-            {teams.map((t) => (<option key={t.orgId} value={t.orgId}>{t.orgName}</option>))}
-          </select>
-          {viewTeamId && <button onClick={() => setViewTeamId("")} className="text-[11px] text-emerald-500 hover:underline">查看全部</button>}
+          {!isTeamAdmin && <span className="text-[11px] text-slate-400">查看团队</span>}
+          {!isTeamAdmin && (
+            <select value={viewTeamId} onChange={(e) => setViewTeamId(e.target.value)} className="appearance-none rounded-md border border-slate-300 px-2 py-1 text-[12px] text-slate-700 bg-white hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer min-w-[140px]">
+              <option value="">全部团队汇总</option>
+              {teams.map((t) => (<option key={t.orgId} value={t.orgId}>{t.orgName}</option>))}
+            </select>
+          )}
+          {!isTeamAdmin && viewTeamId && <button onClick={() => setViewTeamId("")} className="text-[11px] text-emerald-500 hover:underline">查看全部</button>}
           <button onClick={openModal} className="flex items-center gap-1.5 px-3 h-8 rounded-lg bg-emerald-600 text-[12px] text-white hover:bg-emerald-700 transition-colors ml-1"><Upload size={13} />上传数据</button>
         </div>
       </div>

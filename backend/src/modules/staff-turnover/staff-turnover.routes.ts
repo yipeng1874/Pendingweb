@@ -212,7 +212,12 @@ staffTurnoverRoutes.get(
 
     const dateEntries = sortedDates.map((recordDate) => {
       const teamMap = dateMap.get(recordDate)!;
-      const teamRecords = Array.from(teamMap.values());
+      let teamRecords = Array.from(teamMap.values());
+
+      // TEAM_ADMIN 仅能看到自己团队的明细，汇总也随之只剩自己
+      if (req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+        teamRecords = teamRecords.filter((r) => r.teamOrgId === req.identity.orgId);
+      }
 
       // 汇总聚合（人数直接求和，音浪用加权平均 = Σ(人均×人数) / Σ人数）
       const totalLossOnline = teamRecords.reduce((s, r) => s + (r.lossOnlineCount || 0), 0);
