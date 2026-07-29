@@ -672,6 +672,8 @@ export type AnchorTrendPoint = {
 export type AnchorTrendResponse = {
   baseOrgId: string;
   baseOrgName: string;
+  /** TEAM_ADMIN 视角下，自动匹配的团队名（用于标题展示）；非 TEAM_ADMIN 时为 null */
+  teamOrgName?: string | null;
   points: AnchorTrendPoint[];
   latest: AnchorDailySummary | null;
 };

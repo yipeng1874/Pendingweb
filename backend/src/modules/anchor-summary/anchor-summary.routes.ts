@@ -611,6 +611,7 @@ anchorSummaryRoutes.get(
     return ok(res, {
       baseOrgId: baseOrg.id,
       baseOrgName: baseOrg.name,
+      teamOrgName: teamOrgName,
       points,
       latest: latestRaw
         ? {

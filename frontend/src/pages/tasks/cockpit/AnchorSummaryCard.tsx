@@ -76,7 +76,7 @@ export function AnchorSummaryCard({ scopeOrgId }: Props) {
             <TrendingUp size={16} className="text-feishu-blue shrink-0" />
             <span className="text-[14px] font-semibold text-slate-700">
               {trend?.baseOrgName
-                ? `${trend.baseOrgName} · 主播数量统计`
+                ? `${trend.baseOrgName}${trend.teamOrgName ? `-${trend.teamOrgName}` : ""} · 主播数量统计`
                 : "基地主播数量统计"}
             </span>
             {latest && latest.operatorStats && (latest.operatorStats as OperatorStat[]).length > 0 && (
