@@ -74,7 +74,7 @@ function buildProfileViewFilter(viewMode?: string): Prisma.AnchorProfileWhereInp
   };
 }
 
-function isAnchorUniqueConstraintError(error: unknown, field?: "douyinNo" | "douyinUid") {
+function isAnchorUniqueConstraintError(error: unknown, field?: "phone" | "douyinNo" | "douyinUid") {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return false;
   const targets = Array.isArray(error.meta?.target)
     ? error.meta.target.map((item) => String(item))
@@ -82,9 +82,11 @@ function isAnchorUniqueConstraintError(error: unknown, field?: "douyinNo" | "dou
       ? [String(error.meta.target)]
       : [];
   if (!field) return true;
-  const keywords = field === "douyinNo"
-    ? ["douyin_no", "douyinNo", "anchor_profiles_douyin_no", "anchor_profiles_douyin_no_key"]
-    : ["douyin_uid", "douyinUid", "anchor_profiles_douyin_uid", "anchor_profiles_douyin_uid_key"];
+  const keywords = field === "phone"
+    ? ["phone", "users_phone", "users_phone_key"]
+    : field === "douyinNo"
+      ? ["douyin_no", "douyinNo", "anchor_profiles_douyin_no", "anchor_profiles_douyin_no_key"]
+      : ["douyin_uid", "douyinUid", "anchor_profiles_douyin_uid", "anchor_profiles_douyin_uid_key"];
   return targets.some((target) => keywords.some((keyword) => target.includes(keyword)));
 }
 
@@ -293,14 +295,17 @@ export const AnchorService = {
 
   async registerAnchor(nickname: string, phone: string, passwordHash: string, targetHallOrgId: string, douyinNo: string, douyinUid: string) {
     const normalizedNickname = nickname.trim();
+    const normalizedPhone = phone.trim();
     const normalizedDouyinNo = toTrimmedNullable(douyinNo);
     const normalizedDouyinUid = toTrimmedNullable(douyinUid);
-    const reusableUser = await prisma.user.findFirst({
-      where: { phone },
-      select: { id: true, status: true },
-    });
 
-    if (reusableUser) {
+    try {
+      const reusableUser = await prisma.user.findFirst({
+        where: { phone: normalizedPhone },
+        select: { id: true, status: true },
+      });
+
+      if (reusableUser) {
       const [activeIdentityCount, boundProfileCount, blockingApplicationCount, reusableApplication] = await Promise.all([
         prisma.userIdentity.count({ where: { userId: reusableUser.id, status: "active" } }),
         prisma.anchorProfile.count({ where: { boundUserId: reusableUser.id } }),
@@ -368,14 +373,26 @@ export const AnchorService = {
       });
     }
 
-    await assertNoAnchorRegistrationConflict({ phone, douyinNo: normalizedDouyinNo, douyinUid: normalizedDouyinUid });
-    return prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({ data: { phone, nickname: normalizedNickname, passwordHash, status: "disabled", mustChangePassword: false } });
-      const app = await tx.anchorRegistrationApplication.create({
-        data: { userId: user.id, anchorNickname: normalizedNickname, targetHallOrgId, douyinNo: normalizedDouyinNo, douyinUid: normalizedDouyinUid || `pending-${user.id}`, status: "pending" }
+      await assertNoAnchorRegistrationConflict({ phone: normalizedPhone, douyinNo: normalizedDouyinNo, douyinUid: normalizedDouyinUid });
+      return await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({ data: { phone: normalizedPhone, nickname: normalizedNickname, passwordHash, status: "disabled", mustChangePassword: false } });
+        const app = await tx.anchorRegistrationApplication.create({
+          data: { userId: user.id, anchorNickname: normalizedNickname, targetHallOrgId, douyinNo: normalizedDouyinNo, douyinUid: normalizedDouyinUid || `pending-${user.id}`, status: "pending" }
+        });
+        return { user, app };
       });
-      return { user, app };
-    });
+    } catch (error) {
+      if (isAnchorUniqueConstraintError(error, "phone")) {
+        throw createAnchorBusinessError("PHONE_EXISTS", "手机号已注册，请直接登录或联系上级为该账号开通管理权限");
+      }
+      if (isAnchorUniqueConstraintError(error, "douyinNo")) {
+        throw createAnchorBusinessError("DOUYIN_NO_EXISTS", buildAnchorConflictMessage({ douyinNo: normalizedDouyinNo }));
+      }
+      if (isAnchorUniqueConstraintError(error, "douyinUid")) {
+        throw createAnchorBusinessError("DOUYIN_UID_EXISTS", buildAnchorConflictMessage({ douyinUid: normalizedDouyinUid }));
+      }
+      throw error;
+    }
   },
 
   async getProfiles(input: { keyword: string; hallOrgId: string; orgId?: string; status: string; scopePath?: string; roleCode?: string; viewMode?: string; page?: number; pageSize?: number }) {
