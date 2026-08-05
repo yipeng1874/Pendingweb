@@ -577,7 +577,7 @@ export function CockpitPage() {
         { name: "已完成", value: dashboard.summary.completed, color: "#10b981" },
         { name: "进行中", value: dashboard.summary.inProgress, color: "#3b82f6" },
         { name: "未开始", value: dashboard.summary.pending, color: "#e2e8f0" },
-        { name: "豁免", value: dashboard.summary.exemptions, color: "#a78bfa" },
+        { name: "已批准豁免", value: dashboard.summary.exemptions, color: "#a78bfa" },
       ].filter((d) => d.value > 0)
     : [];
 
@@ -1751,7 +1751,7 @@ export function CockpitPage() {
               <KpiCard icon={<CheckCircle2 size={18} />} label="已完成" value={dashboard.summary.completed} colorClass="text-emerald-600" bgClass="bg-emerald-50" />
               <KpiCard icon={<Clock size={18} />} label="进行中" value={dashboard.summary.inProgress} colorClass="text-blue-600" bgClass="bg-blue-50" />
               <KpiCard icon={<Circle size={18} />} label="未开始" value={dashboard.summary.pending} colorClass="text-slate-400" bgClass="bg-slate-50" />
-              <KpiCard icon={<ShieldOff size={18} />} label="豁免" value={dashboard.summary.exemptions} colorClass="text-violet-500" bgClass="bg-violet-50" />
+              <KpiCard icon={<ShieldOff size={18} />} label="已批准豁免" value={dashboard.summary.exemptions} colorClass="text-violet-500" bgClass="bg-violet-50" />
               <KpiCard
                 icon={<TrendingUp size={18} />}
                 label="完成率"
@@ -1846,7 +1846,7 @@ export function CockpitPage() {
                           <p style={{ color: "#3b82f6" }}>进行中 <strong>{t.inProgress}</strong> 人</p>
                           <p style={{ color: "#94a3b8" }}>未开始 <strong>{t.pending}</strong> 人</p>
                           {t.exemptions > 0 && (
-                            <p style={{ color: "#8b5cf6" }}>豁免 <strong>{t.exemptions}</strong> 人</p>
+                            <p style={{ color: "#8b5cf6" }}>已批准豁免 <strong>{t.exemptions}</strong> 人</p>
                           )}
                         </div>
                       );
@@ -1958,7 +1958,7 @@ export function CockpitPage() {
                                 {team.exemptions > 0 && (
                                   <span className="flex items-center gap-1 text-[11px] text-violet-500 whitespace-nowrap">
                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-300" />
-                                    豁免 <strong className="tabular-nums">{team.exemptions}</strong>
+                                    已批准豁免 <strong className="tabular-nums">{team.exemptions}</strong>
                                   </span>
                                 )}
                               </div>
@@ -1997,7 +1997,7 @@ export function CockpitPage() {
                                         </span>
                                         {hall.exemptions > 0 && (
                                           <span className="text-[10px] text-violet-500 whitespace-nowrap tabular-nums">
-                                            豁免 <strong>{hall.exemptions}</strong>
+                                            已批准豁免 <strong>{hall.exemptions}</strong>
                                           </span>
                                         )}
                                       </div>

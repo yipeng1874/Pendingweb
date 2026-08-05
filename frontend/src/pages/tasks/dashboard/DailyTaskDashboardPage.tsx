@@ -196,7 +196,7 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                 { label: "完成", value: node.completed, tone: "text-emerald-600" },
                 { label: "进行中", value: node.inProgress, tone: "text-blue-600" },
                 { label: "未开始", value: node.pending, tone: "text-slate-500" },
-                { label: "豁免", value: node.exemptions ?? 0, tone: "text-amber-600" },
+                { label: "已批准豁免", value: node.exemptions ?? 0, tone: "text-amber-600" },
               ].map((item) => (
                 <div key={item.label} className="rounded-xl bg-slate-50 px-3 py-2 text-center">
                   <p className="text-[11px] text-slate-500">{item.label}</p>
@@ -698,7 +698,7 @@ export function DailyTaskDashboardPage() {
               { label: "完成人数", value: data.summary.completed, tone: "text-emerald-600" },
               { label: "进行中", value: data.summary.inProgress, tone: "text-blue-600" },
               { label: "未开始", value: data.summary.pending, tone: "text-slate-500" },
-              { label: "豁免记录", value: data.summary.exemptions, tone: "text-amber-600" },
+              { label: "已批准豁免", value: data.summary.exemptions, tone: "text-amber-600" },
               { label: "完成率", value: `${data.summary.completionRate}%`, tone: getCompletionTone(data.summary.completionRate) },
             ].map((item) => (
               <div key={item.label} className="rounded-3xl bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">

@@ -348,6 +348,11 @@ function resolveDailyDashboardStatus(record: { requiredDoneItems: number; requir
   return "pending" as const;
 }
 
+function calculateCompletionRate(completed: number, total: number, approvedExemptions: number) {
+  const assessedTotal = Math.max(0, total - approvedExemptions);
+  return assessedTotal > 0 ? Math.round((completed / assessedTotal) * 100) : 0;
+}
+
 async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: string; path: string }, viewerScopePath: string) {
   await reconcileDailyAssignments(baseOrg.path);
   const assignments = await prisma.taskAssignment.findMany({
@@ -356,7 +361,10 @@ async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: strin
       targets: { some: { orgId: baseOrg.id } },
       status: { in: ["scheduled", "active", "ended"] },
       deletedAt: null,
-      effectiveAt: { lte: getDailyTaskSupplementDeadline(taskDate) },
+      // A task published during the next-day supplement window belongs to the
+      // next task day. Including it here lets the newer assignment shadow the
+      // assignment that actually produced taskDate's records.
+      effectiveAt: { lte: getDailyTaskDayEnd(taskDate) },
       OR: [{ endedAt: null }, { endedAt: { gte: getDailyTaskDayEnd(taskDate) } }],
     },
     include: {
@@ -696,6 +704,7 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
 
   for (const ref of hallMemberRefs) {
     const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
+    const isApprovedExemption = record?.exemption?.status === "approved";
     const progress = {
       requiredDoneItems: record?.requiredDoneItems ?? 0,
       requiredTotalItems: ref.requiredTotalItems ?? 0,
@@ -708,15 +717,16 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
     const chain = [hall, hall.parentOrgId ? nodes.get(hall.parentOrgId) : undefined, nodes.get(baseOrg.id)].filter(Boolean) as typeof hall[];
     for (const node of chain) {
       node.total += 1;
+      if (isApprovedExemption) {
+        node.exemptions += 1;
+        continue;
+      }
       if (status === "completed") node.completed += 1;
       else if (status === "supplemented") {
         node.completed += 1;
         node.supplemented += 1;
       } else if (status === "in_progress") node.inProgress += 1;
       else node.pending += 1;
-      if (record?.exemption?.status === "pending" || record?.exemption?.status === "approved") {
-        node.exemptions += 1;
-      }
     }
   }
 
@@ -732,9 +742,13 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
   const itemDoneCountMap = new Map<string, number>();
   // itemId -> teamOrgId -> { teamName, done, inProgress, pending, total }
   const itemTeamMap = new Map<string, Map<string, { teamName: string; done: number; inProgress: number; pending: number; total: number }>>();
-  const totalPeople = hallMemberRefs.length;
+  const totalPeople = hallMemberRefs.filter((ref) => {
+    const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
+    return record?.exemption?.status !== "approved";
+  }).length;
   for (const ref of hallMemberRefs) {
     const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
+    if (record?.exemption?.status === "approved") continue;
     const progress = {
       requiredDoneItems: record?.requiredDoneItems ?? 0,
       requiredTotalItems: ref.requiredTotalItems ?? 0,
@@ -810,7 +824,7 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
       pending: baseSummary.pending,
       supplemented: baseSummary.supplemented,
       exemptions: baseSummary.exemptions,
-      completionRate: baseSummary.total ? Math.round((baseSummary.completed / baseSummary.total) * 100) : 0,
+      completionRate: calculateCompletionRate(baseSummary.completed, baseSummary.total, baseSummary.exemptions),
     },
     tree: {
       teams: teamNodes.map((team) => ({
@@ -823,7 +837,7 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
         pending: team.pending,
         supplemented: team.supplemented,
         exemptions: team.exemptions,
-        completionRate: team.total ? Math.round((team.completed / team.total) * 100) : 0,
+        completionRate: calculateCompletionRate(team.completed, team.total, team.exemptions),
         halls: hallNodes.filter((hall) => hall.parentOrgId === team.orgId).map((hall) => ({
           orgId: hall.orgId,
           orgName: hall.orgName,
@@ -834,7 +848,7 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
           pending: hall.pending,
           supplemented: hall.supplemented,
           exemptions: hall.exemptions,
-          completionRate: hall.total ? Math.round((hall.completed / hall.total) * 100) : 0,
+          completionRate: calculateCompletionRate(hall.completed, hall.total, hall.exemptions),
         })),
       })),
       halls: req.identity?.roleCode === "HALL_MANAGER"
@@ -848,7 +862,7 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
             pending: hall.pending,
             supplemented: hall.supplemented,
             exemptions: hall.exemptions,
-            completionRate: hall.total ? Math.round((hall.completed / hall.total) * 100) : 0,
+            completionRate: calculateCompletionRate(hall.completed, hall.total, hall.exemptions),
           }))
         : [],
     },
@@ -886,6 +900,7 @@ reportRoutes.get("/tasks/report/daily-dashboard/teams/:teamOrgId/children", perm
   const hallMap = new Map<string, DailyDashboardOrgNode>();
   for (const ref of teamRefs) {
     const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
+    const isApprovedExemption = record?.exemption?.status === "approved";
     const progress = {
       requiredDoneItems: record?.requiredDoneItems ?? 0,
       requiredTotalItems: ref.requiredTotalItems ?? 0,
@@ -906,14 +921,14 @@ reportRoutes.get("/tasks/report/daily-dashboard/teams/:teamOrgId/children", perm
       completionRate: 0,
     };
     existing.total += 1;
-    if (status === "completed") existing.completed += 1;
+    if (isApprovedExemption) existing.exemptions += 1;
+    else if (status === "completed") existing.completed += 1;
     else if (status === "supplemented") {
       existing.completed += 1;
       existing.supplemented += 1;
     } else if (status === "in_progress") existing.inProgress += 1;
     else existing.pending += 1;
-    if (record?.exemption?.status === "pending" || record?.exemption?.status === "approved") existing.exemptions += 1;
-    existing.completionRate = existing.total ? Math.round((existing.completed / existing.total) * 100) : 0;
+    existing.completionRate = calculateCompletionRate(existing.completed, existing.total, existing.exemptions ?? 0);
     hallMap.set(ref.hallOrgId, existing);
   }
 
@@ -930,7 +945,7 @@ reportRoutes.get("/tasks/report/daily-dashboard/teams/:teamOrgId/children", perm
     exemptions: halls.reduce((sum, hall) => sum + (hall.exemptions ?? 0), 0),
     completionRate: 0,
   };
-  team.completionRate = team.total ? Math.round((team.completed / team.total) * 100) : 0;
+  team.completionRate = calculateCompletionRate(team.completed, team.total, team.exemptions);
 
   return ok(res, {
     taskDate,
@@ -1201,7 +1216,7 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
       total: teamTotal,
       completed: stat.completed,
       exemptions: stat.exemptions,
-      completionRate: teamTotal > 0 ? Math.round((stat.completed / teamTotal) * 100) : 0,
+      completionRate: calculateCompletionRate(stat.completed, teamTotal, stat.exemptions),
       exemptionRate: teamTotal > 0 ? Math.round((stat.exemptions / teamTotal) * 100) : 0,
     };
   }).sort((a, b) => a.orgName.localeCompare(b.orgName));
@@ -1215,7 +1230,7 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
       total,
       completed: totalCompleted,
       exemptions: totalExemptions,
-      completionRate: total > 0 ? Math.round((totalCompleted / total) * 100) : 0,
+      completionRate: calculateCompletionRate(totalCompleted, total, totalExemptions),
       exemptionRate: total > 0 ? Math.round((totalExemptions / total) * 100) : 0,
     },
     teams,
@@ -1529,11 +1544,11 @@ reportRoutes.get("/tasks/report/daily-dashboard/halls/:hallOrgId/details", permi
     hall: { id: hall.id, name: hall.name },
     summary: {
       total: details.length,
-      completed: details.filter((item) => item.status === "completed" || item.status === "supplemented").length,
-      inProgress: details.filter((item) => item.status === "in_progress").length,
-      pending: details.filter((item) => item.status === "pending").length,
-      supplemented: details.filter((item) => item.status === "supplemented").length,
-      exemptions: details.filter((item) => item.exemptionStatus === "pending" || item.exemptionStatus === "approved").length,
+      completed: details.filter((item) => item.exemptionStatus !== "approved" && (item.status === "completed" || item.status === "supplemented")).length,
+      inProgress: details.filter((item) => item.exemptionStatus !== "approved" && item.status === "in_progress").length,
+      pending: details.filter((item) => item.exemptionStatus !== "approved" && item.status === "pending").length,
+      supplemented: details.filter((item) => item.exemptionStatus !== "approved" && item.status === "supplemented").length,
+      exemptions: details.filter((item) => item.exemptionStatus === "approved").length,
     },
     details,
   });

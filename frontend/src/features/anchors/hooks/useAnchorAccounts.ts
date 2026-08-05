@@ -147,10 +147,15 @@ export function useAnchorAccounts() {
     return run(() => anchorApi.deleteProfile(anchor.id), "主播档案已删除");
   }
 
-  async function resetPassword(app: AnchorApplication) {
-    if (!app.userId || !window.confirm(`确认将账号 ${app.user?.phone || app.anchorNickname} 的密码重置为 123456 吗？`)) return false;
+  async function resetPassword(target: AnchorApplication | Anchor) {
+    const isApplication = "userId" in target;
+    const userId = isApplication ? target.userId : target.boundUserId;
+    const displayName = isApplication
+      ? target.user?.phone || target.anchorNickname
+      : target.boundUser?.phone || target.nickname;
+    if (!userId || !window.confirm(`确认将账号 ${displayName} 的密码重置为 123456 吗？`)) return false;
     return run(async () => {
-      await anchorApi.resetPassword(app.userId);
+      await anchorApi.resetPassword(userId);
     }, "账号密码已重置为 123456");
   }
 

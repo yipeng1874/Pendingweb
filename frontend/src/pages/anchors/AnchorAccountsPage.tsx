@@ -49,7 +49,6 @@ export function AnchorAccountsPage() {
     message,
     error,
     filteredAnchors,
-    approvedApps,
     detailsByUserId,
     load,
     run,
@@ -348,14 +347,7 @@ export function AnchorAccountsPage() {
           onDisable={() => { run(async () => { await anchorApi.disableProfile(activeAnchor.id); }, "主播账号已停用"); closeDrawer(); }}
           onEnable={() => { run(async () => { await anchorApi.enableProfile(activeAnchor.id); }, "主播账号已启用"); closeDrawer(); }}
           onDelete={() => { removeProfile(activeAnchor); closeDrawer(); }}
-          onResetPassword={
-            activeAnchor.boundUserId
-              ? (() => {
-                  const app = approvedApps.find((a) => a.userId === activeAnchor.boundUserId);
-                  return app ? () => resetPassword(app) : undefined;
-                })()
-              : undefined
-          }
+          onResetPassword={activeAnchor.boundUserId ? () => resetPassword(activeAnchor) : undefined}
         />
       )}
     </div>
