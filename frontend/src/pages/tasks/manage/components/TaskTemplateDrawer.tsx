@@ -43,6 +43,7 @@ type Props = {
   scopeOrgId?: string;
   template?: AnyTemplate | null;
   readOnly?: boolean;
+  readOnlyExtra?: ReactNode;
   onClose: () => void;
   onSaved: (template: any) => void | Promise<void>;
   onSavedAndNext?: (template: any) => void | Promise<void>;
@@ -146,7 +147,7 @@ function ItemEditor({ item, readOnly = false, onChange, onDelete }: { item: Draf
   );
 }
 
-export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, template, readOnly = false, onClose, onSaved, onSavedAndNext }: Props) {
+export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, template, readOnly = false, readOnlyExtra, onClose, onSaved, onSavedAndNext }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [descExpanded, setDescExpanded] = useState(false);
@@ -298,6 +299,8 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
               )}
             </div>
           </div>
+
+          {readOnly && readOnlyExtra}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">

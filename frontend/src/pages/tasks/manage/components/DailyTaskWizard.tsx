@@ -123,6 +123,94 @@ function createExcludedAnchorSummaries(
     .sort((left, right) => left.hallLabel.localeCompare(right.hallLabel) || left.nickname.localeCompare(right.nickname));
 }
 
+function createAssignmentExcludedOrgSections(exclusions: TaskAssignmentExclusion[] | undefined, orgMap: Map<string, OrgUnit>): ExcludedOrgSection[] {
+  const rows = (exclusions ?? [])
+    .filter((item) => item.exclusionType === "ORG")
+    .map((item) => item.org ?? (item.orgId ? orgMap.get(item.orgId) : undefined))
+    .filter(Boolean) as OrgUnit[];
+  const grouped: Record<OrgUnit["orgType"], OrgUnit[]> = { HQ: [], BASE: [], TEAM: [], HALL: [] };
+
+  rows.forEach((row) => {
+    grouped[row.orgType].push(row);
+  });
+
+  return [
+    { title: "排除基地", items: grouped.BASE },
+    { title: "排除团队", items: grouped.TEAM },
+    { title: "排除厅", items: grouped.HALL },
+  ]
+    .map((section) => ({
+      ...section,
+      items: [...section.items].sort((left, right) => left.path.localeCompare(right.path)),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+function createAssignmentExcludedAnchorSummaries(exclusions: TaskAssignmentExclusion[] | undefined, orgMap: Map<string, OrgUnit>): ExcludedAnchorSummary[] {
+  const excludedAnchorProfileIds = (exclusions ?? [])
+    .filter((item) => item.exclusionType === "ANCHOR" && item.anchorProfileId)
+    .map((item) => item.anchorProfileId!);
+  return createExcludedAnchorSummaries(excludedAnchorProfileIds, extractKnownExcludedAnchors(exclusions), orgMap);
+}
+
+function DailyAssignmentExclusionSummary({ assignment, orgMap }: { assignment: TaskAssignment | null; orgMap: Map<string, OrgUnit> }) {
+  const orgSections = useMemo(() => createAssignmentExcludedOrgSections(assignment?.exclusions, orgMap), [assignment, orgMap]);
+  const anchorSummaries = useMemo(() => createAssignmentExcludedAnchorSummaries(assignment?.exclusions, orgMap), [assignment, orgMap]);
+  const total = orgSections.reduce((sum, section) => sum + section.items.length, 0) + anchorSummaries.length;
+
+  if (!assignment) return null;
+
+  return (
+    <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">排除名单</p>
+          <p className="mt-1 text-xs text-slate-500">本次发布时配置的不参与组织和主播</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">共 {total} 项</span>
+      </div>
+
+      {total === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-400">
+          当前任务没有排除项。
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orgSections.map((section) => (
+            <div key={section.title} className="rounded-2xl bg-white p-3">
+              <p className="text-xs font-medium text-slate-500">{section.title}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {section.items.map((org) => (
+                  <span key={org.id} className="truncate rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700" title={org.name}>
+                    {org.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {anchorSummaries.length > 0 && (
+            <div className="rounded-2xl bg-white p-3">
+              <p className="text-xs font-medium text-slate-500">不参与主播</p>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                {anchorSummaries.map((anchor) => {
+                  const douyinText = anchor.douyinNo || anchor.douyinUid || "未登记抖音号";
+                  const phoneText = anchor.phone || "未绑定手机号";
+                  return (
+                    <span key={anchor.id} className="truncate rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700" title={`${anchor.nickname}-${douyinText}-${phoneText}`}>
+                      {anchor.nickname}-{douyinText}-{phoneText}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BookPagination({
   page,
   hasNext,
@@ -197,6 +285,7 @@ export function DailyTaskWizard({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
   const [editorReadOnly, setEditorReadOnly] = useState(false);
+  const [viewingAssignmentDetail, setViewingAssignmentDetail] = useState<TaskAssignment | null>(null);
   const [viewingTemplateId, setViewingTemplateId] = useState("");
   const [notifyPrefix, setNotifyPrefix] = useState("");
   const [notifyLoading, setNotifyLoading] = useState(false);
@@ -497,9 +586,11 @@ export function DailyTaskWizard({
       if (assignmentId) {
         const assignment = await assignmentApi.getById(assignmentId, scopeParams);
         setEditingTemplate((assignment.template as TaskTemplate) ?? template);
+        setViewingAssignmentDetail(assignment);
       } else {
         const detailedTemplate = await templateApi.getById(template.id, scopeParams);
         setEditingTemplate(detailedTemplate);
+        setViewingAssignmentDetail(null);
       }
       setEditorOpen(true);
     } catch (error) {
@@ -1221,7 +1312,11 @@ export function DailyTaskWizard({
         scopeOrgId={managementOrgId}
         template={editingTemplate}
         readOnly={editorReadOnly}
-        onClose={() => setEditorOpen(false)}
+        readOnlyExtra={<DailyAssignmentExclusionSummary assignment={viewingAssignmentDetail} orgMap={orgMap} />}
+        onClose={() => {
+          setEditorOpen(false);
+          setViewingAssignmentDetail(null);
+        }}
         onSaved={async (template) => {
           setDraftAssignmentId("");
           setExcludedOrgIds([]);
