@@ -84,6 +84,10 @@ function canManageDailyNotify(roleCode?: string) {
   return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(roleCode ?? "");
 }
 
+function canManageDailyNotifySchedule(roleCode?: string) {
+  return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(roleCode ?? "");
+}
+
 function canManageTemporaryNotify(roleCode?: string) {
   return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(roleCode ?? "");
 }
@@ -168,6 +172,29 @@ async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any
   return base;
 }
 
+function isOrgPathWithinScope(scopePath: string, orgPath?: string | null) {
+  const normalizedScopePath = scopePath.replace(/\/+$/, "");
+  const normalizedOrgPath = orgPath?.replace(/\/+$/, "");
+  if (!normalizedScopePath || !normalizedOrgPath) return false;
+  return normalizedOrgPath === normalizedScopePath || normalizedOrgPath.startsWith(`${normalizedScopePath}/`);
+}
+
+function resolveDailyNotifyAudienceScopePath(identity: any, baseOrg: BaseScopeOrg) {
+  const roleCode = t(identity?.roleCode);
+  if (["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(roleCode)) return baseOrg.path;
+
+  if (["TEAM_ADMIN", "HALL_MANAGER"].includes(roleCode)) {
+    const identityScopePath = t(identity?.scopePath);
+    if (!identityScopePath) throw new Error("DAILY_NOTIFY_IDENTITY_SCOPE_REQUIRED");
+    if (!isOrgPathWithinScope(baseOrg.path, identityScopePath)) {
+      throw new Error("DAILY_NOTIFY_IDENTITY_SCOPE_FORBIDDEN");
+    }
+    return identityScopePath;
+  }
+
+  throw new Error("DAILY_NOTIFY_IDENTITY_SCOPE_FORBIDDEN");
+}
+
 async function getFeishuTenantAccessToken(config: FeishuConfigRecord) {
   const resp = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
     method: "POST",
@@ -205,7 +232,7 @@ async function sendFeishuBatchMessage(config: FeishuConfigRecord, openIds: strin
   };
 }
 
-async function buildDailyNotifyAudience(taskDate: string, baseOrg: { id: string; path: string }) {
+async function buildDailyNotifyAudience(taskDate: string, baseOrg: { id: string; path: string }, audienceScopePath: string) {
   // 标准化日期格式，防止前端传 2026/06/17 等斜杠格式导致数据库查询返回空结果
   const normalizedDate = taskDate.replace(/\//g, "-");
   await reconcileDailyAssignments(baseOrg.path);
@@ -240,6 +267,7 @@ async function buildDailyNotifyAudience(taskDate: string, baseOrg: { id: string;
     const requiredTotalItems = assignment.template?.items?.filter((item: any) => item.isRequired !== false).length ?? 0;
     const audience = await listAssignmentAudienceMembers(prisma, assignment as any, normalizedDate);
     for (const member of audience) {
+      if (!isOrgPathWithinScope(audienceScopePath, member.hallOrgPath)) continue;
       // 与看板一致：同一 subjectKey 在当天只绑定到第一个 assignment，后续跳过
       if (resolvedSubjectKeys.has(member.subjectKey)) continue;
       resolvedSubjectKeys.add(member.subjectKey);
@@ -386,8 +414,8 @@ function summarizeNotifyAudience(rows: NotifyAudienceRow[]) {
   };
 }
 
-export async function executeDailyNotifySend(taskDate: string, baseOrg: BaseScopeOrg, prefix: string) {
-  const rows = await buildDailyNotifyAudience(taskDate, baseOrg);
+export async function executeDailyNotifySend(taskDate: string, baseOrg: BaseScopeOrg, prefix: string, audienceScopePath: string) {
+  const rows = await buildDailyNotifyAudience(taskDate, baseOrg, audienceScopePath);
   const summary = summarizeNotifyAudience(rows);
   const boundRows = rows.filter((item) => item.feishuConfigId && item.feishuOpenId);
 
@@ -503,7 +531,7 @@ export async function runDailyNotifyScheduleTick(now = new Date()) {
 
     const prefix = t(schedule.prefix) || getDailyNotifyDefaultPrefix(schedule.baseOrg.name);
     try {
-      const result = await executeDailyNotifySend(taskDate, schedule.baseOrg, prefix);
+      const result = await executeDailyNotifySend(taskDate, schedule.baseOrg, prefix, schedule.baseOrg.path);
       await prisma.dailyNotifySchedule.update({
         where: { id: schedule.id },
         data: { lastTriggeredSlot: slotKey, prefix },
@@ -711,7 +739,14 @@ notifyRoutes.get("/tasks/notify/daily-feishu/preview", permissionRequired("task:
     return fail(res, "DAILY_NOTIFY_SCOPE_FAILED", "通知基地解析失败", 500);
   }
 
-  const rows = await buildDailyNotifyAudience(taskDate, baseOrg);
+  let audienceScopePath: string;
+  try {
+    audienceScopePath = resolveDailyNotifyAudienceScopePath(req.identity, baseOrg);
+  } catch {
+    return fail(res, "DAILY_NOTIFY_IDENTITY_SCOPE_FORBIDDEN", "当前身份缺少有效的通知组织范围", 403);
+  }
+
+  const rows = await buildDailyNotifyAudience(taskDate, baseOrg, audienceScopePath);
   return ok(res, {
     taskDate,
     scopeOrg: { id: baseOrg.id, name: baseOrg.name, orgType: baseOrg.orgType },
@@ -736,9 +771,15 @@ notifyRoutes.post("/tasks/notify/daily-feishu/send", permissionRequired("task:re
   }
 
   const prefix = t(req.body.prefix) || getDailyNotifyDefaultPrefix(baseOrg.name);
+  let audienceScopePath: string;
+  try {
+    audienceScopePath = resolveDailyNotifyAudienceScopePath(req.identity, baseOrg);
+  } catch {
+    return fail(res, "DAILY_NOTIFY_IDENTITY_SCOPE_FORBIDDEN", "当前身份缺少有效的通知组织范围", 403);
+  }
 
   try {
-    const result = await executeDailyNotifySend(taskDate, baseOrg, prefix);
+    const result = await executeDailyNotifySend(taskDate, baseOrg, prefix, audienceScopePath);
     return ok(res, result);
   } catch (error: any) {
     if (error?.message === "FEISHU_CONFIG_UNAVAILABLE") {
@@ -749,7 +790,7 @@ notifyRoutes.post("/tasks/notify/daily-feishu/send", permissionRequired("task:re
 });
 
 notifyRoutes.get("/tasks/notify/daily-schedule", permissionRequired("task:report:view"), async (req: any, res: any) => {
-  if (!canManageDailyNotify(req.identity?.roleCode)) {
+  if (!canManageDailyNotifySchedule(req.identity?.roleCode)) {
     return fail(res, "DAILY_NOTIFY_FORBIDDEN", "当前身份无权查看自动通知配置", 403);
   }
 
@@ -772,7 +813,7 @@ notifyRoutes.get("/tasks/notify/daily-schedule", permissionRequired("task:report
 
 notifyRoutes.put("/tasks/notify/daily-schedule", permissionRequired("task:report:view"), async (req: any, res: any) => {
   try {
-    if (!canManageDailyNotify(req.identity?.roleCode)) {
+    if (!canManageDailyNotifySchedule(req.identity?.roleCode)) {
       return fail(res, "DAILY_NOTIFY_FORBIDDEN", "当前身份无权维护自动通知配置", 403);
     }
 
@@ -830,9 +871,15 @@ notifyRoutes.post("/tasks/notify/daily-schedule/test", permissionRequired("task:
     select: { enabled: true, intervalHours: true, prefix: true, lastTriggeredSlot: true },
   });
   const prefix = t(req.body.prefix) || t(stored?.prefix) || getDailyNotifyDefaultPrefix(baseOrg.name);
+  let audienceScopePath: string;
+  try {
+    audienceScopePath = resolveDailyNotifyAudienceScopePath(req.identity, baseOrg);
+  } catch {
+    return fail(res, "DAILY_NOTIFY_IDENTITY_SCOPE_FORBIDDEN", "当前身份缺少有效的通知组织范围", 403);
+  }
 
   try {
-    const result = await executeDailyNotifySend(taskDate, baseOrg, prefix);
+    const result = await executeDailyNotifySend(taskDate, baseOrg, prefix, audienceScopePath);
     return ok(res, {
       ...result,
       testMode: true,

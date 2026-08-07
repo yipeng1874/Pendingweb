@@ -674,13 +674,15 @@ export function DailyTaskWizard({
 
       {!managementOrgId && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">请先选择要维护的基地，系统会自动接管这个基地当前的草稿和发布状态。</div>}
 
-      <DailyNotifyScheduleModal
-        open={scheduleDialogOpen}
-        scopeOrgId={managementOrgId}
-        scopeOrgName={managementOrgName ?? scopeOrg?.name}
-        onClose={() => setScheduleDialogOpen(false)}
-        onSuccessMessage={setNotice}
-      />
+      {canManageTemplates && (
+        <DailyNotifyScheduleModal
+          open={scheduleDialogOpen}
+          scopeOrgId={managementOrgId}
+          scopeOrgName={managementOrgName ?? scopeOrg?.name}
+          onClose={() => setScheduleDialogOpen(false)}
+          onSuccessMessage={setNotice}
+        />
+      )}
 
       {notifyDialogOpen && notifyPreview && (
 
@@ -781,14 +783,16 @@ export function DailyTaskWizard({
               >
                 {notifyLoading ? <><Loader2 size={15} className="animate-spin" />发送中...</> : <><Bell size={15} />发送飞书通知</>}
               </button>
-              <button
-                type="button"
-                onClick={() => setScheduleDialogOpen(true)}
-                disabled={!managementOrgId}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Clock3 size={15} />定时通知设置
-              </button>
+              {canManageTemplates && (
+                <button
+                  type="button"
+                  onClick={() => setScheduleDialogOpen(true)}
+                  disabled={!managementOrgId}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Clock3 size={15} />定时通知设置
+                </button>
+              )}
             </div>
           </div>
 
