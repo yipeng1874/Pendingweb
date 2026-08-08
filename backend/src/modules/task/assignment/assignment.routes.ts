@@ -8,6 +8,7 @@ export const assignmentRoutes = Router();
 assignmentRoutes.use(authRequired, identityRequired);
 
 assignmentRoutes.get("/tasks/assignments", permissionRequired("task:assignment:view"), AssignmentController.list);
+assignmentRoutes.get("/tasks/assignments/daily-exclusion-preset", permissionRequired("task:assignment:view"), AssignmentController.getLastDailyExclusionPreset);
 assignmentRoutes.get("/tasks/assignments/:id", permissionRequired("task:assignment:view"), AssignmentController.getById);
 assignmentRoutes.get("/tasks/assignments/:id/targets", permissionRequired("task:assignment:view"), AssignmentController.getTargetUsers);
 assignmentRoutes.post("/tasks/assignments", permissionRequired("task:assignment:manage"), AssignmentController.create);

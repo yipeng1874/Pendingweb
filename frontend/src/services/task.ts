@@ -1,6 +1,7 @@
 import type {
   AssignmentDailyReportItem,
   AssignmentProgressReport,
+  DailyExclusionPreset,
   DailyPublishPreview,
   PersonalReminder,
   TaskAssignment,
@@ -226,6 +227,7 @@ export const assignmentApi = {
     effectMode?: TaskEffectMode;
     scopeOrgId?: string;
   }) => api.post<TaskAssignment>("/tasks/assignments/daily-drafts", data),
+  getLastDailyExclusionPreset: (scopeOrgId: string) => api.get<DailyExclusionPreset>(`/tasks/assignments/daily-exclusion-preset${buildQuery({ scopeOrgId })}`),
   getDailyPublishPreview: (id: string, params?: ScopeParams) => api.get<DailyPublishPreview>(`/tasks/assignments/${id}/publish-preview${buildQuery(params)}`),
   publishDailyDraft: (id: string, effectMode: TaskEffectMode, scopeOrgId?: string) => api.post<TaskAssignment>(`/tasks/assignments/${id}/publish`, { effectMode, scopeOrgId }),
   // 厅管日常任务专属 API

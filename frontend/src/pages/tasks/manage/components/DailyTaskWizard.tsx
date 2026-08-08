@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Copy, Eye, Loader2, PowerOff, Trash2 } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Copy, Eye, History, Loader2, PowerOff, Trash2, TriangleAlert } from "lucide-react";
 
 
-import type { DailyPublishPreview, OrgUnit, TaskAssignment, TaskAssignmentExclusion, TaskEffectMode, TaskTemplate } from "../../../../types";
+import type { DailyExclusionPreset, DailyPublishPreview, OrgUnit, TaskAssignment, TaskAssignmentExclusion, TaskEffectMode, TaskTemplate } from "../../../../types";
 
 import { assignmentApi, notifyApi, templateApi } from "../../../../services/task";
 
@@ -275,6 +275,8 @@ export function DailyTaskWizard({
   const [publishPreview, setPublishPreview] = useState<DailyPublishPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [loadingExclusionPreset, setLoadingExclusionPreset] = useState(false);
+  const [skippedPresetAnchors, setSkippedPresetAnchors] = useState<DailyExclusionPreset["skippedAnchors"]>([]);
   const [issuing, setIssuing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(3);
@@ -328,6 +330,7 @@ export function DailyTaskWizard({
 
   useEffect(() => {
     setPageState({ draft: 1, scheduled: 1, active: 1, ended: 1 });
+    setSkippedPresetAnchors([]);
   }, [managementOrgId]);
 
   useEffect(() => {
@@ -446,6 +449,37 @@ export function DailyTaskWizard({
       void loadPublishPreview(result.id);
     }
     return result;
+  }
+
+  async function handleUseLastExclusions() {
+    if (!managementOrgId || loadingExclusionPreset) return;
+    if ((excludedOrgIds.length > 0 || excludedAnchorProfileIds.length > 0) && !window.confirm("使用上次排除配置将替换当前已勾选的排除项，确认继续吗？")) return;
+
+    setLoadingExclusionPreset(true);
+    const preset = await assignmentApi.getLastDailyExclusionPreset(managementOrgId).catch(console.error);
+    setLoadingExclusionPreset(false);
+    if (!preset) {
+      setNotice("读取上次排除配置失败，请稍后重试。");
+      return;
+    }
+    if (!preset.sourceAssignment) {
+      setNotice("当前范围内还没有正式发布过主播日常任务，暂无可使用的排除配置。");
+      return;
+    }
+
+    setExcludedOrgIds(preset.excludedOrgIds);
+    setExcludedAnchorProfileIds(preset.excludedAnchors.map((anchor) => anchor.id));
+    setKnownExcludedAnchors(Object.fromEntries(preset.excludedAnchors.map((anchor) => [anchor.id, { ...anchor, phone: anchor.phone ?? undefined }])));
+    setSkippedPresetAnchors(preset.skippedAnchors);
+
+    const sourceTime = preset.sourceAssignment.publishedAt ? new Date(preset.sourceAssignment.publishedAt).toLocaleString("zh-CN") : "发布时间未记录";
+    const skippedParts = [
+      preset.skippedOrgCount > 0 ? `${preset.skippedOrgCount} 个组织已停用、删除或不在当前范围` : "",
+      preset.skippedAnchorCount > 0 ? `${preset.skippedAnchorCount} 名主播已迁移、停用或不在当前范围` : "",
+    ].filter(Boolean);
+    setNotice(
+      `已使用「${preset.sourceAssignment.title}」于 ${sourceTime} 的排除配置：${preset.excludedOrgIds.length} 个组织、${preset.excludedAnchors.length} 名主播。${skippedParts.length ? `${skippedParts.join("，")}，未自动勾选。` : ""}`
+    );
   }
 
   async function handleNext(nextStep: 2 | 3, overrideTemplate?: typeof selectedTemplate, overrideAssignmentId?: string) {
@@ -998,9 +1032,38 @@ export function DailyTaskWizard({
 
       {step === 2 && (
         <section className="space-y-3 rounded-3xl bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-          <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-xl font-semibold text-slate-900">第二步：选择发放人群</h3>
+            <button
+              type="button"
+              onClick={() => void handleUseLastExclusions()}
+              disabled={!managementOrgId || loadingExclusionPreset}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loadingExclusionPreset ? <Loader2 size={16} className="animate-spin" /> : <History size={16} />}
+              使用上次排除配置
+            </button>
           </div>
+          {skippedPresetAnchors.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+              <div className="flex items-start gap-2">
+                <TriangleAlert size={18} className="mt-0.5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">以下主播未自动勾选，请人工核对</p>
+                  <p className="mt-1 text-xs text-amber-700">这些主播已迁移、停用或离开当前范围，本次不会继续沿用原排除记录。</p>
+                  <div className="mt-3 max-h-44 divide-y divide-amber-200 overflow-y-auto border-y border-amber-200">
+                    {skippedPresetAnchors.map((anchor, index) => (
+                      <div key={anchor.id ?? `${anchor.nickname}-${index}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm">
+                        <span className="font-medium text-slate-900">{anchor.nickname}</span>
+                        <span className="text-slate-600">抖音号：{anchor.douyinNo || "未记录"}</span>
+                        <span className="text-xs font-medium text-amber-700">{anchor.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <DailyExclusionSelector
             orgs={orgs}
             scopePath={managementScopePath}

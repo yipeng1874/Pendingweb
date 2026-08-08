@@ -89,6 +89,10 @@ function dedupe(values: string[] = []) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+function stripAnchorMigrationSuffix(value?: string | null) {
+  return String(value ?? "").replace(/back-\d{6,8}(?:-\d{9})?$/i, "").trim();
+}
+
 function resolveTargetRoleType(mode: string) {
   if (mode === "ANCHOR") return "ANCHOR";
   if (mode === "MANAGER") return "ADMIN";
@@ -531,6 +535,141 @@ async function listAssignments(scopePath?: string, roleCode?: string, category?:
   });
 }
 
+async function getLastDailyExclusionPreset(scopeOrgId: string, currentScopePath?: string, roleCode?: string) {
+  const scopeOrg = await prisma.orgUnit.findFirst({
+    where: { id: scopeOrgId, status: "active" },
+    select: { id: true, path: true },
+  });
+  if (!scopeOrg) throw new Error("SCOPE_ORG_NOT_FOUND");
+  if (roleCode !== "DEV_ADMIN" && currentScopePath && scopeOrg.path !== currentScopePath && !scopeOrg.path.startsWith(`${currentScopePath}/`)) {
+    throw new Error("SCOPE_ORG_FORBIDDEN");
+  }
+
+  const source = await prisma.taskAssignment.findFirst({
+    where: {
+      category: "DAILY",
+      status: { in: ["scheduled", "active", "ended"] },
+      publishedAt: { not: null },
+      deletedAt: null,
+      targets: { some: { orgId: scopeOrgId } },
+    },
+    orderBy: [{ publishedAt: "desc" }, { updatedAt: "desc" }],
+    select: {
+      id: true,
+      publishedAt: true,
+      template: { select: { title: true } },
+      exclusions: {
+        select: {
+          exclusionType: true,
+          orgId: true,
+          anchorProfileId: true,
+          org: { select: { id: true, path: true, status: true } },
+          anchorProfile: { select: { id: true, nickname: true, douyinNo: true, douyinUid: true, status: true } },
+        },
+      },
+    },
+  });
+
+  if (!source) {
+    return {
+      sourceAssignment: null,
+      excludedOrgIds: [],
+      excludedAnchors: [],
+      skippedAnchors: [],
+      skippedOrgCount: 0,
+      skippedAnchorCount: 0,
+    };
+  }
+
+  const orgExclusions = source.exclusions.filter((item) => item.exclusionType === "ORG");
+  const excludedOrgIds = Array.from(new Set(orgExclusions
+    .filter((item) => item.org?.status === "active" && item.org.path !== scopeOrg.path && item.org.path.startsWith(`${scopeOrg.path}/`))
+    .map((item) => item.orgId)
+    .filter(Boolean) as string[]));
+
+  const anchorExclusions = source.exclusions.filter((item) => item.exclusionType === "ANCHOR");
+  const previousAnchorIds = Array.from(new Set(anchorExclusions.map((item) => item.anchorProfileId).filter(Boolean) as string[]));
+  const activeAnchorIdentities = previousAnchorIds.length
+    ? await prisma.userIdentity.findMany({
+        where: {
+          anchorProfileId: { in: previousAnchorIds },
+          roleCode: "ANCHOR",
+          status: "active",
+          scopePath: { startsWith: scopeOrg.path },
+          user: { status: "active" },
+          anchorProfile: { status: { not: "inactive" } },
+        },
+        select: {
+          anchorProfileId: true,
+          user: { select: { phone: true } },
+          anchorProfile: {
+            select: {
+              id: true,
+              nickname: true,
+              douyinNo: true,
+              douyinUid: true,
+              hallOrgId: true,
+              hallOrg: { select: { name: true } },
+            },
+          },
+        },
+      })
+    : [];
+  const activeAnchorMap = new Map<string, (typeof activeAnchorIdentities)[number]>();
+  activeAnchorIdentities.forEach((identity) => {
+    if (identity.anchorProfileId && !activeAnchorMap.has(identity.anchorProfileId)) activeAnchorMap.set(identity.anchorProfileId, identity);
+  });
+  const excludedAnchors = previousAnchorIds.flatMap((anchorProfileId) => {
+    const identity = activeAnchorMap.get(anchorProfileId);
+    const anchor = identity?.anchorProfile;
+    if (!anchor) return [];
+    return [{
+      id: anchor.id,
+      nickname: anchor.nickname,
+      douyinNo: anchor.douyinNo,
+      douyinUid: anchor.douyinUid,
+      phone: identity.user.phone,
+      hallOrgId: anchor.hallOrgId,
+      hallOrgName: anchor.hallOrg?.name,
+    }];
+  });
+  const skippedAnchorMap = new Map<string, {
+    id: string | null;
+    nickname: string;
+    douyinNo: string | null;
+    douyinUid: string | null;
+    reason: string;
+  }>();
+  anchorExclusions.forEach((exclusion, index) => {
+    const anchorProfileId = exclusion.anchorProfileId;
+    if (anchorProfileId && activeAnchorMap.has(anchorProfileId)) return;
+    const anchor = exclusion.anchorProfile;
+    const migrated = anchor?.status === "inactive" && /back-\d{6,8}(?:-\d{9})?$/i.test(anchor.nickname);
+    const key = anchorProfileId ?? `deleted-${index}`;
+    skippedAnchorMap.set(key, {
+      id: anchorProfileId,
+      nickname: stripAnchorMigrationSuffix(anchor?.nickname) || "主播资料已删除",
+      douyinNo: stripAnchorMigrationSuffix(anchor?.douyinNo) || null,
+      douyinUid: stripAnchorMigrationSuffix(anchor?.douyinUid) || null,
+      reason: migrated ? "已迁移" : "已停用或不在当前范围",
+    });
+  });
+  const skippedAnchors = Array.from(skippedAnchorMap.values());
+
+  return {
+    sourceAssignment: {
+      id: source.id,
+      title: source.template.title,
+      publishedAt: source.publishedAt,
+    },
+    excludedOrgIds,
+    excludedAnchors,
+    skippedAnchors,
+    skippedOrgCount: Math.max(orgExclusions.length - excludedOrgIds.length, 0),
+    skippedAnchorCount: skippedAnchors.length,
+  };
+}
+
 async function getAssignmentById(id: string, _scopePath?: string, _roleCode?: string, scopeOrgId?: string, userId?: string, identityId?: string) {
   await reconcileDailyAssignments();
   await reconcileTemporaryAssignments();
@@ -900,6 +1039,7 @@ async function publishHallDailyDraft(id: string, effectMode: "immediate" | "next
 
 export const AssignmentService = {
   list: listAssignments,
+  getLastDailyExclusionPreset,
   getById: getAssignmentById,
   create: createAssignment,
   saveTemporaryDraft,

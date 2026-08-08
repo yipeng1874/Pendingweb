@@ -70,6 +70,17 @@ export const AssignmentController = {
     }
   },
 
+  async getLastDailyExclusionPreset(req: any, res: any) {
+    const scopeOrgId = t(req.query.scopeOrgId);
+    if (!scopeOrgId) return fail(res, "DAILY_SCOPE_REQUIRED", "请先选择基地", 400);
+    try {
+      const data = await AssignmentService.getLastDailyExclusionPreset(scopeOrgId, req.identity?.scopePath, req.identity?.roleCode);
+      return ok(res, data);
+    } catch (error: any) {
+      return handleAssignmentError(res, error);
+    }
+  },
+
   async getById(req: any, res: any) {
     try {
       const data = await AssignmentService.getById(

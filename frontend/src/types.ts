@@ -185,6 +185,33 @@ export interface TaskAssignmentExclusion {
   } | null;
 }
 
+export interface DailyExclusionPreset {
+  sourceAssignment: {
+    id: string;
+    title: string;
+    publishedAt?: string | null;
+  } | null;
+  excludedOrgIds: string[];
+  excludedAnchors: Array<{
+    id: string;
+    nickname: string;
+    douyinNo?: string | null;
+    douyinUid?: string | null;
+    phone?: string | null;
+    hallOrgId?: string;
+    hallOrgName?: string;
+  }>;
+  skippedAnchors: Array<{
+    id?: string | null;
+    nickname: string;
+    douyinNo?: string | null;
+    douyinUid?: string | null;
+    reason: string;
+  }>;
+  skippedOrgCount: number;
+  skippedAnchorCount: number;
+}
+
 export interface TaskAssignment {
   id: string;
   templateId: string;
