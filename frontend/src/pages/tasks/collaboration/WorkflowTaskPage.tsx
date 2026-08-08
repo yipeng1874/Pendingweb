@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  CalendarClock,
   CheckCircle2,
   ChevronDown,
   Pencil,
@@ -10,7 +11,9 @@ import {
   Route,
   Send,
   Trash2,
+  UserRound,
   Users,
+  X,
 } from "lucide-react";
 import { MiniDatePicker, MiniTimePicker } from "../../../shared/components/date-time/MiniDateTimePickers";
 import {
@@ -279,6 +282,170 @@ function TaskPreviewPanel({
 
 /* ─────────────────────────────── main page ─────────────────────────────── */
 
+function PublishConfirmDialog({
+  open,
+  title,
+  description,
+  dueAt,
+  steps,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  dueAt: string;
+  steps: StepDraft[];
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [confirmCountdown, setConfirmCountdown] = useState(5);
+
+  useEffect(() => {
+    if (!open) {
+      setConfirmCountdown(5);
+      return;
+    }
+
+    setConfirmCountdown(5);
+    const timer = window.setInterval(() => {
+      setConfirmCountdown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [open]);
+
+  if (!open) return null;
+
+  const dueDateText = dueAt ? dueAt.replace("T", " ").slice(0, 16) : "未设置截止时间";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
+      onClick={() => {
+        if (!submitting) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workflow-publish-confirm-title"
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+          <div>
+            <h2 id="workflow-publish-confirm-title" className="text-lg font-semibold text-slate-900">
+              最终确认发布
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">请核对任务信息和每位执行人的任务内容，确认后将立即发布。</p>
+          </div>
+          <button
+            type="button"
+            aria-label="关闭"
+            title="关闭"
+            disabled={submitting}
+            onClick={onCancel}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className="border-b border-slate-100 pb-5">
+            <div className="text-xs font-medium text-slate-500">任务标题</div>
+            <div className="mt-1 text-base font-semibold text-slate-900">{title}</div>
+            <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+              <CalendarClock size={16} className="shrink-0 text-slate-400" />
+              <span>截止时间：{dueDateText}</span>
+            </div>
+            {description.trim() && (
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{description.trim()}</div>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <div className="text-sm font-semibold text-slate-900">流转节点与任务</div>
+            {steps.map((step, stepIndex) => {
+              const assignee = step.selectedAssignee;
+              return (
+                <section key={stepIndex} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-feishu-blue text-xs font-bold text-white">
+                        {stepIndex + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900">{step.title.trim() || `节点${stepIndex + 1}`}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">共 {step.questions.length} 项任务</div>
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2 text-right">
+                      <UserRound size={16} className="shrink-0 text-slate-400" />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-800">{assignee?.nickname || step.assigneeKeyword}</div>
+                        {(assignee?.orgName || assignee?.phone) && (
+                          <div className="truncate text-xs text-slate-500">
+                            {[assignee.orgName, assignee.phone].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 divide-y divide-slate-200 border-t border-slate-200">
+                    {step.questions.map((question, questionIndex) => (
+                      <div key={question.id} className="flex items-start gap-3 py-3 text-sm">
+                        <span className="mt-0.5 shrink-0 text-xs font-medium text-slate-400">{questionIndex + 1}.</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="break-words text-slate-700">{question.title.trim()}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span>{questionTypeOptions.find((item) => item.value === question.itemType)?.label ?? question.itemType}</span>
+                            <span>{question.isRequired ? "必填" : "选填"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-6 py-4">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onCancel}
+            className="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            返回修改
+          </button>
+          <button
+            type="button"
+            disabled={submitting || confirmCountdown > 0}
+            onClick={onConfirm}
+            className="inline-flex items-center gap-2 rounded-lg bg-feishu-blue px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <GitBranch size={16} />
+            {submitting ? "发布中..." : confirmCountdown > 0 ? `确认发布（${confirmCountdown}s）` : "确认发布"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WorkflowTaskPage() {
   const [bootstrap, setBootstrap] = useState<WorkflowBootstrapPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -286,6 +453,7 @@ export function WorkflowTaskPage() {
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [formError, setFormError] = useState("");
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
 
   const [selectedMode, setSelectedMode] = useState<"selector" | "workflow" | "broadcast">("selector");
   /** 当前步骤：1=基础信息，2=节点配置 */
@@ -397,13 +565,8 @@ export function WorkflowTaskPage() {
     setWorkflowStep(1);
   }
 
-  /* ── submit ── */
-  async function handleSubmit() {
-    if (!bootstrap) return;
-    setFormError("");
-    setSuccessMessage("");
-
-    const payload: WorkflowCreateInput = {
+  function buildPayload(): WorkflowCreateInput {
+    return {
       title: title.trim(),
       description: description.trim(),
       dueAt: dueAt || undefined,
@@ -420,7 +583,9 @@ export function WorkflowTaskPage() {
         })),
       })),
     };
+  }
 
+  function validatePayload(payload: WorkflowCreateInput) {
     if (!payload.title) { setFormError("请填写任务标题"); setWorkflowStep(1); return; }
     if (payload.steps.some((s) => !s.assigneeUserId)) { setFormError("请为每个节点选择执行账号"); return; }
     if (payload.steps.some((s) => s.questions.length === 0 || s.questions.some((q) => !q.title))) {
@@ -435,11 +600,32 @@ export function WorkflowTaskPage() {
       setFormError("链接确认题型需要填写链接地址");
       return;
     }
+    return true;
+  }
+
+  function handleReviewBeforePublish() {
+    if (!bootstrap) return;
+    setFormError("");
+    setSuccessMessage("");
+
+    if (!validatePayload(buildPayload())) return;
+    setPublishConfirmOpen(true);
+  }
+
+  /* ── submit ── */
+  async function handleSubmit() {
+    if (!bootstrap) return;
+    const payload = buildPayload();
+    if (!validatePayload(payload)) {
+      setPublishConfirmOpen(false);
+      return;
+    }
 
     setSubmitting(true);
     try {
       await workflowTaskApi.create(payload);
       setSuccessMessage(`流转任务已创建，归属：${bootstrap.operator.orgName ?? "当前权限范围"}`);
+      setPublishConfirmOpen(false);
       resetForm();
       await loadBootstrap();
     } catch (err) {
@@ -452,6 +638,17 @@ export function WorkflowTaskPage() {
   /* ── render ── */
   return (
     <div className="space-y-5">
+      <PublishConfirmDialog
+        open={publishConfirmOpen}
+        title={title.trim()}
+        description={description}
+        dueAt={dueAt}
+        steps={steps}
+        submitting={submitting}
+        onCancel={() => setPublishConfirmOpen(false)}
+        onConfirm={() => void handleSubmit()}
+      />
+
       {loading ? (
         <div className="rounded-[24px] bg-white/90 p-10 text-center text-sm text-slate-400 shadow-sm">
           加载中…
@@ -724,7 +921,7 @@ export function WorkflowTaskPage() {
               orgName={bootstrap?.operator.orgName}
               allNodesConfigured={allNodesConfigured}
               submitting={submitting}
-              onSubmit={() => void handleSubmit()}
+              onSubmit={handleReviewBeforePublish}
               error={formError}
               successMessage={successMessage}
             />
