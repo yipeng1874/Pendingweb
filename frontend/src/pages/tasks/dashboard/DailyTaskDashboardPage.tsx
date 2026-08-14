@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bell, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw, X } from "lucide-react";
+import { Bell, CheckSquare, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw, ShieldOff, X } from "lucide-react";
 
 import type { DailyDashboardAnchorItemDetailResponse, DailyDashboardHallDetailsResponse, DailyDashboardOrgNode, DailyDashboardResponse, DailyDashboardTeamChildrenResponse, Identity, OrgUnit } from "../../../types";
 import { notifyApi, recordApi, reportApi } from "../../../services/task";
@@ -32,6 +32,20 @@ function getCompletionTone(rate: number) {
   return "text-red-600";
 }
 
+function getExemptionCoverage(node: DailyDashboardOrgNode) {
+  const eligible = Math.max(0, node.total - node.completed);
+  if (eligible === 0) {
+    return { state: "unavailable" as const, label: "无可豁免人员", badge: "border-slate-200 bg-slate-100 text-slate-500" };
+  }
+  if (node.exemptions <= 0) {
+    return { state: "none" as const, label: `未开启 0/${eligible}`, badge: "border-slate-200 bg-white text-slate-500" };
+  }
+  if (node.exemptions >= eligible) {
+    return { state: "all" as const, label: `已全部开启 ${node.exemptions}/${eligible}`, badge: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  }
+  return { state: "partial" as const, label: `已部分开启 ${node.exemptions}/${eligible}`, badge: "border-amber-200 bg-amber-50 text-amber-700" };
+}
+
 function resolveAttachmentUrl(fileUrl?: string | null) {
   if (!fileUrl) return "#";
   if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
@@ -48,7 +62,7 @@ const DEFAULT_DAILY_NOTIFY_OPTIONS = [
   { intervalHours: 1, label: "每天24次", description: "每小时整点发送一次" },
 ];
 
-function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, defaultOpen = false, lazyLoadTeamChildren = false }: { node: DailyDashboardOrgNode; children?: DailyDashboardOrgNode[]; level?: number; taskDate?: string; scopeOrgId?: string; defaultOpen?: boolean; lazyLoadTeamChildren?: boolean }) {
+function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, defaultOpen = false, lazyLoadTeamChildren = false, canManageExemption = false, onChanged, onNotice }: { node: DailyDashboardOrgNode; children?: DailyDashboardOrgNode[]; level?: number; taskDate?: string; scopeOrgId?: string; defaultOpen?: boolean; lazyLoadTeamChildren?: boolean; canManageExemption?: boolean; onChanged: () => Promise<void>; onNotice: (message: string) => void }) {
 
   const [open, setOpen] = useState(defaultOpen);
   const [teamChildren, setTeamChildren] = useState<DailyDashboardOrgNode[] | null>(lazyLoadTeamChildren ? null : children);
@@ -82,9 +96,12 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
   const [anchorModalOpen, setAnchorModalOpen] = useState(false);
   const [exemptionReasonInput, setExemptionReasonInput] = useState("");
   const [exemptionSaving, setExemptionSaving] = useState(false);
+  const [selectedAnchorIds, setSelectedAnchorIds] = useState<string[]>([]);
+  const [exemptionAction, setExemptionAction] = useState<null | { mode: "enable" | "disable"; orgIds?: string[]; anchorUserIds?: string[]; label: string }>(null);
   const visibleChildren = teamChildren ?? children;
   const hasChildren = node.orgType === "TEAM" ? true : visibleChildren.length > 0;
   const isHall = node.orgType === "HALL";
+  const exemptionCoverage = getExemptionCoverage(node);
 
   async function toggleNodeOpen() {
     if (!hasChildren) return;
@@ -122,41 +139,41 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
     setAnchorLoading(false);
   }
 
-  async function submitExemption() {
-    if (!selectedAnchor?.anchor.taskRecordId || !exemptionReasonInput.trim()) return;
+  async function confirmExemptionAction() {
+    if (!exemptionAction || !taskDate || (exemptionAction.mode === "enable" && !exemptionReasonInput.trim())) return;
     setExemptionSaving(true);
-    await recordApi.applyExemption({ taskRecordId: selectedAnchor.anchor.taskRecordId, reason: exemptionReasonInput.trim() }).catch(() => null);
-    const refreshed = await reportApi.getDailyDashboardAnchorItems(node.orgId, selectedAnchor.anchor.userId, taskDate, scopeOrgId).catch(() => null);
-    if (refreshed) setSelectedAnchor(refreshed);
-    setExemptionSaving(false);
-  }
-
-  async function reviewExemption(approved: boolean) {
-    const taskRecordId = selectedAnchor?.anchor.taskRecordId;
-    if (!taskRecordId || !selectedAnchor.anchor.exemptionStatus) return;
-    setExemptionSaving(true);
-    const exemptions = await recordApi.listExemptions("pending").catch(() => []);
-    const target = exemptions.find((item) => item.taskRecordId === taskRecordId);
-    if (target) {
-      await recordApi.reviewExemption(target.id, approved).catch(() => null);
+    try {
+      let resultMessage = "";
+      if (exemptionAction.mode === "enable") {
+        const result = await recordApi.directEnableExemptions({
+          taskDate,
+          scopeOrgId,
+          orgIds: exemptionAction.orgIds,
+          anchorUserIds: exemptionAction.anchorUserIds,
+          reason: exemptionReasonInput.trim(),
+        });
+        resultMessage = `豁免已开启 ${result.enabled} 人，原已开启 ${result.alreadyEnabled} 人，已完成跳过 ${result.completed} 人。`;
+      } else {
+        const result = await recordApi.directDisableExemptions({ taskDate, scopeOrgId, orgIds: exemptionAction.orgIds, anchorUserIds: exemptionAction.anchorUserIds });
+        resultMessage = `豁免已关闭 ${result.disabled} 人，未开启 ${result.notEnabled} 人。`;
+      }
+      const selectedUserId = selectedAnchor?.anchor.userId;
+      const [refreshed, refreshedHall] = await Promise.all([
+        selectedUserId ? reportApi.getDailyDashboardAnchorItems(node.orgId, selectedUserId, taskDate, scopeOrgId).catch(() => null) : Promise.resolve(null),
+        isHall && detailOpen ? reportApi.getDailyDashboardHallDetails(node.orgId, taskDate, scopeOrgId).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (refreshed) setSelectedAnchor(refreshed);
+      if (refreshedHall) setDetails(refreshedHall);
+      setSelectedAnchorIds([]);
+      setExemptionAction(null);
+      setExemptionReasonInput("");
+      await onChanged();
+      onNotice(resultMessage);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "豁免设置失败，请稍后重试");
+    } finally {
+      setExemptionSaving(false);
     }
-    const refreshed = await reportApi.getDailyDashboardAnchorItems(node.orgId, selectedAnchor.anchor.userId, taskDate, scopeOrgId).catch(() => null);
-    const refreshedHall = await reportApi.getDailyDashboardHallDetails(node.orgId, taskDate, scopeOrgId).catch(() => null);
-    if (refreshed) setSelectedAnchor(refreshed);
-    if (refreshedHall) setDetails(refreshedHall);
-    setExemptionSaving(false);
-  }
-
-  async function cancelExemptionByAdmin() {
-    const taskRecordId = selectedAnchor?.anchor.taskRecordId;
-    if (!taskRecordId) return;
-    setExemptionSaving(true);
-    await recordApi.cancelExemption(taskRecordId).catch(() => null);
-    const refreshed = await reportApi.getDailyDashboardAnchorItems(node.orgId, selectedAnchor.anchor.userId, taskDate, scopeOrgId).catch(() => null);
-    const refreshedHall = await reportApi.getDailyDashboardHallDetails(node.orgId, taskDate, scopeOrgId).catch(() => null);
-    if (refreshed) setSelectedAnchor(refreshed);
-    if (refreshedHall) setDetails(refreshedHall);
-    setExemptionSaving(false);
   }
 
   return (
@@ -176,11 +193,26 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-slate-900">{node.orgName}</h3>
                 <span className={`rounded-full px-2 py-0.5 text-xs ${levelTone.badge}`}>{node.orgType === "TEAM" ? "团队" : node.orgType === "HALL" ? "厅" : "基地"}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${exemptionCoverage.badge}`}>{exemptionCoverage.label}</span>
               </div>
               <p className="mt-1 text-sm text-slate-500">投放共 {node.total} 人 · 完成 {node.completed} 人 · 进行中 {node.inProgress} 人 · 完成率 <span className={`font-semibold ${getCompletionTone(node.completionRate)}`}>{node.completionRate}%</span></p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap xl:justify-end">
+            {canManageExemption && (
+              <div className="flex items-center gap-2">
+                {(exemptionCoverage.state === "none" || exemptionCoverage.state === "partial") && (
+                  <button type="button" onClick={() => { setExemptionReasonInput(""); setExemptionAction({ mode: "enable", orgIds: [node.orgId], label: node.orgName }); }} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600">
+                    <ShieldOff size={14} />{exemptionCoverage.state === "partial" ? "开启剩余" : "全部开启"}
+                  </button>
+                )}
+                {(exemptionCoverage.state === "partial" || exemptionCoverage.state === "all") && (
+                  <button type="button" onClick={() => setExemptionAction({ mode: "disable", orgIds: [node.orgId], label: node.orgName })} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm text-amber-700 transition hover:bg-amber-50">
+                    {exemptionCoverage.state === "all" ? "全部关闭" : "关闭已开启"}
+                  </button>
+                )}
+              </div>
+            )}
             {isHall && (
               <button
                 type="button"
@@ -215,7 +247,7 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
           ) : visibleChildren.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">暂无厅级汇总数据。</div>
           ) : (
-            visibleChildren.map((child) => <NodeSummary key={child.orgId} node={child} level={level + 1} taskDate={taskDate} scopeOrgId={scopeOrgId} defaultOpen={false} lazyLoadTeamChildren={false} />)
+            visibleChildren.map((child) => <NodeSummary key={child.orgId} node={child} level={level + 1} taskDate={taskDate} scopeOrgId={scopeOrgId} defaultOpen={false} lazyLoadTeamChildren={false} canManageExemption={canManageExemption} onChanged={onChanged} onNotice={onNotice} />)
           )}
         </div>
       )}
@@ -227,14 +259,27 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
           ) : !details ? (
             <div className="text-sm text-slate-400">暂无主播明细</div>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <div>
+              {canManageExemption && details.details.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" checked={selectedAnchorIds.length === details.details.length} onChange={(event) => setSelectedAnchorIds(event.target.checked ? details.details.map((item) => item.userId) : [])} className="h-4 w-4 accent-blue-500" />
+                    全选主播（已选 {selectedAnchorIds.length} 人）
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={!selectedAnchorIds.length} onClick={() => { setExemptionReasonInput(""); setExemptionAction({ mode: "enable", anchorUserIds: selectedAnchorIds, label: `${node.orgName}选中的${selectedAnchorIds.length}名主播` }); }} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"><CheckSquare size={14} />开启豁免</button>
+                    <button type="button" disabled={!selectedAnchorIds.length} onClick={() => setExemptionAction({ mode: "disable", anchorUserIds: selectedAnchorIds, label: `${node.orgName}选中的${selectedAnchorIds.length}名主播` })} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm text-amber-700 disabled:opacity-40">关闭豁免</button>
+                  </div>
+                </div>
+              )}
+              <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
               {details.details.map((item) => (
-                <button
+                <div
                   key={`${item.userId}-${item.subjectKey}`}
-                  type="button"
-                  onClick={() => void openAnchorDetail(item.userId)}
-                  className="rounded-2xl bg-white px-4 py-3 text-left text-sm transition hover:bg-slate-50"
+                  className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3 text-left text-sm transition hover:bg-slate-50"
                 >
+                  {canManageExemption && <input type="checkbox" checked={selectedAnchorIds.includes(item.userId)} onChange={(event) => setSelectedAnchorIds((current) => event.target.checked ? [...current, item.userId] : current.filter((id) => id !== item.userId))} className="mt-1 h-4 w-4 shrink-0 accent-blue-500" aria-label={`选择${item.subjectName}`} />}
+                  <button type="button" onClick={() => void openAnchorDetail(item.userId)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-slate-900">{item.subjectName}</p>
@@ -252,8 +297,10 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                       {item.lastSubmittedAt ? `最近完成 ${item.lastSubmittedAt.slice(5, 16).replace("T", " ")}` : "查看子任务详情"}
                     </span>
                   </div>
-                </button>
+                  </button>
+                </div>
               ))}
+              </div>
             </div>
           )}
         </div>
@@ -339,38 +386,50 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                     <h5 className="text-sm font-semibold text-amber-900">豁免记录</h5>
                     {selectedAnchor.anchor.exemptionStatus ? (
                       <div className="mt-2 space-y-1 text-xs text-amber-800">
-                        <p>状态：{selectedAnchor.anchor.exemptionStatus === "pending" ? "待审核" : selectedAnchor.anchor.exemptionStatus === "approved" ? "已通过" : "已驳回"}</p>
+                        <p>状态：{selectedAnchor.anchor.exemptionStatus === "pending" ? "历史申请待处理" : selectedAnchor.anchor.exemptionStatus === "approved" ? "豁免已开启" : "历史申请已驳回"}</p>
                         {selectedAnchor.anchor.exemptionReason && <p>原因：{selectedAnchor.anchor.exemptionReason}</p>}
                         {selectedAnchor.anchor.exemptionReviewerName && <p>审核人：{selectedAnchor.anchor.exemptionReviewerName}</p>}
                         {selectedAnchor.anchor.exemptionReviewedAt && <p>审核时间：{selectedAnchor.anchor.exemptionReviewedAt.slice(0, 16).replace("T", " ")}</p>}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {selectedAnchor.anchor.exemptionStatus === "pending" && (
-                            <>
-                              <button type="button" onClick={() => void reviewExemption(true)} disabled={exemptionSaving} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">同意豁免</button>
-                              <button type="button" onClick={() => void reviewExemption(false)} disabled={exemptionSaving} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">驳回豁免</button>
-                            </>
-                          )}
-                          {selectedAnchor.anchor.exemptionStatus === "approved" && (
-                            <button type="button" onClick={() => void cancelExemptionByAdmin()} disabled={exemptionSaving} className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-medium text-amber-700 disabled:opacity-50">取消豁免</button>
-                          )}
-                        </div>
+                        {canManageExemption && ["pending", "approved"].includes(selectedAnchor.anchor.exemptionStatus) && (
+                          <button type="button" onClick={() => setExemptionAction({ mode: "disable", anchorUserIds: [selectedAnchor.anchor.userId], label: selectedAnchor.anchor.subjectName })} disabled={exemptionSaving} className="mt-3 rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-medium text-amber-700 disabled:opacity-50">关闭豁免</button>
+                        )}
                       </div>
                     ) : (
-                      <div className="mt-2 space-y-3">
-                        <textarea
-                          value={exemptionReasonInput}
-                          onChange={(event) => setExemptionReasonInput(event.target.value)}
-                          placeholder="填写豁免原因"
-                          className="min-h-24 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
-                        />
-                        <button type="button" onClick={() => void submitExemption()} disabled={exemptionSaving || !selectedAnchor.anchor.taskRecordId} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">提交豁免申请</button>
-                      </div>
+                      canManageExemption ? <button type="button" onClick={() => { setExemptionReasonInput(""); setExemptionAction({ mode: "enable", anchorUserIds: [selectedAnchor.anchor.userId], label: selectedAnchor.anchor.subjectName }); }} className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white"><ShieldOff size={14} />开启豁免</button> : <p className="mt-2 text-xs text-amber-700">当前日期不可修改豁免。</p>
                     )}
                   </div>
                 </div>
               ) : (
                 <div className="text-sm text-slate-400">暂无主播任务项数据</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exemptionAction && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">{exemptionAction.mode === "enable" ? "确认开启豁免" : "确认关闭豁免"}</h3>
+                <p className="mt-1 text-sm text-slate-500">范围：{exemptionAction.label}</p>
+              </div>
+              <button type="button" onClick={() => setExemptionAction(null)} disabled={exemptionSaving} className="rounded-xl border border-slate-200 p-2 text-slate-500"><X size={18} /></button>
+            </div>
+            <div className="space-y-3 px-6 py-5">
+              {exemptionAction.mode === "enable" ? (
+                <>
+                  <p className="text-sm text-slate-600">开启后立即生效，无需审批；已完成任务会自动跳过。</p>
+                  <textarea value={exemptionReasonInput} onChange={(event) => setExemptionReasonInput(event.target.value)} placeholder="请填写豁免原因" rows={4} className="w-full resize-none rounded-xl border border-amber-200 px-3 py-2 text-sm outline-none focus:border-amber-400" />
+                </>
+              ) : <p className="text-sm text-slate-600">关闭后主播恢复正常任务统计和通知，已有任务进度不会被清空。</p>}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button type="button" onClick={() => setExemptionAction(null)} disabled={exemptionSaving} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600">取消</button>
+              <button type="button" onClick={() => void confirmExemptionAction()} disabled={exemptionSaving || (exemptionAction.mode === "enable" && !exemptionReasonInput.trim())} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white disabled:opacity-40 ${exemptionAction.mode === "enable" ? "bg-amber-500" : "bg-slate-700"}`}>
+                {exemptionSaving && <Loader2 size={14} className="animate-spin" />}{exemptionAction.mode === "enable" ? "确认开启" : "确认关闭"}
+              </button>
             </div>
           </div>
         </div>
@@ -720,7 +779,7 @@ export function DailyTaskDashboardPage() {
                   const children = data.viewer.roleCode === "HALL_MANAGER"
                     ? []
                     : (node as DailyDashboardOrgNode & { halls?: DailyDashboardOrgNode[] }).halls ?? node.children ?? [];
-                  return <NodeSummary key={node.orgId} node={node} children={children} taskDate={data.taskDate} scopeOrgId={selectedBaseOrgId || undefined} defaultOpen={shouldDefaultOpenNode(node)} lazyLoadTeamChildren={data.viewer.roleCode !== "TEAM_ADMIN" && data.viewer.roleCode !== "HALL_MANAGER"} />;
+                  return <NodeSummary key={node.orgId} node={node} children={children} taskDate={data.taskDate} scopeOrgId={selectedBaseOrgId || undefined} defaultOpen={shouldDefaultOpenNode(node)} lazyLoadTeamChildren={data.viewer.roleCode !== "TEAM_ADMIN" && data.viewer.roleCode !== "HALL_MANAGER"} canManageExemption={data.taskDate === data.quickRanges.today} onChanged={() => load(data.taskDate, selectedBaseOrgId || undefined)} onNotice={setNotice} />;
                 })
               )}
             </div>

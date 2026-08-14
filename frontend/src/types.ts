@@ -470,6 +470,19 @@ export interface DailyDashboardHallDetailsResponse {
   details: DailyDashboardHallDetailItem[];
 }
 
+export interface DirectExemptionEnableResult {
+  selected: number;
+  enabled: number;
+  alreadyEnabled: number;
+  completed: number;
+}
+
+export interface DirectExemptionDisableResult {
+  selected: number;
+  disabled: number;
+  notEnabled: number;
+}
+
 // ── 基地看板：历史待办完成率 ─────────────────────────────
 export interface DailyRangeStatsTeam {
   orgId: string;

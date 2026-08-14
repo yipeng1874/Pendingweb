@@ -530,7 +530,8 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
   const incompleteRequiredItems = useMemo(() => getIncompleteRequiredItems(record), [record]);
   const isReconfirmPending = record.reconfirmStatus === "pending";
   const isReconfirmConfirmed = record.reconfirmStatus === "confirmed";
-  const canSubmitRecord = record.status !== "submitted" && incompleteRequiredItems.length === 0 && items.length > 0 && !isReconfirmPending;
+  const isApprovedExemption = record.assignment?.category === "DAILY" && record.exemption?.status === "approved";
+  const canSubmitRecord = !isApprovedExemption && record.status !== "submitted" && incompleteRequiredItems.length === 0 && items.length > 0 && !isReconfirmPending;
 
   // 二次确认操作
   const [reconfirming, setReconfirming] = useState(false);
@@ -552,9 +553,6 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
   const isExpanded = dailyTaskInfo ? dailyExpanded : expanded;
   const handleToggle = dailyTaskInfo ? () => setDailyExpanded((v) => !v) : onToggle;
 
-  const [showExemptionInput, setShowExemptionInput] = useState(false);
-  const [exemptionReason, setExemptionReason] = useState("");
-  const [exemptionLoading, setExemptionLoading] = useState(false);
   const prevDoneItemCountRef = useRef(doneItems.length);
 
   useEffect(() => {
@@ -568,37 +566,7 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
   }, [doneItems.length, isExpanded, pendingItems.length]);
 
   const isTemporaryTask = record.assignment?.category === "TEMPORARY";
-  const canApplyExemption = !isTemporaryTask && record.status !== "submitted" && (!record.exemption || record.exemption.status === "rejected");
-  const exemptionStatusText = record.exemption?.status === "pending" ? "豁免审核中" : record.exemption?.status === "approved" ? "已批准豁免" : record.exemption?.status === "rejected" ? "豁免已拒绝" : null;
-
-  async function handleApplyExemption() {
-    if (!exemptionReason.trim()) return;
-    setExemptionLoading(true);
-    try {
-      await recordApi.applyExemption({ taskRecordId: record.id, reason: exemptionReason });
-      setShowExemptionInput(false);
-      setExemptionReason("");
-      onRefresh();
-    } catch (error) {
-      console.error(error);
-      alert(getErrorMessage(error, "提交豁免失败，请稍后重试"));
-    } finally {
-      setExemptionLoading(false);
-    }
-  }
-
-  async function handleCancelExemption() {
-    setExemptionLoading(true);
-    try {
-      await recordApi.cancelExemption(record.id);
-      onRefresh();
-    } catch (error) {
-      console.error(error);
-      alert(getErrorMessage(error, "撤回失败，请稍后重试"));
-    } finally {
-      setExemptionLoading(false);
-    }
-  }
+  const exemptionStatusText = record.exemption?.status === "pending" ? "历史豁免申请待处理" : record.exemption?.status === "approved" ? "今日任务已豁免" : record.exemption?.status === "rejected" ? "历史豁免申请未通过" : null;
 
   async function handleSubmitRecord() {
     try {
@@ -738,10 +706,16 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
           {record.status === "submitted" && !isReconfirmPending && (
             <div className={`rounded-2xl px-4 py-3 text-sm ${allowSupplementAfterSubmit ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>{allowSupplementAfterSubmit ? "当前组织主体已完成提交，后续仍可继续补充备注或附件。多人补充内容会保留在同一条记录里。" : "任务已完成提交。"}</div>
           )}
+          {isApprovedExemption && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="flex items-center gap-2 font-medium"><ShieldOff size={14} />今日任务已豁免，填写功能已锁定</div>
+              {record.exemption?.reason && <p className="mt-1 pl-[22px] text-xs opacity-80">原因：{record.exemption.reason}</p>}
+            </div>
+          )}
           {items.length === 0 ? (
             <p className="py-4 text-center text-sm text-slate-400">暂无子任务</p>
           ) : (
-            <>
+            <fieldset disabled={isApprovedExemption} className={isApprovedExemption ? "pointer-events-none select-none opacity-50" : ""} aria-disabled={isApprovedExemption}>
               {pendingItems.length > 0 && (
                 <div className="space-y-3">
                   {pendingItems.map((item) => {
@@ -815,14 +789,14 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
               {pendingItems.length === 0 && doneItems.length === 0 && (
                 <p className="py-4 text-center text-sm text-slate-400">暂无子任务</p>
               )}
-            </>
+            </fieldset>
           )}
-          {record.status !== "submitted" && incompleteRequiredItems.length > 0 && (
+          {!isApprovedExemption && record.status !== "submitted" && incompleteRequiredItems.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               还有 {incompleteRequiredItems.length} 项必填子任务未完成，暂不可提交{record.assignment?.category === "DAILY" ? "主播日常任务" : "任务"}。
             </div>
           )}
-          {isReconfirmPending && (
+          {!isApprovedExemption && isReconfirmPending && (
             <button type="button" onClick={() => void handleReconfirmRecord()} disabled={reconfirming} className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-2.5 text-sm font-medium text-white transition hover:bg-orange-600 disabled:opacity-50">
               {reconfirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               确认内容无误
@@ -830,25 +804,10 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
           )}
           {canSubmitRecord && <button type="button" onClick={() => void handleSubmitRecord()} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium text-white transition ${record.status === "overdue" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}><Send size={14} />{record.status === "overdue" ? "提交补录" : "提交任务"}</button>}
 
-          {!isTemporaryTask && exemptionStatusText && (
-            <div className={`flex items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-sm ${record.exemption?.status === "approved" ? "bg-emerald-50 text-emerald-700" : record.exemption?.status === "rejected" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}>
-              <span className="flex items-center gap-2"><ShieldOff size={14} />{exemptionStatusText}{record.exemption?.status === "rejected" && "，可重新发起申请"}</span>
-              {(record.exemption?.status === "pending" || record.exemption?.status === "approved") && (
-                <button type="button" onClick={() => void handleCancelExemption()} disabled={exemptionLoading} className="shrink-0 rounded-lg border border-current px-2 py-0.5 text-xs opacity-70 transition hover:opacity-100 disabled:opacity-30">
-                  {exemptionLoading ? <Loader2 size={11} className="animate-spin" /> : "撤回申请"}
-                </button>
-              )}
-            </div>
-          )}
-          {canApplyExemption && !showExemptionInput && <button type="button" onClick={() => setShowExemptionInput(true)} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2 text-sm text-slate-500 transition hover:border-amber-400 hover:text-amber-600"><ShieldOff size={14} />申请任务豁免</button>}
-          {canApplyExemption && showExemptionInput && (
-            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-              <p className="text-xs font-medium text-amber-700">填写豁免原因（管理员审核后生效）</p>
-              <textarea className="w-full resize-none rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" rows={2} placeholder="请说明无法完成此任务的原因..." value={exemptionReason} onChange={(event) => setExemptionReason(event.target.value)} />
-              <div className="flex gap-2">
-                <button type="button" onClick={() => void handleApplyExemption()} disabled={!exemptionReason.trim() || exemptionLoading} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500 py-1.5 text-sm text-white transition hover:bg-amber-600 disabled:opacity-40">{exemptionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}提交申请</button>
-                <button type="button" onClick={() => { setShowExemptionInput(false); setExemptionReason(""); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-100"><X size={13} /></button>
-              </div>
+          {!isTemporaryTask && !isApprovedExemption && exemptionStatusText && (
+            <div className={`rounded-xl px-4 py-2.5 text-sm ${record.exemption?.status === "approved" ? "bg-emerald-50 text-emerald-700" : record.exemption?.status === "rejected" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}>
+              <span className="flex items-center gap-2"><ShieldOff size={14} />{exemptionStatusText}</span>
+              {record.exemption?.reason && <p className="mt-1 pl-5 text-xs opacity-80">原因：{record.exemption.reason}</p>}
             </div>
           )}
         </div>

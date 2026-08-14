@@ -6,6 +6,7 @@ const t = (v: any): string => (typeof v === "string" ? v.trim() : "");
 function handleRecordError(res: any, error: any) {
   if (error.message === "RECORD_NOT_FOUND") return fail(res, "RECORD_NOT_FOUND", "执行记录不存在", 404);
   if (error.message === "RECORD_SUBMITTED") return fail(res, "RECORD_SUBMITTED", "该任务已提交，不可修改", 400);
+  if (error.message === "RECORD_EXEMPTED") return fail(res, "RECORD_EXEMPTED", "今日任务已豁免，当前不可填写或提交", 409);
   if (error.message === "USER_INACTIVE") return fail(res, "USER_INACTIVE", "账号已停用，无法提交", 403);
   if (error.message === "REQUIRED_ITEMS_INCOMPLETE") return fail(res, "REQUIRED_ITEMS_INCOMPLETE", "请先完成所有必填子任务后再提交", 400);
   if (error.message === "DAILY_RECORD_INACTIVE") return fail(res, "DAILY_RECORD_INACTIVE", "当前日常任务已被新的配置替换，无法继续填写", 400);
@@ -19,6 +20,10 @@ function handleRecordError(res: any, error: any) {
   if (error.message === "EXEMPTION_REASON_REQUIRED") return fail(res, "EXEMPTION_REASON_REQUIRED", "请填写豁免原因", 400);
   if (error.message === "EXEMPTION_REVIEW_FORBIDDEN") return fail(res, "EXEMPTION_REVIEW_FORBIDDEN", "当前身份无权审核该豁免", 403);
   if (error.message === "EXEMPTION_CANCEL_FORBIDDEN") return fail(res, "EXEMPTION_CANCEL_FORBIDDEN", "当前身份无权撤回或取消该豁免", 403);
+  if (error.message === "EXEMPTION_DIRECT_FORBIDDEN") return fail(res, "EXEMPTION_DIRECT_FORBIDDEN", "当前身份无权为所选组织或主播设置豁免", 403);
+  if (error.message === "EXEMPTION_TODAY_ONLY") return fail(res, "EXEMPTION_TODAY_ONLY", "仅支持开启或关闭当天任务豁免", 400);
+  if (error.message === "EXEMPTION_TARGET_REQUIRED") return fail(res, "EXEMPTION_TARGET_REQUIRED", "请选择需要设置豁免的组织或主播", 400);
+  if (error.message === "EXEMPTION_BASE_REQUIRED") return fail(res, "EXEMPTION_BASE_REQUIRED", "请先选择有效基地", 400);
   if (error.message === "RECONFIRM_NOT_PENDING") return fail(res, "RECONFIRM_NOT_PENDING", "当前任务无需二次确认或已完成确认", 400);
   if (error.message === "RECONFIRM_FORBIDDEN") return fail(res, "RECONFIRM_FORBIDDEN", "当前身份无权确认该任务", 403);
   throw error;
@@ -72,6 +77,7 @@ export const RecordController = {
   },
 
   async applyExemption(req: any, res: any) {
+    if (req.identity?.roleCode === "ANCHOR") return fail(res, "EXEMPTION_FLOW_REPLACED", "主播豁免现由厅及以上管理直接开启", 403);
     const { taskRecordId, reason } = req.body;
     if (!taskRecordId || !reason) return fail(res, "EXEMPTION_REQUIRED", "请填写豁免原因", 400);
     try {
@@ -88,6 +94,7 @@ export const RecordController = {
   },
 
   async cancelExemption(req: any, res: any) {
+    if (req.identity?.roleCode === "ANCHOR") return fail(res, "EXEMPTION_FLOW_REPLACED", "主播豁免现由厅及以上管理直接关闭", 403);
     try {
       const result = await RecordService.cancelExemption(req.params.taskRecordId, req.userId, req.identity.id);
       return ok(res, result);
@@ -103,6 +110,35 @@ export const RecordController = {
         roleCode: req.identity?.roleCode,
         scopePath: req.identity?.scopePath,
       });
+      return ok(res, result);
+    } catch (error: any) {
+      return handleRecordError(res, error);
+    }
+  },
+
+  async directEnableExemptions(req: any, res: any) {
+    try {
+      const result = await RecordService.directEnableExemptions({
+        taskDate: t(req.body.taskDate),
+        scopeOrgId: t(req.body.scopeOrgId) || undefined,
+        orgIds: Array.isArray(req.body.orgIds) ? req.body.orgIds.map(t).filter(Boolean) : [],
+        anchorUserIds: Array.isArray(req.body.anchorUserIds) ? req.body.anchorUserIds.map(t).filter(Boolean) : [],
+        reason: t(req.body.reason),
+      }, req.userId, req.identity);
+      return ok(res, result);
+    } catch (error: any) {
+      return handleRecordError(res, error);
+    }
+  },
+
+  async directDisableExemptions(req: any, res: any) {
+    try {
+      const result = await RecordService.directDisableExemptions({
+        taskDate: t(req.body.taskDate),
+        scopeOrgId: t(req.body.scopeOrgId) || undefined,
+        orgIds: Array.isArray(req.body.orgIds) ? req.body.orgIds.map(t).filter(Boolean) : [],
+        anchorUserIds: Array.isArray(req.body.anchorUserIds) ? req.body.anchorUserIds.map(t).filter(Boolean) : [],
+      }, req.identity);
       return ok(res, result);
     } catch (error: any) {
       return handleRecordError(res, error);

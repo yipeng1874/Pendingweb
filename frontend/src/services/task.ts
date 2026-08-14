@@ -276,6 +276,10 @@ export const recordApi = {
   cancelExemption: (taskRecordId: string) => api.delete(`/tasks/exemptions/${taskRecordId}`),
   listExemptions: (status?: string) => api.get<TaskExemption[]>(`/tasks/exemptions${status ? `?status=${status}` : ""}`),
   reviewExemption: (id: string, approved: boolean) => api.post(`/tasks/exemptions/${id}/review`, { approved }),
+  directEnableExemptions: (data: { taskDate: string; scopeOrgId?: string; orgIds?: string[]; anchorUserIds?: string[]; reason: string }) =>
+    api.post<import("../types").DirectExemptionEnableResult>("/tasks/exemptions/direct-enable", data),
+  directDisableExemptions: (data: { taskDate: string; scopeOrgId?: string; orgIds?: string[]; anchorUserIds?: string[] }) =>
+    api.post<import("../types").DirectExemptionDisableResult>("/tasks/exemptions/direct-disable", data),
 };
 
 export const uploadApi = {

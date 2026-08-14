@@ -3,15 +3,34 @@ import {
   assignmentDetailInclude,
   isAssignmentAnchorExcluded,
   isAssignmentOrgExcluded,
+  listAssignmentAudienceMembers,
   reconcileDailyAssignments,
 } from "../assignment/daily-assignment.utils.js";
 import {
+  formatBeijingDate,
   getDailyTaskContext,
   getDailyTaskDayEnd,
   getDailyTaskSupplementDeadline,
   isDailyRecordCollectionClosed,
   resolveTaskRecordStatus,
 } from "./daily-record-time.utils.js";
+
+const DAILY_EXEMPTION_MANAGER_ROLES = ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"];
+
+type DirectExemptionInput = {
+  taskDate: string;
+  scopeOrgId?: string;
+  orgIds?: string[];
+  anchorUserIds?: string[];
+  reason?: string;
+};
+
+type DirectExemptionIdentity = {
+  id: string;
+  roleCode?: string;
+  orgId?: string | null;
+  scopePath?: string | null;
+};
 
 const recordInclude = {
   assignment: {
@@ -217,6 +236,77 @@ async function ensureDailyRecordForDate(data: {
   const fullRecord = await prisma.taskRecord.findUnique({ where: { id: record.id }, include: recordInclude });
   if (!fullRecord) throw new Error("RECORD_NOT_FOUND");
   return fullRecord;
+}
+
+async function resolveDirectExemptionTargets(input: DirectExemptionInput, identity: DirectExemptionIdentity) {
+  if (!identity.roleCode || !DAILY_EXEMPTION_MANAGER_ROLES.includes(identity.roleCode)) throw new Error("EXEMPTION_DIRECT_FORBIDDEN");
+  if (!input.taskDate || input.taskDate !== formatBeijingDate(new Date())) throw new Error("EXEMPTION_TODAY_ONLY");
+
+  const selectedOrgIds = Array.from(new Set((input.orgIds ?? []).filter(Boolean)));
+  const selectedUserIds = new Set((input.anchorUserIds ?? []).filter(Boolean));
+  if (!selectedOrgIds.length && !selectedUserIds.size) throw new Error("EXEMPTION_TARGET_REQUIRED");
+
+  let managementScopePath = identity.scopePath ?? null;
+  let baseOrg: { id: string; path: string } | null = null;
+  if (["DEV_ADMIN", "HQ_ADMIN"].includes(identity.roleCode)) {
+    if (!input.scopeOrgId) throw new Error("EXEMPTION_BASE_REQUIRED");
+    baseOrg = await prisma.orgUnit.findFirst({
+      where: { id: input.scopeOrgId, orgType: "BASE", status: "active" },
+      select: { id: true, path: true },
+    });
+    if (!baseOrg) throw new Error("EXEMPTION_BASE_REQUIRED");
+    if (identity.roleCode !== "DEV_ADMIN" && managementScopePath && !(baseOrg.path === managementScopePath || baseOrg.path.startsWith(`${managementScopePath}/`))) {
+      throw new Error("EXEMPTION_DIRECT_FORBIDDEN");
+    }
+    managementScopePath = baseOrg.path;
+  } else {
+    if (!managementScopePath) throw new Error("EXEMPTION_DIRECT_FORBIDDEN");
+    const bases = await prisma.orgUnit.findMany({ where: { orgType: "BASE", status: "active" }, select: { id: true, path: true } });
+    baseOrg = bases
+      .filter((org) => managementScopePath === org.path || managementScopePath!.startsWith(`${org.path}/`))
+      .sort((left, right) => right.path.length - left.path.length)[0] ?? null;
+    if (!baseOrg) throw new Error("EXEMPTION_BASE_REQUIRED");
+  }
+
+  const selectedOrgs = selectedOrgIds.length
+    ? await prisma.orgUnit.findMany({ where: { id: { in: selectedOrgIds }, status: "active" }, select: { id: true, path: true } })
+    : [];
+  if (selectedOrgs.length !== selectedOrgIds.length || selectedOrgs.some((org) => !(org.path === managementScopePath || org.path.startsWith(`${managementScopePath}/`)))) {
+    throw new Error("EXEMPTION_DIRECT_FORBIDDEN");
+  }
+
+  await reconcileDailyAssignments(baseOrg.path);
+  const assignments = await prisma.taskAssignment.findMany({
+    where: {
+      category: "DAILY",
+      targets: { some: { orgId: baseOrg.id } },
+      status: { in: ["scheduled", "active", "ended"] },
+      deletedAt: null,
+      effectiveAt: { lte: getDailyTaskDayEnd(input.taskDate) },
+      OR: [{ endedAt: null }, { endedAt: { gte: getDailyTaskDayEnd(input.taskDate) } }],
+    },
+    include: assignmentDetailInclude,
+    orderBy: [{ effectiveAt: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  const resolvedUsers = new Set<string>();
+  const targets: Array<{ assignment: any; member: any }> = [];
+  for (const assignment of assignments) {
+    const audience = await listAssignmentAudienceMembers(prisma, assignment as any, input.taskDate);
+    for (const member of audience) {
+      if (resolvedUsers.has(member.userId)) continue;
+      resolvedUsers.add(member.userId);
+      const hallOrgPath = member.hallOrgPath;
+      if (!hallOrgPath || !(hallOrgPath === managementScopePath || hallOrgPath.startsWith(`${managementScopePath}/`))) continue;
+      const selectedByOrg = selectedOrgs.some((org) => hallOrgPath === org.path || hallOrgPath.startsWith(`${org.path}/`));
+      if (!selectedByOrg && !selectedUserIds.has(member.userId)) continue;
+      targets.push({ assignment, member });
+    }
+  }
+
+  const matchedUserIds = new Set(targets.map(({ member }) => member.userId));
+  if (Array.from(selectedUserIds).some((userId) => !matchedUserIds.has(userId))) throw new Error("EXEMPTION_DIRECT_FORBIDDEN");
+  return targets;
 }
 
 function ensureDailyRecordEditable(record: { assignment?: { category?: string | null; status?: string | null } | null; recordDate?: string | null }, now = new Date()) {
@@ -476,7 +566,9 @@ export const RecordService = {
     const now = new Date();
     const record = await ensureVisibleRecord(data.taskRecordId, data.userId, data.identityId, {
       assignment: { select: { category: true, status: true } },
+      exemption: { select: { status: true } },
     });
+    if ((record as any).exemption?.status === "approved") throw new Error("RECORD_EXEMPTED");
     const effectiveStatus = resolveTaskRecordStatus(record, now);
     if (effectiveStatus === "submitted" && !canSupplementSubmitted(record)) throw new Error("RECORD_SUBMITTED");
     ensureDailyRecordEditable(record, now);
@@ -561,7 +653,9 @@ export const RecordService = {
           status: true,
         },
       },
+      exemption: { select: { status: true } },
     });
+    if ((record as any).exemption?.status === "approved") throw new Error("RECORD_EXEMPTED");
     const effectiveStatus = resolveTaskRecordStatus(record, now);
     if (effectiveStatus === "submitted" && !canSupplementSubmitted(record)) throw new Error("RECORD_SUBMITTED");
     ensureDailyRecordEditable(record, now);
@@ -667,6 +761,67 @@ export const RecordService = {
       },
       orderBy: { createdAt: "desc" },
     });
+  },
+
+  async directEnableExemptions(input: DirectExemptionInput, operatorUserId: string, identity: DirectExemptionIdentity) {
+    const reason = input.reason?.trim() ?? "";
+    if (!reason) throw new Error("EXEMPTION_REASON_REQUIRED");
+    const targets = await resolveDirectExemptionTargets(input, identity);
+    let enabled = 0;
+    let alreadyEnabled = 0;
+    let completed = 0;
+
+    for (const { assignment, member } of targets) {
+      const record = await ensureDailyRecordForDate({
+        assignment,
+        user: { id: member.userId, nickname: member.subjectName ?? member.nickname },
+        identity: {
+          id: member.id,
+          userId: member.userId,
+          roleCode: "ANCHOR",
+          orgId: member.hallOrgId,
+          anchorProfileId: member.anchorProfileId,
+        },
+        recordDate: input.taskDate,
+      });
+      const requiredItemIds = new Set(assignment.template.items.filter((item: any) => item.isRequired !== false).map((item: any) => item.id));
+      const completedRequired = record.itemRecords.filter((item: any) => requiredItemIds.has(item.taskItemId) && item.status === "done").length;
+      if (record.status === "submitted" || (requiredItemIds.size > 0 && completedRequired >= requiredItemIds.size)) {
+        completed += 1;
+        continue;
+      }
+      if (record.exemption?.status === "approved") {
+        alreadyEnabled += 1;
+        continue;
+      }
+      await prisma.taskExemption.upsert({
+        where: { taskRecordId: record.id },
+        update: { userId: member.userId, reason, status: "approved", reviewedBy: operatorUserId, reviewedAt: new Date() },
+        create: { taskRecordId: record.id, userId: member.userId, reason, status: "approved", reviewedBy: operatorUserId, reviewedAt: new Date() },
+      });
+      enabled += 1;
+    }
+
+    return { selected: targets.length, enabled, alreadyEnabled, completed };
+  },
+
+  async directDisableExemptions(input: DirectExemptionInput, identity: DirectExemptionIdentity) {
+    const targets = await resolveDirectExemptionTargets(input, identity);
+    let disabled = 0;
+    let notEnabled = 0;
+    for (const { assignment, member } of targets) {
+      const record = await prisma.taskRecord.findFirst({
+        where: { assignmentId: assignment.id, subjectKey: member.subjectKey, recordDate: input.taskDate },
+        select: { id: true, exemption: { select: { id: true, status: true } } },
+      });
+      if (!record?.exemption || !["pending", "approved"].includes(record.exemption.status)) {
+        notEnabled += 1;
+        continue;
+      }
+      await prisma.taskExemption.delete({ where: { id: record.exemption.id } });
+      disabled += 1;
+    }
+    return { selected: targets.length, disabled, notEnabled };
   },
 
   async reconfirmRecord(recordId: string, userId: string, identityId: string) {

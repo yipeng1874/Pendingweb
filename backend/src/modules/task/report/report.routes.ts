@@ -447,6 +447,11 @@ async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: strin
       },
     },
   });
+  const reviewerUserIds = Array.from(new Set(records.map((record) => record.exemption?.reviewedBy).filter((value): value is string => Boolean(value))));
+  const reviewerUsers = reviewerUserIds.length
+    ? await prisma.user.findMany({ where: { id: { in: reviewerUserIds } }, select: { id: true, nickname: true, phone: true } })
+    : [];
+  const reviewerNameMap = new Map(reviewerUsers.map((user) => [user.id, user.nickname ?? user.phone ?? user.id]));
   const recordMap = new Map(records.map((record) => {
     const requiredItemRecords = record.itemRecords.filter((item) => item.taskItem?.isRequired !== false);
     const doneRequiredItems = requiredItemRecords.filter((item) => item.status === "done");
@@ -475,7 +480,7 @@ async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: strin
             status: record.exemption.status,
             reason: record.exemption.reason,
             reviewedAt: record.exemption.reviewedAt,
-            reviewerName: record.exemption.reviewedBy ?? null,
+            reviewerName: record.exemption.reviewedBy ? (reviewerNameMap.get(record.exemption.reviewedBy) ?? record.exemption.reviewedBy) : null,
           }
         : null,
     }];

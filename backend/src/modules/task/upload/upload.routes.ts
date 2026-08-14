@@ -44,6 +44,7 @@ async function canAccessTaskItemRecord(taskItemRecordId: string, userId: string,
         select: {
           id: true,
           userId: true,
+          exemption: { select: { status: true } },
           visibleIdentityLinks: { where: { identityId }, select: { id: true } },
         },
       },
@@ -82,6 +83,10 @@ uploadRoutes.post(
       fs.unlinkSync(req.file.path);
       return fail(res, "ITEM_RECORD_NOT_FOUND", "子任务执行记录不存在", 404);
     }
+    if (itemRecord.taskRecord.exemption?.status === "approved") {
+      fs.unlinkSync(req.file.path);
+      return fail(res, "RECORD_EXEMPTED", "今日任务已豁免，当前不可上传附件", 409);
+    }
 
     const relPath = req.file.path.replace(/\\/g, "/");
     const uploadsIdx = relPath.indexOf("uploads/");
@@ -106,9 +111,13 @@ uploadRoutes.delete(
   "/tasks/attachments/:id",
   permissionRequired("task:record:submit"),
   async (req: any, res: any) => {
-    const attachment = await prisma.taskItemAttachment.findUnique({ where: { id: req.params.id } });
+    const attachment = await prisma.taskItemAttachment.findUnique({
+      where: { id: req.params.id },
+      include: { taskItemRecord: { select: { taskRecord: { select: { exemption: { select: { status: true } } } } } } },
+    });
     if (!attachment) return fail(res, "ATTACHMENT_NOT_FOUND", "附件不存在", 404);
     if (attachment.uploadedBy !== req.userId) return fail(res, "FORBIDDEN", "无权删除该附件", 403);
+    if (attachment.taskItemRecord.taskRecord.exemption?.status === "approved") return fail(res, "RECORD_EXEMPTED", "今日任务已豁免，当前不可删除附件", 409);
 
     const filePath = path.join(process.cwd(), attachment.fileUrl);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);

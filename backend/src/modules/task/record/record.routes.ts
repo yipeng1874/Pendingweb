@@ -19,3 +19,5 @@ recordRoutes.delete("/tasks/exemptions/:taskRecordId", permissionRequired("task:
 // 管理侧：豁免审批
 recordRoutes.get("/tasks/exemptions", permissionRequired("task:exemption:review"), RecordController.listExemptions);
 recordRoutes.post("/tasks/exemptions/:id/review", permissionRequired("task:exemption:review"), RecordController.reviewExemption);
+recordRoutes.post("/tasks/exemptions/direct-enable", permissionRequired("task:exemption:review"), RecordController.directEnableExemptions);
+recordRoutes.post("/tasks/exemptions/direct-disable", permissionRequired("task:exemption:review"), RecordController.directDisableExemptions);
