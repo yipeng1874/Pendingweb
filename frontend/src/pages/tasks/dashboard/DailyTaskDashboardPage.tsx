@@ -32,6 +32,24 @@ function getCompletionTone(rate: number) {
   return "text-red-600";
 }
 
+function formatBeijingDateTime(value?: string | null, compact = false) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间异常";
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const datePart = compact ? `${get("month")}-${get("day")}` : `${get("year")}-${get("month")}-${get("day")}`;
+  return `${datePart} ${get("hour")}:${get("minute")}`;
+}
+
 function getExemptionCoverage(node: DailyDashboardOrgNode) {
   const eligible = Math.max(0, node.total - node.completed);
   if (eligible === 0) {
@@ -294,7 +312,7 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
-                      {item.lastSubmittedAt ? `最近完成 ${item.lastSubmittedAt.slice(5, 16).replace("T", " ")}` : "查看子任务详情"}
+                      {item.lastSubmittedAt ? `${item.status === "supplemented" ? "补录完成" : "最近完成"} ${formatBeijingDateTime(item.lastSubmittedAt, true)}` : "查看子任务详情"}
                     </span>
                   </div>
                   </button>
@@ -334,12 +352,12 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-4">
                     <div>
                       <h4 className="text-base font-semibold text-slate-900">{selectedAnchor.anchor.subjectName}</h4>
-                      <p className="mt-1 text-xs text-slate-400">必做项 {selectedAnchor.anchor.requiredDoneItems}/{selectedAnchor.anchor.requiredTotalItems}</p>
+                      <p className="mt-1 text-xs text-slate-400">任务归属 {selectedAnchor.taskDate} · 必做项 {selectedAnchor.anchor.requiredDoneItems}/{selectedAnchor.anchor.requiredTotalItems}</p>
                       {selectedAnchor.anchor.exemptionStatus && <p className="mt-1 text-xs text-amber-600">豁免状态：{selectedAnchor.anchor.exemptionStatus === "pending" ? "待审核" : selectedAnchor.anchor.exemptionStatus === "approved" ? "已通过" : "已驳回"}</p>}
                     </div>
                     <div className="text-right text-sm text-slate-500">
                       <p>{selectedAnchor.anchor.status === "completed" ? "已完成" : selectedAnchor.anchor.status === "supplemented" ? "补录完成" : selectedAnchor.anchor.status === "in_progress" ? "进行中" : "未开始"}</p>
-                      <p className="mt-1 text-xs text-slate-400">{selectedAnchor.anchor.completedAt ? `最后完成 ${selectedAnchor.anchor.completedAt.slice(0, 16).replace("T", " ")}` : "暂无完成时间"}</p>
+                      <p className="mt-1 text-xs text-slate-400">{selectedAnchor.anchor.completedAt ? `${selectedAnchor.anchor.status === "supplemented" ? "补录完成" : "最后完成"} ${formatBeijingDateTime(selectedAnchor.anchor.completedAt)}（北京时间）` : "暂无完成时间"}</p>
                     </div>
                   </div>
 
@@ -354,7 +372,7 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                           <div className={`text-sm font-medium ${taskItem.done ? "text-emerald-600" : "text-slate-500"}`}>{taskItem.done ? "已完成" : "未完成"}</div>
                         </div>
                         <div className="mt-2 space-y-1 text-xs text-slate-500">
-                          {taskItem.doneAt && <p>完成时间：{taskItem.doneAt.slice(0, 16).replace("T", " ")}</p>}
+                          {taskItem.doneAt && <p>{selectedAnchor.anchor.status === "supplemented" ? "补录完成时间" : "完成时间"}：{formatBeijingDateTime(taskItem.doneAt)}（北京时间）</p>}
                           {taskItem.answerText && <p>回传文本：{taskItem.answerText}</p>}
                           {taskItem.answerOptions?.length ? <p>回传选项：{taskItem.answerOptions.join("、")}</p> : null}
                           {taskItem.itemType === "LINK" ? <p>链接确认：{taskItem.isLinkConfirmed ? "已确认" : "未确认"}</p> : null}
@@ -389,7 +407,7 @@ function NodeSummary({ node, children = [], level = 0, taskDate, scopeOrgId, def
                         <p>状态：{selectedAnchor.anchor.exemptionStatus === "pending" ? "历史申请待处理" : selectedAnchor.anchor.exemptionStatus === "approved" ? "豁免已开启" : "历史申请已驳回"}</p>
                         {selectedAnchor.anchor.exemptionReason && <p>原因：{selectedAnchor.anchor.exemptionReason}</p>}
                         {selectedAnchor.anchor.exemptionReviewerName && <p>审核人：{selectedAnchor.anchor.exemptionReviewerName}</p>}
-                        {selectedAnchor.anchor.exemptionReviewedAt && <p>审核时间：{selectedAnchor.anchor.exemptionReviewedAt.slice(0, 16).replace("T", " ")}</p>}
+                        {selectedAnchor.anchor.exemptionReviewedAt && <p>处理时间：{formatBeijingDateTime(selectedAnchor.anchor.exemptionReviewedAt)}（北京时间）</p>}
                         {canManageExemption && ["pending", "approved"].includes(selectedAnchor.anchor.exemptionStatus) && (
                           <button type="button" onClick={() => setExemptionAction({ mode: "disable", anchorUserIds: [selectedAnchor.anchor.userId], label: selectedAnchor.anchor.subjectName })} disabled={exemptionSaving} className="mt-3 rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-medium text-amber-700 disabled:opacity-50">关闭豁免</button>
                         )}
