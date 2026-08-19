@@ -21,10 +21,13 @@ export function AnchorRegisterPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  function handlePhoneChange(phone: string) {
+  function handlePhoneChange(rawPhone: string) {
+    const phone = rawPhone.replace(/\D/g, "").slice(0, 11);
     setForm((current) => ({ ...current, phone }));
-    if (phone && !/^\d{11}$/.test(phone)) {
-      setPhoneError("请输入11位手机号");
+    if (/\D/.test(rawPhone)) {
+      setPhoneError("手机号只能输入数字");
+    } else if (phone.length > 0 && phone.length < 11) {
+      setPhoneError(`请继续输入，还差 ${11 - phone.length} 位`);
     } else {
       setPhoneError("");
     }
@@ -106,14 +109,24 @@ export function AnchorRegisterPage() {
               {(message || error) && <div className={`mt-6 rounded-2xl border px-4 py-3 text-sm leading-6 ${error ? "border-red-100 bg-red-50 text-red-600" : "border-emerald-100 bg-emerald-50 text-emerald-700"}`}>{error || message}</div>}
 
               <div className="mt-8 grid grid-cols-1 gap-4 min-[560px]:grid-cols-2">
-                <Field label="昵称" value={form.nickname} required onChange={(nickname) => setForm({ ...form, nickname })} />
-                <Field label="手机号" value={form.phone} required error={phoneError} onChange={handlePhoneChange} />
+                <Field label="昵称" value={form.nickname} required maxLength={191} onChange={(nickname) => setForm({ ...form, nickname })} />
+                <Field
+                  label="手机号"
+                  value={form.phone}
+                  required
+                  error={phoneError}
+                  hint={!phoneError ? `${form.phone.length}/11 位` : undefined}
+                  maxLength={11}
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  onChange={handlePhoneChange}
+                />
                 <Field label="密码" type="password" value={form.password} required onChange={(password) => setForm({ ...form, password })} />
                 <SelectField label="所属基地" value={baseId} required onChange={setBaseId} placeholder="请选择基地" options={bases.map((base) => ({ value: base.id, label: `${base.name}（${base.orgCode}）` }))} />
                 <SelectField label="所属团队" value={teamId} required disabled={!baseId} onChange={setTeamId} placeholder={baseId ? "请选择团队" : "请先选择基地"} options={teams.map((team) => ({ value: team.id, label: `${team.name}（${team.orgCode}）` }))} />
                 <SelectField label="归属厅" value={form.targetHallOrgId} required disabled={!teamId} onChange={(targetHallOrgId) => setForm({ ...form, targetHallOrgId })} placeholder={teamId ? "请选择归属厅" : "请先选择团队"} options={halls.map((hall) => ({ value: hall.id, label: hall.isVirtual ? `${hall.name}（模拟厅，仅管理归属）` : `${hall.name}（抖音号：${maskDouyinNo(hall.douyinNo)}）` }))} />
-                <Field label="抖音号" value={form.douyinNo} onChange={(douyinNo) => setForm({ ...form, douyinNo })} />
-                <Field label="抖音 UID" value={form.douyinUid} onChange={(douyinUid) => setForm({ ...form, douyinUid })} />
+                <Field label="抖音号" value={form.douyinNo} maxLength={20} hint={`${form.douyinNo.length}/20 字符`} onChange={(douyinNo) => setForm({ ...form, douyinNo })} />
+                <Field label="抖音 UID" value={form.douyinUid} maxLength={35} hint={`${form.douyinUid.length}/35 字符`} onChange={(douyinUid) => setForm({ ...form, douyinUid })} />
               </div>
 
               <button className="mt-8 h-12 w-full rounded-2xl bg-feishu-blue text-[15px] font-semibold text-white shadow-[0_12px_28px_rgba(82,126,255,0.24)] transition hover:bg-feishu-deep disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" disabled={!form.nickname || !form.phone || !!phoneError || !/^\d{11}$/.test(form.phone) || !form.password || !form.targetHallOrgId} onClick={submit}>提交账号注册申请</button>
@@ -125,12 +138,13 @@ export function AnchorRegisterPage() {
   );
 }
 
-function Field({ label, value, type = "text", required, error, onChange }: { label: string; value: string; type?: string; required?: boolean; error?: string; onChange: (value: string) => void }) {
+function Field({ label, value, type = "text", required, error, hint, maxLength, inputMode, autoComplete, onChange }: { label: string; value: string; type?: string; required?: boolean; error?: string; hint?: string; maxLength?: number; inputMode?: "numeric"; autoComplete?: string; onChange: (value: string) => void }) {
   return (
     <label className="block min-w-0">
       <span className="text-xs font-medium text-slate-500">{label}{required && <span className="ml-1 text-red-500">*</span>}</span>
-      <input className={`mt-2 h-12 w-full rounded-2xl border bg-slate-50 px-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-feishu-blue focus:bg-white ${error ? "border-red-400" : "border-slate-200"}`} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input className={`mt-2 h-12 w-full rounded-2xl border bg-slate-50 px-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-feishu-blue focus:bg-white ${error ? "border-red-400" : "border-slate-200"}`} type={type} value={value} maxLength={maxLength} inputMode={inputMode} autoComplete={autoComplete} onChange={(event) => onChange(event.target.value)} />
       {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
+      {!error && hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
     </label>
   );
 }

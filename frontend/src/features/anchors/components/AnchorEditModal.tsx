@@ -18,8 +18,8 @@ export function AnchorEditModal({ editing, halls, onChange, onCancel, onSave }: 
         <h2 className="text-xl font-semibold text-slate-900">编辑主播资料</h2>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <TextField label="主播昵称" value={editing.nickname} onChange={(nickname) => onChange({ ...editing, nickname })} />
-          <TextField label="抖音号" value={editing.douyinNo ?? ""} onChange={(douyinNo) => onChange({ ...editing, douyinNo })} />
-          <TextField label="抖音 UID" value={editing.douyinUid} onChange={(douyinUid) => onChange({ ...editing, douyinUid })} />
+          <TextField label="抖音号" value={editing.douyinNo ?? ""} maxLength={20} onChange={(douyinNo) => onChange({ ...editing, douyinNo })} />
+          <TextField label="抖音 UID" value={editing.douyinUid} maxLength={35} onChange={(douyinUid) => onChange({ ...editing, douyinUid })} />
           <SelectField
             label="归属厅"
             value={editing.hallOrgId}

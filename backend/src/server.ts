@@ -7,6 +7,7 @@ import { activateHallDailyScheduled, ensureHallDailyRecordsForToday } from "./mo
 import { runDailyNotifyScheduleTick } from "./modules/task/notify/notify.routes.js";
 import { runTemporaryNotifyScheduleTick } from "./modules/task/notify/temporary-notify-schedule.routes.js";
 import { ensureTaskAssignmentSchemaCompatibility } from "./shared/task-assignment-schema-compat.js";
+import { runtimeErrorDetails, writeRuntimeLog } from "./shared/runtime-log.js";
 
 function startTemporaryAssignmentReconciler() {
   const intervalMs = 60 * 1000;
@@ -122,14 +123,24 @@ async function bootstrap() {
   fs.mkdirSync(path.join(process.cwd(), "uploads", "tasks"), { recursive: true });
 
   await ensureTaskAssignmentSchemaCompatibility();
-  startTemporaryAssignmentReconciler();
-  startHallDailyActivator();
-  startDailyNotifyScheduler();
-  startTemporaryNotifyScheduler();
-
   const app = createApp();
-  app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, () => {
     console.log(`主播待办系统 API 已启动：http://localhost:${env.PORT}`);
+    startTemporaryAssignmentReconciler();
+    startHallDailyActivator();
+    startDailyNotifyScheduler();
+    startTemporaryNotifyScheduler();
+  });
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      const message = `后端端口 ${env.PORT} 已被占用：可能已有一个后端在运行，请勿重复启动。`;
+      console.error(message);
+      writeRuntimeLog("warn", "server_port_in_use", { port: env.PORT, error: runtimeErrorDetails(error) });
+    } else {
+      console.error("后端监听失败", error);
+      writeRuntimeLog("error", "server_listen_failed", { port: env.PORT, error: runtimeErrorDetails(error) });
+    }
+    process.exit(1);
   });
 }
 

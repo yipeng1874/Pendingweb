@@ -6,15 +6,21 @@ import { isInFeishuApp } from "../shared/utils/feishu";
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = useAuthStore.getState().token;
   const identityId = useIdentityStore.getState().currentIdentity?.id;
-  const response = await fetch(`/api${url}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(identityId ? { "X-Identity-Id": identityId } : {}),
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${url}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(identityId ? { "X-Identity-Id": identityId } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    console.error("[api-network-error]", { url, error });
+    throw new Error("无法连接后端服务，请确认服务已启动后重试");
+  }
   const text = await response.text();
   let body: ApiResponse<T>;
   try {
@@ -63,15 +69,21 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
 export async function requestForm<T>(url: string, formData: FormData): Promise<T> {
   const token = useAuthStore.getState().token;
   const identityId = useIdentityStore.getState().currentIdentity?.id;
-  const response = await fetch(`/api${url}`, {
-    method: "POST",
-    body: formData,
-    headers: {
-      // 不设置 Content-Type，让浏览器自动加 multipart boundary
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(identityId ? { "X-Identity-Id": identityId } : {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${url}`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        // 不设置 Content-Type，让浏览器自动加 multipart boundary
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(identityId ? { "X-Identity-Id": identityId } : {}),
+      },
+    });
+  } catch (error) {
+    console.error("[api-network-error]", { url, error });
+    throw new Error("无法连接后端服务，请确认服务已启动后重试");
+  }
   const text = await response.text();
   let body: ApiResponse<T>;
   try {

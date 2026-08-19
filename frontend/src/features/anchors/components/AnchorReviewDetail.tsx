@@ -82,11 +82,13 @@ export function AnchorReviewDetail({
             <TextField
               label="抖音号"
               value={activeDraft.douyinNo}
+              maxLength={20}
               onChange={(val) => onDraftChange({ ...activeDraft, douyinNo: val })}
             />
             <TextField
               label="抖音 UID"
               value={activeDraft.douyinUid}
+              maxLength={35}
               onChange={(val) => onDraftChange({ ...activeDraft, douyinUid: val })}
             />
           </div>

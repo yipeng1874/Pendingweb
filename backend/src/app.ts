@@ -25,6 +25,7 @@ import { staffTurnoverRoutes } from "./modules/staff-turnover/staff-turnover.rou
 import { retentionRoutes } from "./modules/retention/retention.routes.js";
 import { processMetricRoutes } from "./modules/process-metric/process-metric.routes.js";
 import { fail } from "./shared/response.js";
+import { runtimeErrorDetails, writeRuntimeLog } from "./shared/runtime-log.js";
 
 export function createApp() {
   const app = express();
@@ -73,7 +74,20 @@ export function createApp() {
     if (err && err.code === "P2025") {
       return fail(res, "NOT_FOUND", "目标记录不存在", 404);
     }
+    if (err && err.code === "P2000") {
+      writeRuntimeLog("warn", "request_field_too_long", {
+        method: _req.method,
+        path: _req.originalUrl,
+        error: runtimeErrorDetails(err),
+      });
+      return fail(res, "FIELD_TOO_LONG", "提交内容超过字段长度限制，请缩短后重试", 400);
+    }
     console.error("[unhandled-error]", err);
+    writeRuntimeLog("error", "unhandled_request_error", {
+      method: _req.method,
+      path: _req.originalUrl,
+      error: runtimeErrorDetails(err),
+    });
     return fail(res, "INTERNAL", "服务器内部错误", 500);
   });
 

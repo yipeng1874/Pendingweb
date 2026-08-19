@@ -232,12 +232,14 @@ export function AnchorAccountDrawer({
                 label="抖音号"
                 value={editing.douyinNo ?? ""}
                 readOnly={readOnly}
+                maxLength={20}
                 onChange={(douyinNo) => onChange({ ...editing, douyinNo })}
               />
               <TextField
                 label="抖音 UID"
                 value={editing.douyinUid}
                 readOnly={readOnly}
+                maxLength={35}
                 onChange={(douyinUid) => onChange({ ...editing, douyinUid })}
               />
 

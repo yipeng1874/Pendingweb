@@ -3,6 +3,32 @@ import { fail, ok } from "../../shared/response.js";
 import { prisma } from "../../shared/prisma.js";
 import { text, safeUser } from "./utils.js";
 import { AnchorService } from "./service.js";
+import { writeRuntimeLog } from "../../shared/runtime-log.js";
+
+const ANCHOR_TEXT_MAX_LENGTH = 191;
+const DOUYIN_NO_MAX_LENGTH = 20;
+const DOUYIN_UID_MAX_LENGTH = 35;
+
+type LengthLimitedField = { label: string; value: string; maxLength: number };
+
+function findOversizedAnchorField(fields: LengthLimitedField[]) {
+  return fields.find((field) => field.value.length > field.maxLength);
+}
+
+function failIfAnchorFieldTooLong(res: any, fields: LengthLimitedField[]) {
+  const oversized = findOversizedAnchorField(fields);
+  if (!oversized) return null;
+  return fail(
+    res,
+    "ANCHOR_FIELD_TOO_LONG",
+    `${oversized.label}不能超过 ${oversized.maxLength} 个字符，请勿粘贴抖音分享文案或完整链接`,
+    400,
+  );
+}
+
+function maskPhone(phone: string) {
+  return phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : "invalid-phone";
+}
 
 export const AnchorController = {
   async getRegisterOrgs(req: any, res: any) {
@@ -31,8 +57,28 @@ export const AnchorController = {
     const phone = text(req.body.phone);
     const password = text(req.body.password);
     const targetHallOrgId = text(req.body.targetHallOrgId);
+    const douyinNo = text(req.body.douyinNo);
+    const douyinUid = text(req.body.douyinUid);
     if (!nickname || !phone || !password || !targetHallOrgId) return fail(res, "REGISTER_REQUIRED_FIELDS", "请填写账号昵称、手机号、密码并选择归属厅", 400);
     if (!/^\d{11}$/.test(phone)) return fail(res, "PHONE_INVALID", "手机号必须为11位数字", 400);
+    const lengthError = failIfAnchorFieldTooLong(res, [
+      { label: "昵称", value: nickname, maxLength: ANCHOR_TEXT_MAX_LENGTH },
+      { label: "抖音号", value: douyinNo, maxLength: DOUYIN_NO_MAX_LENGTH },
+      { label: "抖音 UID", value: douyinUid, maxLength: DOUYIN_UID_MAX_LENGTH },
+    ]);
+    if (lengthError) {
+      const oversized = findOversizedAnchorField([
+        { label: "昵称", value: nickname, maxLength: ANCHOR_TEXT_MAX_LENGTH },
+        { label: "抖音号", value: douyinNo, maxLength: DOUYIN_NO_MAX_LENGTH },
+        { label: "抖音 UID", value: douyinUid, maxLength: DOUYIN_UID_MAX_LENGTH },
+      ]);
+      writeRuntimeLog("warn", "anchor_registration_rejected_oversized_field", {
+        phone: maskPhone(phone),
+        field: oversized?.label,
+        length: oversized?.value.length,
+      });
+      return lengthError;
+    }
     
     const hall = await prisma.orgUnit.findFirst({ where: { id: targetHallOrgId, orgType: "HALL", status: "active" } });
     if (!hall) return fail(res, "HALL_NOT_FOUND", "选择的归属厅不存在或已停用", 400);
@@ -40,7 +86,7 @@ export const AnchorController = {
     const passwordHash = await bcrypt.hash(password, 10);
 
     try {
-      const result = await AnchorService.registerAnchor(nickname, phone, passwordHash, targetHallOrgId, text(req.body.douyinNo), text(req.body.douyinUid));
+      const result = await AnchorService.registerAnchor(nickname, phone, passwordHash, targetHallOrgId, douyinNo, douyinUid);
       return ok(res, {
         user: safeUser(result.user),
         application: result.app,
@@ -89,16 +135,23 @@ export const AnchorController = {
 
   async createProfile(req: any, res: any) {
     const nickname = text(req.body.nickname);
+    const douyinNo = text(req.body.douyinNo);
     const douyinUid = text(req.body.douyinUid);
     const hallOrgId = text(req.body.hallOrgId);
     if (!nickname || !douyinUid || !hallOrgId) return fail(res, "ANCHOR_PROFILE_REQUIRED_FIELDS", "请填写主播昵称、抖音 UID 和归属厅", 400);
+    const lengthError = failIfAnchorFieldTooLong(res, [
+      { label: "昵称", value: nickname, maxLength: ANCHOR_TEXT_MAX_LENGTH },
+      { label: "抖音号", value: douyinNo, maxLength: DOUYIN_NO_MAX_LENGTH },
+      { label: "抖音 UID", value: douyinUid, maxLength: DOUYIN_UID_MAX_LENGTH },
+    ]);
+    if (lengthError) return lengthError;
     const hall = await prisma.orgUnit.findFirst({ where: { id: hallOrgId, orgType: "HALL" } });
     if (!hall) return fail(res, "HALL_NOT_FOUND", "归属厅不存在", 400);
 
     try {
       const profile = await AnchorService.createProfile({ 
         nickname, 
-        douyinNo: text(req.body.douyinNo) || null, 
+        douyinNo: douyinNo || null,
         douyinUid, 
         hallOrgId, 
         boundUserId: text(req.body.boundUserId) || null, 
@@ -119,6 +172,12 @@ export const AnchorController = {
   async updateProfile(req: any, res: any) {
     const allowed = ["nickname", "douyinNo", "douyinUid", "hallOrgId"] as const;
     const data = Object.fromEntries(allowed.filter((key) => key in req.body).map((key) => [key, text(req.body[key])]));
+    const lengthError = failIfAnchorFieldTooLong(res, [
+      { label: "昵称", value: data.nickname ?? "", maxLength: ANCHOR_TEXT_MAX_LENGTH },
+      { label: "抖音号", value: data.douyinNo ?? "", maxLength: DOUYIN_NO_MAX_LENGTH },
+      { label: "抖音 UID", value: data.douyinUid ?? "", maxLength: DOUYIN_UID_MAX_LENGTH },
+    ]);
+    if (lengthError) return lengthError;
 
     try {
       const profile = await AnchorService.updateProfile(req.params.id, data);
@@ -251,6 +310,12 @@ export const AnchorController = {
     const douyinNo = text(req.body.douyinNo || app.douyinNo);
     const nickname = text(req.body.anchorNickname || app.anchorNickname);
     if (!douyinUid || !douyinNo || !nickname) return fail(res, "ANCHOR_REVIEW_REQUIRED_FIELDS", "审核通过必须填写账号昵称、抖音号和抖音 UID", 400);
+    const lengthError = failIfAnchorFieldTooLong(res, [
+      { label: "昵称", value: nickname, maxLength: ANCHOR_TEXT_MAX_LENGTH },
+      { label: "抖音号", value: douyinNo, maxLength: DOUYIN_NO_MAX_LENGTH },
+      { label: "抖音 UID", value: douyinUid, maxLength: DOUYIN_UID_MAX_LENGTH },
+    ]);
+    if (lengthError) return lengthError;
 
     try {
       const result = await AnchorService.approveApplication(app, douyinUid, douyinNo, nickname, req.body.profileId, req.userId);
