@@ -1,9 +1,15 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response, type RequestHandler } from "express";
 import { authRequired } from "../../middleware/authRequired.js";
 import { identityRequired } from "../../middleware/identityRequired.js";
 import { permissionRequired } from "../../middleware/permissionRequired.js";
 import { prisma } from "../../shared/prisma.js";
 import { fail, ok } from "../../shared/response.js";
+
+function asyncHandler(handler: (req: any, res: any) => unknown): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(handler(req, res)).catch(next);
+  };
+}
 
 async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any) {
   const roleCode = identity?.roleCode;
@@ -54,7 +60,7 @@ processMetricRoutes.use(authRequired, identityRequired);
 processMetricRoutes.get(
   "/process-metric/config",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     let baseOrg: { id: string; name: string };
     try {
       baseOrg = await resolveBaseScopeOrg(req.query.scopeOrgId as string | undefined, req.identity);
@@ -66,14 +72,14 @@ processMetricRoutes.get(
       try { teamIds = JSON.parse(config.teamIds); } catch { /* ignore */ }
     }
     return ok(res, { baseOrgId: baseOrg.id, baseOrgName: baseOrg.name, teamIds });
-  }
+  })
 );
 
 /** PUT /process-metric/config?scopeOrgId=xxx — 保存当前基地的参与团队配置 */
 processMetricRoutes.put(
   "/process-metric/config",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     const roleCode = req.identity?.roleCode;
     if (roleCode === "TEAM_ADMIN" || roleCode === "HALL_MANAGER") {
       return fail(res, "FORBIDDEN", "无权修改配置", 403);
@@ -94,14 +100,14 @@ processMetricRoutes.put(
     });
 
     return ok(res, { baseOrgId: baseOrg.id, teamIds });
-  }
+  })
 );
 
 /** POST /process-metric/upsert — 覆盖式写入（同团队+同厅+同日期） */
 processMetricRoutes.post(
   "/process-metric/upsert",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     const roleCode = req.identity?.roleCode;
     if (roleCode === "TEAM_ADMIN" || roleCode === "HALL_MANAGER") {
       return fail(res, "FORBIDDEN", "无权录入数据", 403);
@@ -138,14 +144,14 @@ processMetricRoutes.post(
       },
     });
     return ok(res, record);
-  }
+  })
 );
 
 /** POST /process-metric/upsert-batch — 批量覆盖写入 */
 processMetricRoutes.post(
   "/process-metric/upsert-batch",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     const roleCode = req.identity?.roleCode;
     if (roleCode === "TEAM_ADMIN" || roleCode === "HALL_MANAGER") return fail(res, "FORBIDDEN", "无权录入数据", 403);
 
@@ -184,14 +190,14 @@ processMetricRoutes.post(
       } catch { failCount++; }
     }
     return ok(res, { okCount, failCount });
-  }
+  })
 );
 
 /** GET /process-metric/by-date?scopeOrgId=xxx&days=6 */
 processMetricRoutes.get(
   "/process-metric/by-date",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     let baseOrg: { id: string; name: string };
     try {
       baseOrg = await resolveBaseScopeOrg(req.query.scopeOrgId as string | undefined, req.identity);
@@ -236,14 +242,14 @@ processMetricRoutes.get(
     });
 
     return ok(res, { baseOrgId: baseOrg.id, baseOrgName: baseOrg.name, dateEntries });
-  }
+  })
 );
 
 /** GET /process-metric/latest-halls?scopeOrgId=xxx&teamOrgId=xxx — 获取某团队最近一次已上传的厅列表 */
 processMetricRoutes.get(
   "/process-metric/latest-halls",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     let baseOrg: { id: string; name: string };
     try {
       baseOrg = await resolveBaseScopeOrg(req.query.scopeOrgId as string | undefined, req.identity);
@@ -269,14 +275,14 @@ processMetricRoutes.get(
       teamMap.get(r.teamOrgId)!.halls.push({ hallName: r.hallName, percentage: r.percentage });
     }
     return ok(res, { teams: Array.from(teamMap.values()) });
-  }
+  })
 );
 
 /** DELETE /process-metric?scopeOrgId=xxx&teamOrgId=xxx&hallName=xxx&recordDate=xxx — 删除某条记录 */
 processMetricRoutes.delete(
   "/process-metric",
   permissionRequired("task:report:view"),
-  async (req: any, res: any) => {
+  asyncHandler(async (req: any, res: any) => {
     const roleCode = req.identity?.roleCode;
     if (roleCode === "TEAM_ADMIN" || roleCode === "HALL_MANAGER") {
       return fail(res, "FORBIDDEN", "无权删除数据", 403);
@@ -292,12 +298,14 @@ processMetricRoutes.delete(
       return fail(res, "MISSING_PARAMS", "请提供 teamOrgId / hallName / recordDate", 400);
     }
 
-    const existing = await prisma.processMetricDaily.findFirst({
-      where: { baseOrgId: baseOrg.id, teamOrgId: String(teamOrgId), hallName: String(hallName), recordDate: String(recordDate) },
+    const result = await prisma.processMetricDaily.deleteMany({
+      where: {
+        baseOrgId: baseOrg.id,
+        teamOrgId: String(teamOrgId),
+        hallName: String(hallName),
+        recordDate: String(recordDate),
+      },
     });
-    if (!existing) return fail(res, "NOT_FOUND", "记录不存在", 404);
-
-    await prisma.processMetricDaily.delete({ where: { id: existing.id } });
-    return ok(res, { deleted: true });
-  }
+    return ok(res, { deleted: result.count > 0, alreadyAbsent: result.count === 0 });
+  })
 );

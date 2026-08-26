@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Upload, TrendingUp, X, RefreshCw, ChevronDown, Plus, Trash2, ClipboardPaste, Check } from "lucide-react";
 import { processMetricApi, type ProcessMetricDateEntry } from "../../../services/task";
 import { fetchOrgTree } from "../../../services/organization";
@@ -65,6 +65,8 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const [submitError, setSubmitError] = useState("");
   const [submitProgress, setSubmitProgress] = useState("");
   const [teamSavedHint, setTeamSavedHint] = useState<Record<string, string>>({});  // 团队保存成功提示
+  const deletingKeyRef = useRef(new Set<string>());
+  const [deletingKeys, setDeletingKeys] = useState<Set<string>>(new Set());
 
   const [formYear, setFormYear] = useState<number>(CURRENT_YEAR);
   const [formMonth, setFormMonth] = useState<number>(CURRENT_MONTH);
@@ -161,6 +163,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     setTeamHalls((prev) => { const n = new Map(prev); const rows = [...(n.get(teamId) ?? [])]; rows[idx] = { ...rows[idx], [field]: value }; n.set(teamId, rows); return n; });
   const addHall = (teamId: string) =>
     setTeamHalls((prev) => { const n = new Map(prev); n.set(teamId, [...(n.get(teamId) ?? []), { hallName: "", percentage: "" }]); return n; });
+  const getDeleteKey = (teamId: string, hallName: string, recordDate: string) => `${teamId}\u0000${hallName}\u0000${recordDate}`;
   const removeHall = (teamId: string, idx: number) => {
     // 用位置 idx 在 dateEntries 里找回原始厅名（用户可能改过名字，必须用原名才能从 DB 删掉）
     const entry = dateEntries.find((e) => e.recordDate === formDate);
@@ -168,6 +171,10 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     const originalHallName = existingTeam?.halls[idx]?.hallName;
 
     if (originalHallName) {
+      const deleteKey = getDeleteKey(teamId, originalHallName, formDate);
+      if (deletingKeyRef.current.has(deleteKey)) return;
+      deletingKeyRef.current.add(deleteKey);
+      setDeletingKeys((prev) => new Set(prev).add(deleteKey));
       processMetricApi.deleteRecord({
         teamOrgId: teamId,
         hallName: originalHallName,
@@ -185,7 +192,15 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           };
         }));
       }).catch((e: any) => {
-        if (e?.status !== 404) console.warn("删除过程指标记录失败:", e);
+        console.warn("删除过程指标记录失败:", e);
+        setSubmitError(e?.message ?? "删除失败，请刷新后重试");
+      }).finally(() => {
+        deletingKeyRef.current.delete(deleteKey);
+        setDeletingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteKey);
+          return next;
+        });
       });
     }
     setTeamHalls((prev) => { const n = new Map(prev); const rows = [...(n.get(teamId) ?? [])]; rows.splice(idx, 1); n.set(teamId, rows); return n; });
@@ -535,7 +550,11 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     {halls.map((h, i) => (<tr key={i}>
                       <td className="px-1 py-1"><input type="text" value={h.hallName} onChange={(e) => updateHall(team.orgId, i, "hallName", e.target.value)} placeholder="输入厅名" className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-cyan-400" /></td>
                       <td className="px-1 py-1"><input type="number" min="0" max="100" step="1" value={h.percentage} onChange={(e) => updateHall(team.orgId, i, "percentage", e.target.value)} placeholder="0-100" className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-cyan-400" /></td>
-                      <td className="px-1 py-1"><button onClick={() => removeHall(team.orgId, i)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-50 text-red-400 hover:text-red-500"><Trash2 size={12} /></button></td>
+                      <td className="px-1 py-1">{(() => {
+                        const originalHallName = dateEntries.find((e) => e.recordDate === formDate)?.teams.find((t) => t.teamOrgId === team.orgId)?.halls[i]?.hallName;
+                        const isDeleting = !!originalHallName && deletingKeys.has(getDeleteKey(team.orgId, originalHallName, formDate));
+                        return <button disabled={isDeleting} aria-label={isDeleting ? "删除中" : "删除该厅"} onClick={() => removeHall(team.orgId, i)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-50 text-red-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40">{isDeleting ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}</button>;
+                      })()}</td>
                     </tr>))}
                   </tbody>
                 </table>
