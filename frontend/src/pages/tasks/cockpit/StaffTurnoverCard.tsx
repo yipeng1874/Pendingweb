@@ -142,7 +142,7 @@ function WaveBarLabel(props: any) {
     textX = x + width / 2;
     textY = y + 11;
     anchor = "middle";
-    fill = "#ffffff";
+    fill = "#0f172a";
   }
   return (
     <text x={textX} y={textY} textAnchor={anchor} fontSize={10} fontWeight={600} fill={fill} style={{ pointerEvents: "none" }}>

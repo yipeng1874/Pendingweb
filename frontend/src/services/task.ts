@@ -564,6 +564,34 @@ export const reportApi = {
     const q = params.toString();
     return api.get<import("../types").DailyDashboardResponse>(`/tasks/report/daily-dashboard${q ? `?${q}` : ""}`);
   },
+  exportDailyDashboardMonth: async (month: string, scopeOrgId?: string) => {
+    const params = new URLSearchParams({ month });
+    if (scopeOrgId) params.set("scopeOrgId", scopeOrgId);
+    const token = useAuthStore.getState().token;
+    const identityId = useIdentityStore.getState().currentIdentity?.id;
+    const response = await fetch(`/api/tasks/report/daily-dashboard/export-month?${params.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(identityId ? { "X-Identity-Id": identityId } : {}),
+      },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error?.message ?? "月度数据导出失败，请重试");
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+    const filename = encodedName ? decodeURIComponent(encodedName) : `主播日常任务_${month}.xlsx`;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
   getDailyDashboardTeamChildren: (teamOrgId: string, taskDate?: string, scopeOrgId?: string) => {
     const params = new URLSearchParams();
     if (taskDate) params.set("taskDate", taskDate);

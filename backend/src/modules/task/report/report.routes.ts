@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
+import * as xlsx from "xlsx";
 import { authRequired } from "../../../middleware/authRequired.js";
 import { identityRequired } from "../../../middleware/identityRequired.js";
 import { permissionRequired } from "../../../middleware/permissionRequired.js";
@@ -353,8 +354,8 @@ function calculateCompletionRate(completed: number, total: number, approvedExemp
   return assessedTotal > 0 ? Math.round((completed / assessedTotal) * 100) : 0;
 }
 
-async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: string; path: string }, viewerScopePath: string) {
-  await reconcileDailyAssignments(baseOrg.path);
+async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: string; path: string }, viewerScopePath: string, reconcile = true) {
+  if (reconcile) await reconcileDailyAssignments(baseOrg.path);
   const assignments = await prisma.taskAssignment.findMany({
     where: {
       category: "DAILY",
@@ -878,6 +879,109 @@ reportRoutes.get("/tasks/report/daily-dashboard", permissionRequired("task:repor
     },
     subTaskSummaries,
   });
+});
+
+reportRoutes.get("/tasks/report/daily-dashboard/export-month", permissionRequired("task:report:view"), async (req: any, res: any) => {
+  if (!canViewDailyDashboard(req.identity?.roleCode)) {
+    return fail(res, "DAILY_DASHBOARD_FORBIDDEN", "当前身份无权导出日常任务看板", 403);
+  }
+
+  const month = t(req.query.month);
+  const scopeOrgId = t(req.query.scopeOrgId) || undefined;
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return fail(res, "INVALID_EXPORT_MONTH", "导出月份格式不正确", 400);
+  }
+
+  const today = formatBeijingDate(new Date());
+  const currentMonth = today.slice(0, 7);
+  const previousMonth = addBeijingDays(`${currentMonth}-01`, -1).slice(0, 7);
+  if (month !== currentMonth && month !== previousMonth) {
+    return fail(res, "EXPORT_MONTH_OUT_OF_RANGE", "仅支持导出本月或上月数据", 400);
+  }
+
+  const baseOrg = await resolveBaseScopeOrg(scopeOrgId, req.identity).catch((error: Error) => error);
+  if (baseOrg instanceof Error) {
+    if (baseOrg.message === "BASE_SCOPE_REQUIRED") return fail(res, "BASE_SCOPE_REQUIRED", "请先选择基地后再导出", 400);
+    if (baseOrg.message === "SCOPE_ORG_NOT_FOUND") return fail(res, "SCOPE_ORG_NOT_FOUND", "当前基地不存在或已停用", 404);
+    if (baseOrg.message === "SCOPE_ORG_FORBIDDEN") return fail(res, "SCOPE_ORG_FORBIDDEN", "当前身份无权导出该基地", 403);
+    return fail(res, "DAILY_DASHBOARD_SCOPE_FAILED", "导出基地解析失败", 500);
+  }
+
+  const viewerScopePath = req.identity?.scopePath ?? baseOrg.path;
+  const startDate = `${month}-01`;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const monthEndDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const naturalEndDate = `${month}-${String(monthEndDay).padStart(2, "0")}`;
+  const endDate = month === currentMonth && today < naturalEndDate ? today : naturalEndDate;
+  const dates: string[] = [];
+  for (let date = startDate; date <= endDate; date = addBeijingDays(date, 1)) dates.push(date);
+
+  try {
+    // Reconcile once, then read every task date with exactly the same audience/status
+    // calculation used by the daily dashboard.
+    await reconcileDailyAssignments(baseOrg.path);
+    const dailyAudiences: Array<{ taskDate: string; refs: Awaited<ReturnType<typeof loadDailyDashboardAudience>>["refs"]; recordMap: Awaited<ReturnType<typeof loadDailyDashboardAudience>>["recordMap"] }> = [];
+    for (const taskDate of dates) {
+      const { refs, recordMap } = await loadDailyDashboardAudience(taskDate, baseOrg, viewerScopePath, false);
+      dailyAudiences.push({ taskDate, refs, recordMap });
+    }
+
+    const userIds = Array.from(new Set(dailyAudiences.flatMap((entry) => entry.refs.map((ref) => ref.userId))));
+    const profiles = userIds.length
+      ? await prisma.anchorProfile.findMany({
+          where: { boundUserId: { in: userIds } },
+          select: { boundUserId: true, douyinNo: true, douyinUid: true },
+        })
+      : [];
+    const profileMap = new Map(profiles.map((profile) => [profile.boundUserId, profile]));
+
+    const rows = dailyAudiences.flatMap(({ taskDate, refs, recordMap }) => refs.map((ref) => {
+      const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
+      const exempted = record?.exemption?.status === "approved";
+      const status = resolveDailyDashboardStatus({
+        requiredDoneItems: record?.requiredDoneItems ?? 0,
+        requiredTotalItems: ref.requiredTotalItems ?? 0,
+        completedAt: record?.completedAt ?? null,
+        recordDate: taskDate,
+      });
+      const profile = profileMap.get(ref.userId);
+      return {
+        "日期": taskDate,
+        "团队": ref.teamOrgName ?? "",
+        "厅": ref.hallOrgName,
+        "主播昵称": ref.subjectName ?? "",
+        "抖音号": profile?.douyinNo ?? "",
+        "抖音UID": profile?.douyinUid ?? "",
+        "是否参与": exempted ? "否" : "是",
+        "是否豁免": exempted ? "是" : "否",
+        "是否完成": exempted ? "—" : (status === "completed" || status === "supplemented" ? "是" : "否"),
+      };
+    }));
+
+    const headers = ["日期", "团队", "厅", "主播昵称", "抖音号", "抖音UID", "是否参与", "是否豁免", "是否完成"];
+    const sheet = xlsx.utils.json_to_sheet(rows, { header: headers });
+    sheet["!cols"] = [
+      { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 },
+      { wch: 38 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    ];
+    sheet["!autofilter"] = { ref: `A1:I${Math.max(1, rows.length + 1)}` };
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, sheet, "主播每日完成明细");
+    const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
+    const filename = `${baseOrg.name}_主播日常任务_${month}.xlsx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error("[daily-dashboard-export-failed]", {
+      month,
+      baseOrgId: baseOrg.id,
+      identityId: req.identity?.id,
+      error,
+    });
+    return fail(res, "DAILY_DASHBOARD_EXPORT_FAILED", "月度数据导出失败，请稍后重试", 500);
+  }
 });
 
 reportRoutes.get("/tasks/report/daily-dashboard/teams/:teamOrgId/children", permissionRequired("task:report:view"), async (req: any, res: any) => {

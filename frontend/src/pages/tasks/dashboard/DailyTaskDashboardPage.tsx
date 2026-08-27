@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bell, CheckSquare, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw, ShieldOff, X } from "lucide-react";
+import { Bell, CheckSquare, ChevronDown, ChevronRight, Clock3, Download, Loader2, RefreshCw, ShieldOff, X } from "lucide-react";
 
 import type { DailyDashboardAnchorItemDetailResponse, DailyDashboardHallDetailsResponse, DailyDashboardOrgNode, DailyDashboardResponse, DailyDashboardTeamChildrenResponse, Identity, OrgUnit } from "../../../types";
 import { notifyApi, recordApi, reportApi } from "../../../services/task";
@@ -473,6 +473,7 @@ export function DailyTaskDashboardPage() {
   const [notifyPrefix, setNotifyPrefix] = useState("");
 
   const [notifyLoading, setNotifyLoading] = useState(false);
+  const [exportingMonth, setExportingMonth] = useState<"current" | "previous" | null>(null);
   const [notifyPreview, setNotifyPreview] = useState<null | { total: number; pendingCount: number; inProgressCount: number; unboundCount: number; prefixPlaceholder: string }>(null);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
@@ -581,6 +582,26 @@ export function DailyTaskDashboardPage() {
     }
   }
 
+  async function handleExportMonth(period: "current" | "previous") {
+    if (baseSelectionRequired && !effectiveBaseOrgId) {
+      setError("请先选择基地后再导出");
+      return;
+    }
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + (period === "previous" ? -1 : 0), 1);
+    const month = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
+    setExportingMonth(period);
+    setError("");
+    try {
+      await reportApi.exportDailyDashboardMonth(month, effectiveBaseOrgId || undefined);
+      setNotice(`${period === "current" ? "本月" : "上月"}主播任务明细已导出`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "月度数据导出失败，请重试");
+    } finally {
+      setExportingMonth(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <DailyNotifyScheduleModal
@@ -671,6 +692,22 @@ export function DailyTaskDashboardPage() {
               className="inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-500 px-4 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {notifyLoading ? <span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />发送中...</span> : <span className="inline-flex items-center gap-2"><Bell size={15} />通知今日待办</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportMonth("current")}
+              disabled={exportingMonth !== null || (baseSelectionRequired && !effectiveBaseOrgId)}
+              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exportingMonth === "current" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}导出本月
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportMonth("previous")}
+              disabled={exportingMonth !== null || (baseSelectionRequired && !effectiveBaseOrgId)}
+              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exportingMonth === "previous" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}导出上月
             </button>
             <button
               type="button"
