@@ -935,6 +935,18 @@ reportRoutes.get("/tasks/report/daily-dashboard/export-month", permissionRequire
       : [];
     const profileMap = new Map(profiles.map((profile) => [profile.boundUserId, profile]));
 
+    const monthlySummaryMap = new Map<string, {
+      userId: string;
+      teamOrgName: string;
+      hallOrgName: string;
+      subjectName: string;
+      douyinNo: string;
+      douyinUid: string;
+      assignedCount: number;
+      nonExemptCount: number;
+      completedCount: number;
+      exemptionCount: number;
+    }>();
     const rows = dailyAudiences.flatMap(({ taskDate, refs, recordMap }) => refs.map((ref) => {
       const record = recordMap.get(`${ref.assignmentId}:${ref.subjectKey}:${taskDate}`);
       const exempted = record?.exemption?.status === "approved";
@@ -945,6 +957,32 @@ reportRoutes.get("/tasks/report/daily-dashboard/export-month", permissionRequire
         recordDate: taskDate,
       });
       const profile = profileMap.get(ref.userId);
+      const completed = status === "completed" || status === "supplemented";
+      const summary = monthlySummaryMap.get(ref.userId) ?? {
+        userId: ref.userId,
+        teamOrgName: ref.teamOrgName ?? "",
+        hallOrgName: ref.hallOrgName,
+        subjectName: ref.subjectName ?? "",
+        douyinNo: profile?.douyinNo ?? "",
+        douyinUid: profile?.douyinUid ?? "",
+        assignedCount: 0,
+        nonExemptCount: 0,
+        completedCount: 0,
+        exemptionCount: 0,
+      };
+      // Dates are processed in ascending order, so migrated anchors display their latest organization in the month.
+      summary.teamOrgName = ref.teamOrgName ?? "";
+      summary.hallOrgName = ref.hallOrgName;
+      summary.subjectName = ref.subjectName ?? summary.subjectName;
+      summary.douyinNo = profile?.douyinNo ?? summary.douyinNo;
+      summary.douyinUid = profile?.douyinUid ?? summary.douyinUid;
+      summary.assignedCount += 1;
+      if (exempted) summary.exemptionCount += 1;
+      else {
+        summary.nonExemptCount += 1;
+        if (completed) summary.completedCount += 1;
+      }
+      monthlySummaryMap.set(ref.userId, summary);
       return {
         "日期": taskDate,
         "团队": ref.teamOrgName ?? "",
@@ -954,19 +992,49 @@ reportRoutes.get("/tasks/report/daily-dashboard/export-month", permissionRequire
         "抖音UID": profile?.douyinUid ?? "",
         "是否参与": exempted ? "否" : "是",
         "是否豁免": exempted ? "是" : "否",
-        "是否完成": exempted ? "—" : (status === "completed" || status === "supplemented" ? "是" : "否"),
+        "是否完成": exempted ? "—" : (completed ? "是" : "否"),
       };
     }));
 
-    const headers = ["日期", "团队", "厅", "主播昵称", "抖音号", "抖音UID", "是否参与", "是否豁免", "是否完成"];
-    const sheet = xlsx.utils.json_to_sheet(rows, { header: headers });
-    sheet["!cols"] = [
+    const summaryRows = Array.from(monthlySummaryMap.values())
+      .sort((left, right) => left.teamOrgName.localeCompare(right.teamOrgName, "zh-CN")
+        || left.hallOrgName.localeCompare(right.hallOrgName, "zh-CN")
+        || left.subjectName.localeCompare(right.subjectName, "zh-CN"))
+      .map((summary) => ({
+        "团队": summary.teamOrgName,
+        "厅": summary.hallOrgName,
+        "主播昵称": summary.subjectName,
+        "抖音号": summary.douyinNo,
+        "抖音UID": summary.douyinUid,
+        "投放次数": summary.assignedCount,
+        "豁免次数": summary.exemptionCount,
+        "非豁免次数": summary.nonExemptCount,
+        "完成次数（含补录）": summary.completedCount,
+        "月度完成率": summary.nonExemptCount > 0 ? summary.completedCount / summary.nonExemptCount : "—",
+      }));
+
+    const summaryHeaders = ["团队", "厅", "主播昵称", "抖音号", "抖音UID", "投放次数", "豁免次数", "非豁免次数", "完成次数（含补录）", "月度完成率"];
+    const summarySheet = xlsx.utils.json_to_sheet(summaryRows, { header: summaryHeaders });
+    summarySheet["!cols"] = [
+      { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 38 },
+      { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 14 },
+    ];
+    summarySheet["!autofilter"] = { ref: `A1:J${Math.max(1, summaryRows.length + 1)}` };
+    for (let rowIndex = 2; rowIndex <= summaryRows.length + 1; rowIndex += 1) {
+      const cell = summarySheet[`J${rowIndex}`];
+      if (cell?.t === "n") cell.z = "0.00%";
+    }
+
+    const detailHeaders = ["日期", "团队", "厅", "主播昵称", "抖音号", "抖音UID", "是否参与", "是否豁免", "是否完成"];
+    const detailSheet = xlsx.utils.json_to_sheet(rows, { header: detailHeaders });
+    detailSheet["!cols"] = [
       { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 },
       { wch: 38 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
     ];
-    sheet["!autofilter"] = { ref: `A1:I${Math.max(1, rows.length + 1)}` };
+    detailSheet["!autofilter"] = { ref: `A1:I${Math.max(1, rows.length + 1)}` };
     const workbook = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(workbook, sheet, "主播每日完成明细");
+    xlsx.utils.book_append_sheet(workbook, summarySheet, "主播月度汇总");
+    xlsx.utils.book_append_sheet(workbook, detailSheet, "主播每日完成明细");
     const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
     const filename = `${baseOrg.name}_主播日常任务_${month}.xlsx`;
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bell, CheckSquare, ChevronDown, ChevronRight, Clock3, Download, Loader2, RefreshCw, ShieldOff, X } from "lucide-react";
 
@@ -474,6 +474,8 @@ export function DailyTaskDashboardPage() {
 
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [exportingMonth, setExportingMonth] = useState<"current" | "previous" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [notifyPreview, setNotifyPreview] = useState<null | { total: number; pendingCount: number; inProgressCount: number; unboundCount: number; prefixPlaceholder: string }>(null);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
@@ -516,6 +518,15 @@ export function DailyTaskDashboardPage() {
     if (!availableBaseOrgs.length || selectedBaseOrgId || !baseSelectionRequired) return;
     if (availableBaseOrgs.length === 1) setSelectedBaseOrgId(availableBaseOrgs[0].id);
   }, [availableBaseOrgs, baseSelectionRequired, selectedBaseOrgId]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const closeMenu = (event: MouseEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) setExportMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, [exportMenuOpen]);
 
   const phaseMeta = data ? getPhaseMeta(data.phase) : null;
   const treeRoots = useMemo(() => {
@@ -587,9 +598,14 @@ export function DailyTaskDashboardPage() {
       setError("请先选择基地后再导出");
       return;
     }
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth() + (period === "previous" ? -1 : 0), 1);
-    const month = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
+    const beijingToday = data?.quickRanges.today;
+    const [todayYear, todayMonth] = (beijingToday ?? "").split("-").map(Number);
+    const fallbackNow = new Date();
+    const baseYear = Number.isFinite(todayYear) ? todayYear : fallbackNow.getFullYear();
+    const baseMonth = Number.isFinite(todayMonth) ? todayMonth : fallbackNow.getMonth() + 1;
+    const targetMonthIndex = baseYear * 12 + baseMonth - 1 + (period === "previous" ? -1 : 0);
+    const month = `${Math.floor(targetMonthIndex / 12)}-${String(targetMonthIndex % 12 + 1).padStart(2, "0")}`;
+    setExportMenuOpen(false);
     setExportingMonth(period);
     setError("");
     try {
@@ -693,22 +709,30 @@ export function DailyTaskDashboardPage() {
             >
               {notifyLoading ? <span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />发送中...</span> : <span className="inline-flex items-center gap-2"><Bell size={15} />通知今日待办</span>}
             </button>
-            <button
-              type="button"
-              onClick={() => void handleExportMonth("current")}
-              disabled={exportingMonth !== null || (baseSelectionRequired && !effectiveBaseOrgId)}
-              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {exportingMonth === "current" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}导出本月
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleExportMonth("previous")}
-              disabled={exportingMonth !== null || (baseSelectionRequired && !effectiveBaseOrgId)}
-              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {exportingMonth === "previous" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}导出上月
-            </button>
+            <div ref={exportMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((open) => !open)}
+                disabled={exportingMonth !== null || (baseSelectionRequired && !effectiveBaseOrgId)}
+                aria-haspopup="menu"
+                aria-expanded={exportMenuOpen}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportingMonth ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                {exportingMonth === "current" ? "正在导出本月" : exportingMonth === "previous" ? "正在导出上月" : "导出月报"}
+                {!exportingMonth && <ChevronDown size={14} className={`transition-transform ${exportMenuOpen ? "rotate-180" : ""}`} />}
+              </button>
+              {exportMenuOpen && (
+                <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  <button type="button" role="menuitem" onClick={() => void handleExportMonth("current")} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700">
+                    <Download size={14} />导出本月
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => void handleExportMonth("previous")} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50">
+                    <Download size={14} />导出上月
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => void load()}
