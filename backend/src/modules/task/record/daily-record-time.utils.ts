@@ -40,6 +40,11 @@ export function getDailyTaskDayEnd(recordDate: string) {
   return makeBeijingDate(year, month, day, 23, 59, 59, 999);
 }
 
+export function getDailyTaskDayStart(recordDate: string) {
+  const { year, month, day } = parseRecordDateParts(recordDate);
+  return makeBeijingDate(year, month, day, 0, 0, 0, 0);
+}
+
 export function getDailyTaskSupplementDeadline(recordDate: string) {
   const { year, month, day } = parseRecordDateParts(addBeijingDays(recordDate, 1));
   return makeBeijingDate(year, month, day, 16, 0, 0, 0);
