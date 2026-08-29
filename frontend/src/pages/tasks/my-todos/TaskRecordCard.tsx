@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CheckCircle2,
   ChevronDown,
@@ -76,6 +77,64 @@ interface Props {
   compact?: boolean;
   currentIdentityId?: string;
   rightSlot?: React.ReactNode;
+}
+
+function OverflowDescription({ description, compact }: { description: string; compact: boolean }) {
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltip, setTooltip] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const hideTooltip = () => {
+    if (showTimerRef.current) clearTimeout(showTimerRef.current);
+    showTimerRef.current = null;
+    setTooltip(null);
+  };
+
+  const showTooltip = () => {
+    const element = textRef.current;
+    if (!element || element.scrollHeight <= element.clientHeight + 1) return;
+    const rect = element.getBoundingClientRect();
+    showTimerRef.current = setTimeout(() => {
+      const width = Math.min(380, Math.max(280, window.innerWidth - 24));
+      const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+      const estimatedHeight = 112;
+      const top = rect.bottom + 8 + estimatedHeight <= window.innerHeight
+        ? rect.bottom + 8
+        : Math.max(12, rect.top - estimatedHeight - 8);
+      setTooltip({ top, left, width });
+    }, 300);
+  };
+
+  useEffect(() => () => {
+    if (showTimerRef.current) clearTimeout(showTimerRef.current);
+  }, []);
+
+  return (
+    <>
+      <p
+        ref={textRef}
+        className={`${compact ? "line-clamp-2" : "line-clamp-3"} mt-1 cursor-help text-xs leading-5 text-slate-500`}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
+        onFocus={showTooltip}
+        onBlur={hideTooltip}
+        tabIndex={0}
+        aria-label={`说明：${description}`}
+      >
+        <span className="font-medium text-slate-600">说明：</span>{description}
+      </p>
+      {tooltip && createPortal(
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-[100] max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-900/95 px-3.5 py-3 text-xs leading-5 text-white shadow-xl"
+          style={{ top: tooltip.top, left: tooltip.left, width: tooltip.width }}
+        >
+          <span className="font-semibold text-slate-200">说明：</span>{description}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
 }
 
 function statusLabel(status: string) {
@@ -633,9 +692,7 @@ export function TaskRecordCard({ record, expanded, onToggle, onRefresh, formatDe
               </div>
               <p className={`${compact ? "line-clamp-2 text-sm leading-5" : "truncate text-base"} font-semibold text-slate-900`}>{record.assignment?.template?.title ?? "任务"}</p>
               {templateDescription && (
-                <p className={`${compact ? "line-clamp-2" : "line-clamp-3"} mt-1 text-xs leading-5 text-slate-500`}>
-                  <span className="font-medium text-slate-600">说明：</span>{templateDescription}
-                </p>
+                <OverflowDescription description={templateDescription} compact={compact} />
               )}
               <div className={`mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium ${urgent ? "text-red-500" : "text-slate-500"}`}>
                 <span className="flex items-center gap-1"><Clock size={12} />{formatDeadline(record)}</span>
