@@ -195,6 +195,8 @@ function ItemRow({ item, itemRecord, recordId, onDone, allowSupplementAfterSubmi
   const [localFiles, setLocalFiles] = useState<Array<{ file: File; previewUrl: string }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteActive, setPasteActive] = useState(false);
+  const [showSubmittedContent, setShowSubmittedContent] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<{ fileUrl: string; fileName: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -552,11 +554,75 @@ function ItemRow({ item, itemRecord, recordId, onDone, allowSupplementAfterSubmi
           ) : completionSummary ? (
             <>
               <p className="mt-2 text-xs leading-5 text-slate-500">{completionSummary}</p>
+              {item.itemType === "ATTACHMENT" && (itemRecord?.attachments?.length ?? 0) > 0 && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSubmittedContent((value) => !value)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    aria-expanded={showSubmittedContent}
+                  >
+                    <FileImage size={13} />
+                    {showSubmittedContent ? "收起提交内容" : `查看提交内容（${itemRecord!.attachments!.length} 张）`}
+                    {showSubmittedContent ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  {showSubmittedContent && (
+                    <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {itemRecord!.attachments!.map((attachment, attachmentIndex) => (
+                        <button
+                          key={attachment.id}
+                          type="button"
+                          onClick={() => setPreviewAttachment({ fileUrl: attachment.fileUrl, fileName: attachment.fileName })}
+                          className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          aria-label={`预览第 ${attachmentIndex + 1} 张图片：${attachment.fileName}`}
+                        >
+                          <img
+                            src={resolveFileUrl(attachment.fileUrl)}
+                            alt={attachment.fileName}
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                          />
+                          <span className="absolute inset-x-0 bottom-0 bg-slate-900/60 px-1.5 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100">
+                            点击查看大图
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {itemRecord?.completedByName && <p className="mt-1 text-[11px] text-slate-400">完成人：{itemRecord.completedByName}</p>}
             </>
           ) : null}
         </div>
       </div>
+      {previewAttachment && createPortal(
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`图片预览：${previewAttachment.fileName}`}
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewAttachment(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+            aria-label="关闭图片预览"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={resolveFileUrl(previewAttachment.fileUrl)}
+            alt={previewAttachment.fileName}
+            className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <p className="absolute bottom-4 max-w-[80vw] truncate rounded-full bg-black/45 px-3 py-1.5 text-xs text-white">
+            {previewAttachment.fileName}
+          </p>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
