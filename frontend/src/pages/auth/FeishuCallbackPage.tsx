@@ -33,7 +33,7 @@ type FeishuCallbackAction = "login" | "bind";
 
 type FeishuCallbackResult =
   | { type: "bind" }
-  | { type: "login"; data: { token: string; user: User; identities: Identity[] } };
+  | { type: "login"; data: { token: string; user: User; identities: Identity[]; recommendedIdentityId?: string | null } };
 
 const inflightFeishuCallbacks = new Map<string, Promise<FeishuCallbackResult>>();
 
@@ -96,7 +96,7 @@ function runFeishuCallbackRequest(params: {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.bindToken}` },
       body: JSON.stringify({ code: params.code, state: params.stateStr }),
     }).then(() => ({ type: "bind" } as const))
-    : request<{ token: string; user: User; identities: Identity[] }>("/auth/feishu/complete-login", {
+    : request<{ token: string; user: User; identities: Identity[]; recommendedIdentityId?: string | null }>("/auth/feishu/complete-login", {
       method: "POST",
       body: JSON.stringify({ code: params.code, state: params.stateStr }),
     }).then((data) => ({ type: "login", data } as const)));
@@ -179,7 +179,7 @@ export function FeishuCallbackPage() {
         }
 
         setAuth({ token: result.data.token, user: result.data.user, identities: result.data.identities });
-        const best = pickBestIdentity(result.data.identities);
+        const best = result.data.identities.find((identity) => identity.id === result.data.recommendedIdentityId) ?? pickBestIdentity(result.data.identities);
         if (best) {
           setIdentity(best);
           navigate("/tasks/dashboard", { replace: true });

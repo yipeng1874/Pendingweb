@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, LogOut, UserRound } from "lucide-react";
+import { authApi } from "../services/auth";
 import { useAuthStore } from "../stores/auth";
+import { entryPathForIdentity } from "../utils/entry";
 
 export function IdentityPage() {
   const navigate = useNavigate();
@@ -12,11 +14,18 @@ export function IdentityPage() {
 
   const sorted = useMemo(() => [...identities], [identities]);
 
-  function chooseIdentity(identityId: string) {
+  async function chooseIdentity(identityId: string) {
     const target = identities.find((item) => item.id === identityId);
     if (!target) return;
-    setCurrentIdentity(target);
-    navigate("/todos", { replace: true });
+    try {
+      const result = await authApi.switchIdentity(identityId);
+      if (!result.identity) return;
+      const selected = result.identity;
+      setCurrentIdentity(selected);
+      navigate(entryPathForIdentity(selected), { replace: true });
+    } catch {
+      return;
+    }
   }
 
   return (
@@ -24,8 +33,8 @@ export function IdentityPage() {
       <div className="mobile-page bottom-safe">
         <div className="hero-panel">
           <div className="hero-kicker"><UserRound size={14} /> 身份切换</div>
-          <h1 className="hero-title">请选择这次进入待办的身份。</h1>
-          <p className="hero-subtitle">同一账号可能拥有多个组织或角色身份，进入后你看到的待办、权限与协同内容会随身份变化。</p>
+          <h1 className="hero-title">请选择本次使用的身份。</h1>
+          <p className="hero-subtitle">管理身份进入全局仪表台，其他身份进入我的待办；页面与数据权限会随身份变化。</p>
         </div>
 
         <div className="section" style={{ paddingTop: 0 }}>
@@ -41,7 +50,7 @@ export function IdentityPage() {
 
           <div className="list">
             {sorted.map((identity) => (
-              <button key={identity.id} className="todo-card-button" onClick={() => chooseIdentity(identity.id)}>
+              <button key={identity.id} className="todo-card-button" onClick={() => void chooseIdentity(identity.id)}>
                 <div className="card identity-card card-strong">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                     <div>

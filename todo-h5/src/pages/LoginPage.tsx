@@ -3,10 +3,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, Smartphone } from "lucide-react";
 import { authApi } from "../services/auth";
 import { useAuthStore } from "../stores/auth";
-
-function isInFeishuApp() {
-  return /Lark|Feishu/i.test(window.navigator.userAgent);
-}
+import { entryPathForIdentity } from "../utils/entry";
+import { isInFeishuApp } from "../utils/feishu";
+import { pickBestIdentity } from "../utils/identity";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -27,9 +26,10 @@ export function LoginPage() {
   const [selectedConfigId, setSelectedConfigId] = useState("");
   const [loginTab, setLoginTab] = useState<"account" | "feishu">("account");
   const inFeishu = useMemo(() => isInFeishuApp(), []);
+  const savedFeishuAppId = localStorage.getItem("todo_h5_feishu_app_id") ?? "";
 
   useEffect(() => {
-    if (token && currentIdentity) navigate("/todos", { replace: true });
+    if (token && currentIdentity) navigate(entryPathForIdentity(currentIdentity), { replace: true });
     else if (token) navigate("/identity", { replace: true });
   }, [token, currentIdentity, navigate]);
 
@@ -58,8 +58,9 @@ export function LoginPage() {
     setFeishuLoading(true);
     authApi.completeFeishuLogin(code, state)
       .then((payload) => {
+        const identity = pickBestIdentity(payload.identities, payload.recommendedIdentityId);
         setAuth(payload);
-        navigate(payload.identities.length === 1 ? "/todos" : "/identity", { replace: true });
+        navigate(identity ? entryPathForIdentity(identity) : "/identity", { replace: true });
       })
       .catch((err) => setError(err instanceof Error ? err.message : "飞书登录失败"))
       .finally(() => setFeishuLoading(false));
@@ -70,8 +71,9 @@ export function LoginPage() {
     setLoading(true);
     try {
       const payload = await authApi.login(phone, password);
+      const identity = pickBestIdentity(payload.identities, payload.recommendedIdentityId);
       setAuth(payload);
-      navigate(payload.identities.length === 1 ? "/todos" : "/identity", { replace: true });
+      navigate(identity ? entryPathForIdentity(identity) : "/identity", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败");
     } finally {
@@ -92,8 +94,8 @@ export function LoginPage() {
     <div className="page-shell">
       <div className="mobile-page bottom-safe">
         <div className="hero-panel" style={{ paddingBottom: 8 }}>
-          <div className="hero-kicker"><Smartphone size={13} /> 我的待办 H5</div>
-          <h1 className="hero-title">把待办装进手机里</h1>
+          <div className="hero-kicker"><Smartphone size={13} /> 千广协同 H5</div>
+          <h1 className="hero-title">仪表台与待办随身查看</h1>
         </div>
 
         <div className="section" style={{ paddingTop: 0 }}>
@@ -121,8 +123,13 @@ export function LoginPage() {
             <div className="card card-strong" style={{ padding: 14, display: "grid", gap: 12 }}>
               <div>
                 <p className="card-title">飞书登录</p>
-                <p className="card-subtitle">选择基地、团队与飞书企业后授权登录。</p>
+                <p className="card-subtitle">在飞书内可一键识别账号，其他浏览器需选择组织后授权。</p>
               </div>
+              {inFeishu && savedFeishuAppId ? (
+                <button className="btn btn-primary" onClick={() => { window.location.href = `/feishu-entry?appId=${encodeURIComponent(savedFeishuAppId)}`; }}>
+                  飞书一键登录
+                </button>
+              ) : null}
               <select className="select" value={selectedBaseId} onChange={(e) => { setSelectedBaseId(e.target.value); setSelectedTeamId(""); setSelectedConfigId(""); }}>
                 <option value="">请选择基地</option>
                 {baseOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}

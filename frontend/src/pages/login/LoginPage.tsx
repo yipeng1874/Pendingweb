@@ -150,9 +150,9 @@ export function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await api.post<{ token: string; user: User; identities: Identity[] }>("/auth/login", { phone, password });
+      const data = await api.post<{ token: string; user: User; identities: Identity[]; recommendedIdentityId?: string | null }>("/auth/login", { phone, password });
       setAuth(data);
-      const best = pickBestIdentity(data.identities);
+      const best = data.identities.find((identity) => identity.id === data.recommendedIdentityId) ?? pickBestIdentity(data.identities);
       if (best) {
         setIdentity(best);
         navigate(COCKPIT_ROLES.includes(best.roleCode) ? "/tasks/cockpit" : "/tasks/dashboard");

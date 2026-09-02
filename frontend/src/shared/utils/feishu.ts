@@ -69,7 +69,7 @@ export function isInFeishuApp(): boolean {
  * 2. 若 window.h5sdk 存在，先调用 h5sdk.ready() 等待 SDK 鉴权完成
  * 3. 再调用 tt.authorize 获取 code
  */
-export function getFeishuAuthCode(appId: string): Promise<string> {
+export function getFeishuAuthCode(appId: string, configId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!isInFeishuApp()) {
       reject(new Error("当前不在飞书 App 环境内"));
@@ -84,7 +84,7 @@ export function getFeishuAuthCode(appId: string): Promise<string> {
         // PC 桌面端 Electron：直接调用（优先 requestAuthCode，无需 h5sdk 签名）
         // 移动端 / 浏览器内嵌 H5：需要先完成 h5sdk 鉴权
         if (!isElectron && window.h5sdk) {
-          initH5sdk(appId)
+          initH5sdk(appId, configId)
             .then(() => doAuthorize(resolve, reject, appId))
             .catch(reject);
         } else {
@@ -96,12 +96,12 @@ export function getFeishuAuthCode(appId: string): Promise<string> {
 }
 
 /** 初始化 h5sdk：先从后端获取签名，再调 h5sdk.config + h5sdk.ready */
-async function initH5sdk(appId: string): Promise<void> {
+async function initH5sdk(appId: string, configId: string): Promise<void> {
   // 飞书签名校验用的 URL：去掉 hash，保留 path+query
   // 注意：URL 必须与飞书开放平台「H5 可信域名」完全匹配（含端口）
   const url = window.location.href.split("#")[0];
   console.log("[feishu] h5sdk config url:", url);
-  const resp = await fetch(`/api/auth/feishu/jssdk-config?url=${encodeURIComponent(url)}`);
+  const resp = await fetch(`/api/auth/feishu/jssdk-config?url=${encodeURIComponent(url)}&configId=${encodeURIComponent(configId)}`);
   const json = await resp.json() as any;
   if (!json.success) throw new Error(json.error?.message ?? "获取 JSSDK 配置失败");
 

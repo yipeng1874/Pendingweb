@@ -225,7 +225,7 @@ processMetricRoutes.get(
 
     const dateEntries = sortedDates.map((recordDate) => {
       const teamMap = dateMap.get(recordDate)!;
-      const teams = Array.from(teamMap.entries()).map(([teamOrgId, hallMap]) => {
+      let teams = Array.from(teamMap.entries()).map(([teamOrgId, hallMap]) => {
         const first = hallMap.values().next().value;
         const halls = Array.from(hallMap.values()).map((h: any) => ({
           hallName: h.hallName,
@@ -237,6 +237,11 @@ processMetricRoutes.get(
           halls,
         };
       }).sort((a, b) => a.teamOrgName.localeCompare(b.teamOrgName));
+
+      // 团队管理员只能获取本团队数据，避免仅依赖前端隐藏。
+      if (req.identity?.roleCode === "TEAM_ADMIN" && req.identity?.orgId) {
+        teams = teams.filter((team) => team.teamOrgId === req.identity.orgId);
+      }
 
       return { recordDate, teams };
     });

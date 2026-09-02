@@ -5,10 +5,12 @@ import { IdentityRequiredRoute } from "./components/IdentityRequiredRoute";
 
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const IdentityPage = lazy(() => import("./pages/IdentityPage").then((m) => ({ default: m.IdentityPage })));
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const TodoListPage = lazy(() => import("./pages/TodoListPage").then((m) => ({ default: m.TodoListPage })));
 const TodoDetailPage = lazy(() => import("./pages/TodoDetailPage").then((m) => ({ default: m.TodoDetailPage })));
 const ReminderPage = lazy(() => import("./pages/ReminderPage").then((m) => ({ default: m.ReminderPage })));
 const FeishuCallbackPage = lazy(() => import("./pages/FeishuCallbackPage").then((m) => ({ default: m.FeishuCallbackPage })));
+const FeishuEntryPage = lazy(() => import("./pages/FeishuEntryPage").then((m) => ({ default: m.FeishuEntryPage })));
 
 export function App() {
   return (
@@ -16,7 +18,9 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<FeishuCallbackPage />} />
+        <Route path="/feishu-entry" element={<FeishuEntryPage />} />
         <Route path="/identity" element={<ProtectedRoute><IdentityPage /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<IdentityRequiredRoute><DashboardPage /></IdentityRequiredRoute>} />
         <Route path="/todos" element={<IdentityRequiredRoute><TodoListPage /></IdentityRequiredRoute>} />
         <Route path="/todos/:id" element={<IdentityRequiredRoute><TodoDetailPage /></IdentityRequiredRoute>} />
         <Route path="/reminders" element={<IdentityRequiredRoute><ReminderPage /></IdentityRequiredRoute>} />

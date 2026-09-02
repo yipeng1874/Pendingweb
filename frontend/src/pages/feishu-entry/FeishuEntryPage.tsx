@@ -59,7 +59,7 @@ export function FeishuEntryPage() {
         const { configId } = matched;
 
         // 2. 获取飞书授权 code
-        const code = await getFeishuAuthCode(appId);
+        const code = await getFeishuAuthCode(appId, configId);
 
         // 3. 后端登录
         const loginResp = await fetch("/api/auth/feishu/app-login", {
@@ -87,8 +87,9 @@ export function FeishuEntryPage() {
         // 保存 appId 供退出重登、token 过期重登使用
         localStorage.setItem("feishu_entry_app_id", appId);
         setAuth(loginJson.data as Parameters<typeof setAuth>[0]);
-        const identities = (loginJson.data as { identities: Identity[] }).identities ?? [];
-        const best = pickBestIdentity(identities);
+        const loginData = loginJson.data as { identities: Identity[]; recommendedIdentityId?: string | null };
+        const identities = loginData.identities ?? [];
+        const best = identities.find((identity) => identity.id === loginData.recommendedIdentityId) ?? pickBestIdentity(identities);
         if (best) {
           setIdentity(best);
           navigate(COCKPIT_ROLES.includes(best.roleCode) ? "/tasks/cockpit" : "/tasks/dashboard", { replace: true });

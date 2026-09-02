@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authApi } from "../services/auth";
 import { useAuthStore } from "../stores/auth";
+import { entryPathForIdentity } from "../utils/entry";
+import { pickBestIdentity } from "../utils/identity";
 
 export function FeishuCallbackPage() {
   const navigate = useNavigate();
@@ -36,8 +38,9 @@ export function FeishuCallbackPage() {
 
     authApi.completeFeishuLogin(code, state)
       .then((payload) => {
+        const identity = pickBestIdentity(payload.identities, payload.recommendedIdentityId);
         setAuth(payload);
-        navigate(payload.identities.length === 1 ? "/todos" : "/identity", { replace: true });
+        navigate(identity ? entryPathForIdentity(identity) : "/identity", { replace: true });
       })
       .catch((err) => {
         setIsError(true);

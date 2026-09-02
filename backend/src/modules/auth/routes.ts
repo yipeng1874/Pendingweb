@@ -33,6 +33,7 @@ type FeishuOrgOption = {
   name: string;
   orgCode: string;
   orgType: string;
+  path?: string;
 };
 
 type FeishuConfigRecord = {
@@ -54,6 +55,52 @@ function safeUser<T extends { passwordHash?: string }>(user: T) {
 
 function filterValidIdentities<T extends { roleCode: string; org?: { status: string } | null }>(identities: T[]): T[] {
   return identities.filter((i) => i.roleCode === "DEV_ADMIN" || !i.org || i.org.status !== "paused");
+}
+
+const IDENTITY_ROLE_LEVEL: Record<string, number> = {
+  DEV_ADMIN: 1,
+  HQ_ADMIN: 2,
+  BASE_ADMIN: 3,
+  TEAM_ADMIN: 4,
+  HALL_MANAGER: 5,
+  ANCHOR: 6,
+};
+
+type RecommendableIdentity = {
+  id: string;
+  roleCode: string;
+  orgId?: string | null;
+  scopePath?: string | null;
+  lastSwitchedAt?: Date | string | null;
+  grantedAt?: Date | string | null;
+  org?: { id: string; path?: string | null } | null;
+};
+
+function recommendIdentityId(identities: RecommendableIdentity[], config?: FeishuConfigRecord | null) {
+  if (!identities.length) return null;
+  const contextRank = (identity: RecommendableIdentity) => {
+    if (!config) return 0;
+    const orgId = identity.orgId ?? identity.org?.id;
+    const scopePath = identity.scopePath ?? identity.org?.path ?? "";
+    const teamPath = config.teamOrg.path ?? "";
+    const basePath = config.baseOrg.path ?? "";
+    if (orgId === config.teamOrgId) return 0;
+    if (teamPath && (scopePath === teamPath || scopePath.startsWith(`${teamPath}/`))) return 1;
+    if (orgId === config.baseOrgId) return 2;
+    if (basePath && (scopePath === basePath || scopePath.startsWith(`${basePath}/`))) return 3;
+    return 4;
+  };
+  return [...identities].sort((a, b) => {
+    const contextDiff = contextRank(a) - contextRank(b);
+    if (contextDiff !== 0) return contextDiff;
+    const roleDiff = (IDENTITY_ROLE_LEVEL[a.roleCode] ?? 99) - (IDENTITY_ROLE_LEVEL[b.roleCode] ?? 99);
+    if (roleDiff !== 0) return roleDiff;
+    const switchDiff = new Date(b.lastSwitchedAt ?? 0).getTime() - new Date(a.lastSwitchedAt ?? 0).getTime();
+    if (switchDiff !== 0) return switchDiff;
+    const grantDiff = new Date(a.grantedAt ?? 0).getTime() - new Date(b.grantedAt ?? 0).getTime();
+    if (grantDiff !== 0) return grantDiff;
+    return a.id.localeCompare(b.id);
+  })[0]?.id ?? null;
 }
 
 function makeJwt(userId: string) {
@@ -89,8 +136,8 @@ async function getFeishuConfigById(configId: string): Promise<FeishuConfigRecord
   return delegate.findFirst({
     where: { id: configId, status: "active" },
     include: {
-      baseOrg: { select: { id: true, name: true, orgCode: true, orgType: true } },
-      teamOrg: { select: { id: true, name: true, orgCode: true, orgType: true } },
+      baseOrg: { select: { id: true, name: true, orgCode: true, orgType: true, path: true } },
+      teamOrg: { select: { id: true, name: true, orgCode: true, orgType: true, path: true } },
     },
   });
 }
@@ -293,7 +340,7 @@ authRoutes.post("/login", async (req, res) => {
   const allIdentities = await prisma.userIdentity.findMany({ where: { userId: user.id, status: "active" }, include: { org: true, anchorProfile: true } });
   const identities = filterValidIdentities(allIdentities);
   const token = makeJwt(user.id);
-  return ok(res, { token, user: safeUser(user), identities });
+  return ok(res, { token, user: safeUser(user), identities, recommendedIdentityId: recommendIdentityId(identities) });
 });
 
 authRoutes.post("/change-password", authRequired, async (req, res) => {
@@ -353,7 +400,7 @@ authRoutes.get("/feishu/jssdk-config", async (req, res) => {
   if (!pageUrl) return fail(res, "URL_REQUIRED", "缺少 url 参数", 400);
 
   const config = await getFeishuConfigById(configId);
-  if (!requireFeishuConfig(config, res)) return;
+  if (!requireFeishuConfig(config, res, "h5")) return;
 
   try {
     const ticket = await getJsapiTicket(config);
@@ -412,7 +459,12 @@ authRoutes.post("/feishu/complete-login", async (req, res) => {
     });
     const identities = await prisma.userIdentity.findMany({ where: { userId: user.id, status: "active" }, include: { org: true, anchorProfile: true } });
     const validIdentities = filterValidIdentities(identities);
-    return ok(res, { token: makeJwt(user.id), user: safeUser(user), identities: validIdentities });
+    return ok(res, {
+      token: makeJwt(user.id),
+      user: safeUser(user),
+      identities: validIdentities,
+      recommendedIdentityId: recommendIdentityId(validIdentities, config),
+    });
   } catch (err) {
     return fail(res, "FEISHU_LOGIN_FAILED", err instanceof Error ? err.message : "飞书登录失败", 400);
   }
@@ -506,7 +558,12 @@ authRoutes.post("/feishu/app-login", async (req, res) => {
     const identities = await prisma.userIdentity.findMany({ where: { userId: user.id, status: "active" }, include: { org: true, anchorProfile: true } });
     const validIdentities = filterValidIdentities(identities);
     const { passwordHash: _ph, ...safeU } = user as any;
-    return ok(res, { token: makeJwt(user.id), user: safeU, identities: validIdentities });
+    return ok(res, {
+      token: makeJwt(user.id),
+      user: safeU,
+      identities: validIdentities,
+      recommendedIdentityId: recommendIdentityId(validIdentities, config),
+    });
   } catch (err) {
     return fail(res, "FEISHU_APP_LOGIN_FAILED", err instanceof Error ? err.message : "飞书免登失败", 500);
   }
