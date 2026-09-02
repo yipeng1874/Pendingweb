@@ -9,9 +9,27 @@ import type { BroadcastQuestionType } from "./broadcast.store.js";
 export const broadcastTaskRoutes = Router();
 broadcastTaskRoutes.use(authRequired);
 
+type BroadcastRecipientType = "ANCHOR" | "HALL_MANAGER";
+
+function getAncestorPaths(path: string) {
+  const parts = path.split("/").filter(Boolean);
+  return parts.map((_, index) => `/${parts.slice(0, index + 1).join("/")}`);
+}
+
+async function resolveBaseOrg(hallPath: string) {
+  return prisma.orgUnit.findFirst({
+    where: {
+      orgType: "BASE",
+      status: "active",
+      path: { in: getAncestorPaths(hallPath) },
+    },
+    select: { id: true, name: true, path: true },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /tasks/collaboration/broadcast/bootstrap
-// 仅 HALL_MANAGER 可用；返回本厅所有 active 主播列表
+// 仅 HALL_MANAGER 可用；返回本厅主播及基地内其他厅管
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.get(
   "/tasks/collaboration/broadcast/bootstrap",
@@ -34,6 +52,7 @@ broadcastTaskRoutes.get(
           orgName: null as string | null,
         },
         anchors: [],
+        hallManagers: [],
       });
     }
 
@@ -43,11 +62,18 @@ broadcastTaskRoutes.get(
 
     // 加载厅信息
     const hallOrg = identity.orgId
-      ? await prisma.orgUnit.findUnique({ where: { id: identity.orgId } })
+      ? await prisma.orgUnit.findFirst({
+          where: { id: identity.orgId, orgType: "HALL", status: "active" },
+        })
       : null;
 
     if (!hallOrg) {
       return fail(res, "HALL_NOT_FOUND", "当前身份未关联有效厅组织，无法使用群发主播", 400);
+    }
+
+    const baseOrg = await resolveBaseOrg(hallOrg.path);
+    if (!baseOrg) {
+      return fail(res, "BASE_NOT_FOUND", "当前直播厅未关联有效基地，无法使用群发任务", 400);
     }
 
     // 查本厅下所有 active ANCHOR 身份（scopePath 前缀匹配 or 等于厅 path）
@@ -107,6 +133,48 @@ broadcastTaskRoutes.get(
       a.nickname.localeCompare(b.nickname),
     );
 
+    const hallManagerIdentities = await prisma.userIdentity.findMany({
+      where: {
+        status: "active",
+        roleCode: "HALL_MANAGER",
+        userId: { not: identity.userId },
+        scopePath: { startsWith: `${baseOrg.path}/` },
+        org: {
+          is: {
+            status: "active",
+            orgType: "HALL",
+            path: { startsWith: `${baseOrg.path}/` },
+          },
+        },
+      },
+      select: {
+        userId: true,
+        orgId: true,
+        org: { select: { id: true, name: true } },
+        user: { select: { nickname: true, phone: true } },
+      },
+      orderBy: [{ grantedAt: "desc" }],
+    });
+
+    const hallManagerMap = new Map<
+      string,
+      { userId: string; nickname: string; phone: string; orgId: string; orgName: string }
+    >();
+    for (const row of hallManagerIdentities) {
+      if (!row.orgId || !row.org || hallManagerMap.has(row.userId)) continue;
+      hallManagerMap.set(row.userId, {
+        userId: row.userId,
+        nickname: row.user.nickname,
+        phone: row.user.phone,
+        orgId: row.orgId,
+        orgName: row.org.name,
+      });
+    }
+
+    const hallManagers = Array.from(hallManagerMap.values()).sort((a, b) =>
+      a.orgName.localeCompare(b.orgName) || a.nickname.localeCompare(b.nickname),
+    );
+
     return ok(res, {
       allowed: true,
       redirectHint: null,
@@ -115,8 +183,11 @@ broadcastTaskRoutes.get(
         roleCode: identity.roleCode,
         orgId: hallOrg.id,
         orgName: hallOrg.name,
+        baseOrgId: baseOrg.id,
+        baseOrgName: baseOrg.name,
       },
       anchors,
+      hallManagers,
     });
   },
 );
@@ -136,9 +207,14 @@ broadcastTaskRoutes.post(
     }
 
     const hallOrg = identity.orgId
-      ? await prisma.orgUnit.findUnique({ where: { id: identity.orgId } })
+      ? await prisma.orgUnit.findFirst({
+          where: { id: identity.orgId, orgType: "HALL", status: "active" },
+        })
       : null;
     if (!hallOrg) return fail(res, "HALL_NOT_FOUND", "当前身份未关联有效厅组织", 400);
+
+    const baseOrg = await resolveBaseOrg(hallOrg.path);
+    if (!baseOrg) return fail(res, "BASE_NOT_FOUND", "当前直播厅未关联有效基地", 400);
 
     const issuerUser = await prisma.user.findUnique({
       where: { id: identity.userId },
@@ -156,13 +232,28 @@ broadcastTaskRoutes.post(
         ? req.body.dueAt.trim()
         : null;
 
-    const selectedAnchorUserIds: string[] = Array.isArray(req.body?.selectedAnchorUserIds)
-      ? (req.body.selectedAnchorUserIds as unknown[])
+    const recipientType: BroadcastRecipientType =
+      req.body?.recipientType === "HALL_MANAGER" ? "HALL_MANAGER" : "ANCHOR";
+    if (req.body?.recipientType && !["ANCHOR", "HALL_MANAGER"].includes(req.body.recipientType)) {
+      return fail(res, "RECIPIENT_TYPE_INVALID", "收件人类型无效", 400);
+    }
+
+    // selectedAnchorUserIds 保留为旧版客户端兼容字段。
+    const rawRecipientIds = Array.isArray(req.body?.selectedRecipientUserIds)
+      ? req.body.selectedRecipientUserIds
+      : req.body?.selectedAnchorUserIds;
+    const selectedRecipientUserIds: string[] = Array.isArray(rawRecipientIds)
+      ? Array.from(new Set((rawRecipientIds as unknown[])
           .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
-          .map((v) => v.trim())
+          .map((v) => v.trim())))
       : [];
-    if (selectedAnchorUserIds.length === 0) {
-      return fail(res, "ANCHOR_REQUIRED", "请至少选择一位主播", 400);
+    if (selectedRecipientUserIds.length === 0) {
+      return fail(
+        res,
+        "RECIPIENT_REQUIRED",
+        recipientType === "ANCHOR" ? "请至少选择一位主播" : "请至少选择一位其他厅管",
+        400,
+      );
     }
 
     // ── 题目校验 ──────────────────────────────────────────────────────────────
@@ -200,16 +291,30 @@ broadcastTaskRoutes.post(
       }
     }
 
-    // ── 验证被选主播确实属于本厅 ──────────────────────────────────────────────
-    const validAnchorIdentities = await prisma.userIdentity.findMany({
+    // ── 服务端重新验证收件人范围，防止前端参数越权 ────────────────────────────
+    const validRecipientIdentities = await prisma.userIdentity.findMany({
       where: {
-        userId: { in: selectedAnchorUserIds },
+        userId: { in: selectedRecipientUserIds },
         status: "active",
-        roleCode: "ANCHOR",
-        OR: [
-          { scopePath: hallOrg.path },
-          { scopePath: { startsWith: `${hallOrg.path}/` } },
-        ],
+        roleCode: recipientType,
+        ...(recipientType === "ANCHOR"
+          ? {
+              OR: [
+                { scopePath: hallOrg.path },
+                { scopePath: { startsWith: `${hallOrg.path}/` } },
+              ],
+            }
+          : {
+              userId: { in: selectedRecipientUserIds, not: identity.userId },
+              scopePath: { startsWith: `${baseOrg.path}/` },
+              org: {
+                is: {
+                  status: "active",
+                  orgType: "HALL" as const,
+                  path: { startsWith: `${baseOrg.path}/` },
+                },
+              },
+            }),
       },
       select: {
         userId: true,
@@ -222,13 +327,13 @@ broadcastTaskRoutes.post(
     });
 
     // 只取验证通过的 userId，并去重
-    const validAnchorMap = new Map<
+    const validRecipientMap = new Map<
       string,
       { userId: string; nickname: string; phone: string; douyinNo?: string | null; orgId?: string | null; orgName?: string | null }
     >();
-    for (const row of validAnchorIdentities) {
-      if (validAnchorMap.has(row.userId)) continue;
-      validAnchorMap.set(row.userId, {
+    for (const row of validRecipientIdentities) {
+      if (validRecipientMap.has(row.userId)) continue;
+      validRecipientMap.set(row.userId, {
         userId: row.userId,
         nickname: row.user.nickname,
         phone: row.user.phone,
@@ -238,9 +343,16 @@ broadcastTaskRoutes.post(
       });
     }
 
-    const invalidIds = selectedAnchorUserIds.filter((id) => !validAnchorMap.has(id));
+    const invalidIds = selectedRecipientUserIds.filter((id) => !validRecipientMap.has(id));
     if (invalidIds.length > 0) {
-      return fail(res, "ANCHOR_SCOPE_INVALID", "存在不属于本厅的主播，请刷新后重试", 400);
+      return fail(
+        res,
+        "RECIPIENT_SCOPE_INVALID",
+        recipientType === "ANCHOR"
+          ? "存在不属于本厅的主播，请刷新后重试"
+          : "存在不属于当前基地的厅管，请刷新后重试",
+        400,
+      );
     }
 
     // ── 组装题目 ──────────────────────────────────────────────────────────────
@@ -269,7 +381,7 @@ broadcastTaskRoutes.post(
       hallOrgId: hallOrg.id,
       hallOrgName: hallOrg.name,
       questions,
-      anchors: Array.from(validAnchorMap.values()),
+      anchors: Array.from(validRecipientMap.values()),
     });
 
     return ok(res, task);

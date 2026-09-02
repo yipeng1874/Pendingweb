@@ -30,6 +30,17 @@ export type BroadcastAnchorOption = {
   orgName?: string | null;
 };
 
+// ─── 基地内厅管选项 ────────────────────────────────────────────────────────────
+export type BroadcastHallManagerOption = {
+  userId: string;
+  nickname: string;
+  phone: string;
+  orgId: string;
+  orgName: string;
+};
+
+export type BroadcastRecipientType = "ANCHOR" | "HALL_MANAGER";
+
 // ─── Bootstrap 返回 ──────────────────────────────────────────────────────────
 export type BroadcastBootstrapPayload = {
   allowed: boolean;
@@ -40,8 +51,11 @@ export type BroadcastBootstrapPayload = {
     roleCode: string;
     orgId: string | null;
     orgName: string | null;
+    baseOrgId?: string | null;
+    baseOrgName?: string | null;
   };
   anchors: BroadcastAnchorOption[];
+  hallManagers?: BroadcastHallManagerOption[];
 };
 
 // ─── 任务主播记录 ─────────────────────────────────────────────────────────────
@@ -112,7 +126,10 @@ export type BroadcastCreateInput = {
   title: string;
   description?: string;
   dueAt?: string;
-  selectedAnchorUserIds: string[];
+  recipientType: BroadcastRecipientType;
+  selectedRecipientUserIds: string[];
+  /** 兼容尚未更新的旧版后端；仅主播模式传递。 */
+  selectedAnchorUserIds?: string[];
   questions: Array<Omit<BroadcastQuestion, "id">>;
 };
 

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
+  AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -545,14 +546,14 @@ function broadcastAnchorStatusLabel(status: BroadcastAnchorRecordWithAnswers["st
 
 /**
  * 群发任务生命周期：
- * - active       任务未到截止时间（不管主播完没完成）
- * - finished     任务已结束 且 所有主播都已提交
- * - overdue      任务已结束 且 有主播未完成（部分逾期）
+ * - finished     所有接收人均已提交，无需等待截止时间
+ * - overdue      任务已结束且仍有接收人未完成
+ * - active       尚未全部提交且任务未结束
  */
 function broadcastTaskLifecycle(task: BroadcastTaskWithAnswers): "active" | "finished" | "overdue" {
-  if (task.status !== "ended") return "active";
-  const allDone = task.anchorRecords.every((r) => r.status === "submitted");
-  return allDone ? "finished" : "overdue";
+  const allDone = task.anchorRecords.length > 0 && task.anchorRecords.every((r) => r.status === "submitted");
+  if (allDone) return "finished";
+  return task.status === "ended" ? "overdue" : "active";
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -636,8 +637,8 @@ function BroadcastAnchorRow({
   rec: BroadcastAnchorRecordWithAnswers;
   questions: BroadcastTaskWithAnswers["questions"];
 }) {
-  const [open, setOpen] = useState(false);
   const hasAnswers = (rec.answers ?? []).length > 0;
+  const [open, setOpen] = useState(rec.status === "submitted" && hasAnswers);
 
   return (
     <div className={`rounded-xl border transition-colors ${open ? "border-orange-200 bg-orange-50/30" : "border-slate-100 bg-slate-50/60"}`}>
@@ -685,8 +686,8 @@ function BroadcastTaskCard({ task }: { task: BroadcastTaskWithAnswers }) {
   const [expanded, setExpanded] = useState(false);
   // 答案懒加载状态
   const [anchorRecords, setAnchorRecords] = useState<BroadcastAnchorRecordWithAnswers[]>(task.anchorRecords);
-  const [answersLoaded, setAnswersLoaded] = useState(false);
   const [answersLoading, setAnswersLoading] = useState(false);
+  const [answerError, setAnswerError] = useState("");
 
   const total = anchorRecords.length;
   const submitted = anchorRecords.filter((r) => r.status === "submitted").length;
@@ -704,21 +705,27 @@ function BroadcastTaskCard({ task }: { task: BroadcastTaskWithAnswers }) {
     lifecycle === "overdue" ? "bg-red-300" :
     "bg-orange-400";
 
-  // 点击展开时才拉取答案
-  const handleExpand = async () => {
-    if (!expanded && !answersLoaded) {
-      setAnswersLoading(true);
-      try {
-        const res = await broadcastTaskApi.taskAnchorAnswers(task.id);
-        setAnchorRecords(res.anchorRecords);
-        setAnswersLoaded(true);
-      } catch {
-        // 静默失败，仍展开显示主播列表（答案为空）
-      } finally {
-        setAnswersLoading(false);
-      }
+  const loadAnswers = async () => {
+    setAnswersLoading(true);
+    setAnswerError("");
+    try {
+      const res = await broadcastTaskApi.taskAnchorAnswers(task.id);
+      setAnchorRecords(res.anchorRecords);
+    } catch (error) {
+      setAnswerError(error instanceof Error ? error.message : "答案加载失败，请重试");
+    } finally {
+      setAnswersLoading(false);
     }
-    setExpanded((v) => !v);
+  };
+
+  // 每次重新展开都获取最新答案，避免保留旧缓存。
+  const handleExpand = async () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    await loadAnswers();
+    setExpanded(true);
   };
 
   return (
@@ -736,7 +743,7 @@ function BroadcastTaskCard({ task }: { task: BroadcastTaskWithAnswers }) {
               <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">进行中</span>
             )}
             {lifecycle === "finished" && (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">已结束（全部完成）</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">已完成</span>
             )}
             {lifecycle === "overdue" && (
               <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">已逾期</span>
@@ -777,19 +784,33 @@ function BroadcastTaskCard({ task }: { task: BroadcastTaskWithAnswers }) {
               ? <Loader2 size={12} className="animate-spin" />
               : expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />
             }
-            {answersLoading ? "加载中" : expanded ? "收起" : "查看主播"}
+            {answersLoading ? "加载中" : expanded ? "收起" : "查看接收人"}
           </button>
         </div>
       </div>
 
-      {/* 展开：主播列表（含答案，懒加载后填充） */}
+      {/* 展开：接收人列表（含答案，懒加载后填充） */}
       {expanded && (
         <div className="border-t border-slate-50 px-4 pb-3 pt-2">
-          <div className="space-y-1.5">
-            {anchorRecords.map((rec) => (
-              <BroadcastAnchorRow key={rec.id} rec={rec} questions={task.questions} />
-            ))}
-          </div>
+          {answerError ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <span className="flex items-center gap-1.5"><AlertCircle size={13} />{answerError}</span>
+              <button
+                type="button"
+                onClick={() => void loadAnswers()}
+                disabled={answersLoading}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1 font-semibold hover:bg-rose-100 disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={answersLoading ? "animate-spin" : ""} />重新加载
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {anchorRecords.map((rec) => (
+                <BroadcastAnchorRow key={rec.id} rec={rec} questions={task.questions} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -811,6 +832,7 @@ function BroadcastBoardView() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<BroadcastFilterStatus>("active");
 
@@ -823,6 +845,7 @@ function BroadcastBoardView() {
       setServerTotal(result.total);
       setCurrentPage(1);
       setHasMore(result.hasMore);
+      setRefreshVersion((value) => value + 1);
     } catch {
       setTasks([]);
       setHasMore(false);
@@ -865,7 +888,7 @@ function BroadcastBoardView() {
   const filterLabels: Record<BroadcastFilterStatus, string> = {
     all: "全部",
     active: "进行中",
-    finished: "已结束（全部完成）",
+    finished: "已完成",
     overdue: "已逾期",
   };
 
@@ -876,7 +899,7 @@ function BroadcastBoardView() {
         {[
           { label: "全部任务", value: serverTotal, color: "text-slate-700", bg: "bg-white border-slate-100" },
           { label: "进行中", value: activeCount, color: "text-orange-600", bg: "bg-orange-50/60 border-orange-100" },
-          { label: "已结束（全部完成）", value: finishedCount, color: "text-emerald-600", bg: "bg-emerald-50/60 border-emerald-100" },
+          { label: "已完成", value: finishedCount, color: "text-emerald-600", bg: "bg-emerald-50/60 border-emerald-100" },
           { label: "已逾期", value: overdueCount, color: "text-red-500", bg: "bg-red-50/60 border-red-100" },
         ].map((item) => (
           <div key={item.label} className={`rounded-2xl border p-4 ${item.bg}`}>
@@ -941,7 +964,7 @@ function BroadcastBoardView() {
         <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
           <Megaphone size={32} className="opacity-30" />
           <p className="text-sm">
-            {tasks.length === 0 ? "暂无已发布的群发主播任务" : "没有符合条件的任务"}
+            {tasks.length === 0 ? "暂无已发布的群发任务" : "没有符合条件的任务"}
           </p>
           {tasks.length === 0 && (
             <a
@@ -956,7 +979,7 @@ function BroadcastBoardView() {
         <>
           <div className="space-y-3">
             {filtered.map(({ task }) => (
-              <BroadcastTaskCard key={task.id} task={task} />
+              <BroadcastTaskCard key={`${task.id}:${refreshVersion}`} task={task} />
             ))}
           </div>
 
@@ -1050,7 +1073,7 @@ export function WorkflowBoardPage() {
           <p className="text-sm text-slate-400">
             {activeTab === "workflow"
               ? "仅展示我发布的协同任务；任务到截止时间后自动归入「已结束」"
-              : "仅展示我发布的群发主播任务及每位主播的完成情况"}
+              : "仅展示我发布的群发任务及每位接收人的完成情况"}
           </p>
         </div>
       </div>

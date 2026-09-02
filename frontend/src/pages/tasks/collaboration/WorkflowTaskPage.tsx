@@ -45,8 +45,8 @@ const modeCards = [
   },
   {
     key: "broadcast",
-    title: "群发主播",
-    description: "向本厅主播批量发任务，可全选或单选。仅厅管账号可用。",
+    title: "群发任务",
+    description: "向本厅主播或基地内其他厅管批量发任务，可全选或单选。仅厅管账号可用。",
     icon: Send,
     enabled: true,
   },
@@ -696,7 +696,7 @@ export function WorkflowTaskPage() {
 
       ) : selectedMode === "broadcast" ? (
 
-        /* ════════════════ 群发主播 ════════════════ */
+        /* ════════════════ 群发任务 ════════════════ */
         <BroadcastAnchorPage onBack={() => setSelectedMode("selector")} />
 
       ) : (
