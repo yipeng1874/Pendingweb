@@ -188,11 +188,15 @@ export async function listWorkflowTasks(): Promise<WorkflowTaskRecord[]> {
 }
 
 export async function getWorkflowTasksForUser(userId: string): Promise<WorkflowTaskRecord[]> {
-  await applyWorkflowExpire();
+  const now = new Date();
 
   const tasks = await prisma.workflowTask.findMany({
     where: {
       status: { not: "ended" },
+      OR: [
+        { dueAt: null },
+        { dueAt: { gt: now } },
+      ],
       steps: { some: { assigneeUserId: userId } },
     },
     include: TASK_INCLUDE,

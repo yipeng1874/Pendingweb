@@ -321,14 +321,8 @@ export function TaskDashboardPage() {
     const [recordRows, reminderRows, workflowRows, broadcastRows, hallDailyRows] = await Promise.all([
       recordApi.getMyRecords().catch(() => [] as TaskRecord[]),
       reminderApi.list("active").catch(() => [] as PersonalReminder[]),
-      workflowTaskApi.myTasks().then((rows) =>
-        // 前端二次保险：过滤掉已结束（ended）的任务，只展示进行中和已完成
-        rows.filter((t) => t.status !== "ended")
-      ).catch(() => [] as WorkflowMyTask[]),
-      broadcastTaskApi.myTasks().then((rows) =>
-        // 前端二次保险：过滤掉已结束（到截止时间）的任务
-        rows.filter((t) => t.status !== "ended")
-      ).catch(() => [] as BroadcastTaskForAnchor[]),
+      workflowTaskApi.myTasks().catch(() => [] as WorkflowMyTask[]),
+      broadcastTaskApi.myTasks().catch(() => [] as BroadcastTaskForAnchor[]),
       shouldFetchHallDaily
         ? hallDailyApi.getMyRecords().catch(() => [] as HallTaskRecord[])
         : Promise.resolve([] as HallTaskRecord[]),

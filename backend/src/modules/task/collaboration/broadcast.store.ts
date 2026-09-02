@@ -503,10 +503,19 @@ export async function saveBroadcastAnswer(
 
 // ─── 查询"我的"群发任务 ────────────────────────────────────────────────────────
 export async function getBroadcastTasksForAnchor(userId: string): Promise<BroadcastTaskForAnchor[]> {
-  await applyExpire();
+  const now = new Date();
 
   const records = await prisma.broadcastAnchorRecord.findMany({
-    where: { anchorUserId: userId },
+    where: {
+      anchorUserId: userId,
+      task: {
+        status: "active",
+        OR: [
+          { dueAt: null },
+          { dueAt: { gt: now } },
+        ],
+      },
+    },
     include: {
       task: { include: { questions: { orderBy: { id: "asc" } } } },
       answers: true,
@@ -516,9 +525,6 @@ export async function getBroadcastTasksForAnchor(userId: string): Promise<Broadc
 
   const result: BroadcastTaskForAnchor[] = [];
   for (const rec of records) {
-    // 已结束任务不推送给主播
-    if (rec.task.status === "ended") continue;
-
     const taskBase = {
       id: rec.task.id,
       title: rec.task.title,
