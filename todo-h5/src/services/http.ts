@@ -6,7 +6,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   const response = await fetch(`/api${url}`, {
     ...options,
     headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(currentIdentity?.id ? { "X-Identity-Id": currentIdentity.id } : {}),
       ...options.headers,
@@ -26,6 +26,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
 }
 
 export const api = {
+  postForm: <T>(url: string, data: FormData) => request<T>(url, { method: "POST", body: data }),
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, data?: unknown) => request<T>(url, { method: "POST", body: JSON.stringify(data ?? {}) }),
   patch: <T>(url: string, data?: unknown) => request<T>(url, { method: "PATCH", body: JSON.stringify(data ?? {}) }),

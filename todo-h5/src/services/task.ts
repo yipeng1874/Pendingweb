@@ -1,8 +1,22 @@
 import { api } from "./http";
 import { useAuthStore } from "../stores/auth";
+import type { CollaborationAnswer, TaskItemAttachment } from "../types";
 import type { AnchorTrendResponse, BroadcastTask, DailyDashboardResponse, DailyRangeStatsResponse, HallDailyRecord, LiveRoomCapacity, OrgUnit, PersonalReminder, ProcessMetricByDateResponse, ProcessMetricConfigResponse, RetentionByMonthResponse, StaffTurnoverByDateResponse, TaskItemRecord, TaskRecord, WorkflowTask } from "../types";
 
 export const taskApi = {
+  saveWorkflowAnswer: (taskId: string, stepId: string, answer: CollaborationAnswer) => api.post<{ task: WorkflowTask; stepCompleted: boolean }>(`/tasks/collaboration/workflows/${taskId}/steps/${stepId}/answer`, answer),
+  submitWorkflowStep: (taskId: string, stepId: string) => api.post<WorkflowTask>(`/tasks/collaboration/workflows/${taskId}/steps/${stepId}/submit`, { answers: [] }),
+  saveBroadcastAnswer: (taskId: string, answer: CollaborationAnswer) => api.post<{ task: BroadcastTask; recordCompleted: boolean }>(`/tasks/collaboration/broadcast/${taskId}/answer`, answer),
+  uploadCollaborationAttachment: (file: File) => {
+    const form = new FormData(); form.append("file", file);
+    return api.postForm<{ fileUrl: string; fileName: string }>("/tasks/collaboration/workflows/attachments/upload", form);
+  },
+  submitHallItem: (data: { taskRecordId: string; taskItemId: string; answerText?: string; answerOptions?: string[]; isLinkConfirmed?: boolean; done: boolean }) => api.post<TaskItemRecord>("/hall-daily/item-records", data),
+  submitHallRecord: (id: string) => api.post<HallDailyRecord>(`/hall-daily/my-records/${id}/submit`),
+  uploadHallAttachment: (itemRecordId: string, file: File) => {
+    const form = new FormData(); form.append("file", file); form.append("hallTaskItemRecordId", itemRecordId);
+    return api.postForm<TaskItemAttachment>("/tasks/hall-daily/upload", form);
+  },
   getMyRecords: () => api.get<TaskRecord[]>("/tasks/my-records"),
   getHallDailyRecords: () => api.get<HallDailyRecord[]>("/hall-daily/my-records"),
   getWorkflowTasks: () => api.get<WorkflowTask[]>("/tasks/collaboration/workflows/mine"),

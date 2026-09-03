@@ -44,6 +44,7 @@ export type BroadcastRecipientType = "ANCHOR" | "HALL_MANAGER";
 // ─── Bootstrap 返回 ──────────────────────────────────────────────────────────
 export type BroadcastBootstrapPayload = {
   allowed: boolean;
+  allowedRecipientTypes?: BroadcastRecipientType[];
   /** 非厅管时给出的引导提示 */
   redirectHint: string | null;
   operator: {
@@ -56,6 +57,7 @@ export type BroadcastBootstrapPayload = {
   };
   anchors: BroadcastAnchorOption[];
   hallManagers?: BroadcastHallManagerOption[];
+  nextOffset?: number | null;
 };
 
 // ─── 任务主播记录 ─────────────────────────────────────────────────────────────
@@ -135,6 +137,8 @@ export type BroadcastCreateInput = {
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 export const broadcastTaskApi = {
+  searchHallManagers: (q: string, offset = 0) =>
+    api.get<BroadcastBootstrapPayload>(`/tasks/collaboration/broadcast/hall-managers?q=${encodeURIComponent(q)}&offset=${offset}`),
   bootstrap: () =>
     api.get<BroadcastBootstrapPayload>("/tasks/collaboration/broadcast/bootstrap"),
 

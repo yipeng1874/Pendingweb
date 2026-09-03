@@ -1,4 +1,6 @@
 import { prisma } from "../../../shared/prisma.js";
+import type { Prisma } from "@prisma/client";
+import { notifyTemporaryRecordCompleted } from "../notify/temporary-completion-notify.service.js";
 import {
   assignmentDetailInclude,
   isAssignmentAnchorExcluded,
@@ -89,6 +91,25 @@ async function ensureIdentityLink(taskRecordId: string, identity: { id: string; 
 
 function canSupplementSubmitted(record: { subjectType: string; assignment?: { category?: string } | null }) {
   return record.assignment?.category === "TEMPORARY" && record.subjectType === "ORG";
+}
+
+/** Persist progress without allowing a stale request to reopen a completed temporary record. */
+async function saveTemporaryRecordProgress(recordId: string, data: Prisma.TaskRecordUpdateManyMutationInput) {
+  const firstSubmission = await prisma.taskRecord.updateMany({
+    where: { id: recordId, status: { not: "submitted" }, submittedAt: null },
+    data,
+  });
+  if (firstSubmission.count > 0) return data.status === "submitted";
+
+  if (data.status === "submitted") {
+    // Organization members can supplement the same record. Preserve the original completion time.
+    const { submittedAt: _submittedAt, ...supplementData } = data;
+    await prisma.taskRecord.updateMany({
+      where: { id: recordId, status: "submitted" },
+      data: supplementData,
+    });
+  }
+  return false;
 }
 
 async function loadIdentityLabelMap(identityIds: string[]) {
@@ -610,17 +631,20 @@ export const RecordService = {
 
     const doneCount = await prisma.taskItemRecord.count({ where: { taskRecordId: data.taskRecordId, status: "done" } });
     const submitted = keepSubmitted || doneCount >= record.totalItems;
-    await prisma.taskRecord.update({
-      where: { id: data.taskRecordId },
-      data: {
-        doneItems: doneCount,
-        status: submitted ? "submitted" : resolveNextRecordStatus(record, doneCount, now),
-        submittedAt: submitted ? record.submittedAt ?? new Date() : null,
-        lastSubmittedByUserId: submitted ? data.userId : null,
-        lastSubmittedByIdentityId: submitted ? data.identityId : null,
-        lastSubmittedAt: submitted ? new Date() : null,
-      },
-    });
+    const progressData: Prisma.TaskRecordUpdateManyMutationInput = {
+      doneItems: doneCount,
+      status: submitted ? "submitted" : resolveNextRecordStatus(record, doneCount, now),
+      submittedAt: submitted ? record.submittedAt ?? new Date() : null,
+      lastSubmittedByUserId: submitted ? data.userId : null,
+      lastSubmittedByIdentityId: submitted ? data.identityId : null,
+      lastSubmittedAt: submitted ? new Date() : null,
+    };
+    if ((record as any).assignment?.category === "TEMPORARY") {
+      const firstSubmission = await saveTemporaryRecordProgress(data.taskRecordId, progressData);
+      if (firstSubmission) await notifyTemporaryRecordCompleted(data.taskRecordId, user.nickname);
+    } else {
+      await prisma.taskRecord.update({ where: { id: data.taskRecordId }, data: progressData });
+    }
 
     if (isManagerContributionRecord(record)) {
       return (await buildManagerContributionSnapshot(data.taskRecordId)) ?? itemRecord;
@@ -663,16 +687,19 @@ export const RecordService = {
 
     const user = await prisma.user.findFirst({ where: { id: userId, status: "active" } });
     if (!user) throw new Error("USER_INACTIVE");
-    return prisma.taskRecord.update({
-      where: { id: recordId },
-      data: {
-        status: "submitted",
-        submittedAt: record.submittedAt ?? new Date(),
-        lastSubmittedByUserId: userId,
-        lastSubmittedByIdentityId: identityId,
-        lastSubmittedAt: new Date(),
-      },
-    });
+    const submissionData: Prisma.TaskRecordUpdateManyMutationInput = {
+      status: "submitted",
+      submittedAt: record.submittedAt ?? new Date(),
+      lastSubmittedByUserId: userId,
+      lastSubmittedByIdentityId: identityId,
+      lastSubmittedAt: new Date(),
+    };
+    if ((record as any).assignment?.category === "TEMPORARY") {
+      const firstSubmission = await saveTemporaryRecordProgress(recordId, submissionData);
+      if (firstSubmission) await notifyTemporaryRecordCompleted(recordId, user.nickname);
+      return prisma.taskRecord.findUniqueOrThrow({ where: { id: recordId } });
+    }
+    return prisma.taskRecord.update({ where: { id: recordId }, data: submissionData });
   },
 
 

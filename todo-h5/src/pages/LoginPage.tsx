@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Loader2, Smartphone } from "lucide-react";
+import { ArrowRight, Building2, Eye, EyeOff, ListTodo, Loader2, LockKeyhole, Smartphone } from "lucide-react";
 import { authApi } from "../services/auth";
 import { useAuthStore } from "../stores/auth";
 import { entryPathForIdentity } from "../utils/entry";
@@ -15,6 +15,7 @@ export function LoginPage() {
   const token = useAuthStore((state) => state.token);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [feishuLoading, setFeishuLoading] = useState(false);
@@ -67,10 +68,11 @@ export function LoginPage() {
   }, [navigate, searchParams, setAuth]);
 
   async function handleLogin() {
+    if (loading || !phone.trim() || !password) return;
     setError("");
     setLoading(true);
     try {
-      const payload = await authApi.login(phone, password);
+      const payload = await authApi.login(phone.trim(), password);
       const identity = pickBestIdentity(payload.identities, payload.recommendedIdentityId);
       setAuth(payload);
       navigate(identity ? entryPathForIdentity(identity) : "/identity", { replace: true });
@@ -91,66 +93,37 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="mobile-page bottom-safe">
-        <div className="hero-panel" style={{ paddingBottom: 8 }}>
-          <div className="hero-kicker"><Smartphone size={13} /> 千广协同 H5</div>
-          <h1 className="hero-title">仪表台与待办随身查看</h1>
-        </div>
-
-        <div className="section" style={{ paddingTop: 0 }}>
-          <div className="card" style={{ padding: 8, marginBottom: 12 }}>
-            <div className="segmented">
-              <button className={`btn ${loginTab === "account" ? "btn-primary" : "btn-ghost"}`} onClick={() => setLoginTab("account")}>账号登录</button>
-              <button className={`btn ${loginTab === "feishu" ? "btn-primary" : "btn-ghost"}`} onClick={() => setLoginTab("feishu")}>飞书登录</button>
-            </div>
+    <div className="page-shell login-shell">
+      <main className="mobile-page login-page">
+        <header className="login-brand"><span className="login-brand-mark"><ListTodo size={23} strokeWidth={2.1} /></span><div><strong>千广协同</strong><span>移动工作台</span></div></header>
+        <section className="login-content" aria-labelledby="login-title">
+          <div className="login-welcome"><span className="login-eyebrow">让协作更简单</span><h1 id="login-title">欢迎回来</h1><p>随时掌握任务进展，让每一份工作有序推进。</p></div>
+          <div className="login-methods" aria-label="选择登录方式">
+            <button type="button" className={loginTab === "account" ? "active" : ""} aria-pressed={loginTab === "account"} disabled={loading || feishuLoading} onClick={() => { setLoginTab("account"); setError(""); }}>账号登录</button>
+            <button type="button" className={loginTab === "feishu" ? "active" : ""} aria-pressed={loginTab === "feishu"} disabled={loading || feishuLoading} onClick={() => { setLoginTab("feishu"); setError(""); }}>飞书登录</button>
           </div>
-
           {loginTab === "account" ? (
-            <div className="card card-strong" style={{ padding: 14, display: "grid", gap: 12 }}>
-              <div>
-                <p className="card-title">账号登录</p>
-                <p className="card-subtitle">输入手机号和密码后登录。</p>
-              </div>
-              <input className="input" placeholder="请输入手机号" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <input className="input" type="password" placeholder="请输入密码" value={password} onChange={(e) => setPassword(e.target.value)} />
-              {error ? <div className="error">{error}</div> : null}
-              <button className="btn btn-primary" disabled={loading || !phone || !password} onClick={() => void handleLogin()}>
-                {loading ? "登录中..." : "登录"}
-              </button>
-            </div>
+            <form className="login-form" onSubmit={(event) => { event.preventDefault(); void handleLogin(); }} aria-label="账号登录">
+              <div className="login-field"><label htmlFor="login-phone">手机号</label><div className="login-input-wrap"><Smartphone size={19} aria-hidden="true" /><input id="login-phone" type="tel" inputMode="tel" autoComplete="username" placeholder="请输入手机号" value={phone} disabled={loading} onChange={(event) => setPhone(event.target.value)} required /></div></div>
+              <div className="login-field"><label htmlFor="login-password">密码</label><div className="login-input-wrap"><LockKeyhole size={19} aria-hidden="true" /><input id="login-password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="请输入密码" value={password} disabled={loading} onChange={(event) => setPassword(event.target.value)} required /><button className="login-password-toggle" type="button" aria-label={showPassword ? "隐藏密码" : "显示密码"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></div>
+              {error ? <div className="login-error" role="alert">{error}</div> : null}
+              <button className="login-submit" type="submit" disabled={loading || !phone.trim() || !password}>{loading ? <><Loader2 size={18} className="animate-spin" />登录中…</> : <>登录<ArrowRight size={18} /></>}</button>
+              <p className="login-helper">请使用已开通的账号登录</p>
+            </form>
           ) : (
-            <div className="card card-strong" style={{ padding: 14, display: "grid", gap: 12 }}>
-              <div>
-                <p className="card-title">飞书登录</p>
-                <p className="card-subtitle">在飞书内可一键识别账号，其他浏览器需选择组织后授权。</p>
-              </div>
-              {inFeishu && savedFeishuAppId ? (
-                <button className="btn btn-primary" onClick={() => { window.location.href = `/feishu-entry?appId=${encodeURIComponent(savedFeishuAppId)}`; }}>
-                  飞书一键登录
-                </button>
-              ) : null}
-              <select className="select" value={selectedBaseId} onChange={(e) => { setSelectedBaseId(e.target.value); setSelectedTeamId(""); setSelectedConfigId(""); }}>
-                <option value="">请选择基地</option>
-                {baseOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-              <select className="select" value={selectedTeamId} onChange={(e) => { setSelectedTeamId(e.target.value); setSelectedConfigId(""); }}>
-                <option value="">请选择团队</option>
-                {teamOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-              <select className="select" value={selectedConfigId} onChange={(e) => setSelectedConfigId(e.target.value)}>
-                <option value="">请选择飞书企业</option>
-                {configOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-              {error ? <div className="error">{error}</div> : null}
-              <button className="btn btn-primary" disabled={feishuLoading} onClick={handleFeishuLogin}>
-                {feishuLoading ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center" }}><Loader2 size={16} className="animate-spin" />登录中</span> : (inFeishu ? "使用飞书登录" : "前往飞书授权登录")}
-              </button>
+            <div className="login-form">
+              <p className="login-feishu-note">选择所属组织，使用飞书账号授权登录。</p>
+              {inFeishu && savedFeishuAppId ? <button type="button" className="login-feishu-quick" disabled={feishuLoading} onClick={() => { window.location.href = "/feishu-entry?appId=" + encodeURIComponent(savedFeishuAppId); }}>飞书一键登录<ArrowRight size={16} /></button> : null}
+              <div className="login-field"><label htmlFor="login-base">所属基地</label><div className="login-input-wrap"><Building2 size={18} aria-hidden="true" /><select id="login-base" value={selectedBaseId} disabled={feishuLoading} onChange={(event) => { setSelectedBaseId(event.target.value); setSelectedTeamId(""); setSelectedConfigId(""); }}><option value="">请选择基地</option>{baseOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></div>
+              <div className="login-field"><label htmlFor="login-team">所属团队</label><div className="login-input-wrap"><select id="login-team" value={selectedTeamId} disabled={!selectedBaseId || feishuLoading} onChange={(event) => { setSelectedTeamId(event.target.value); setSelectedConfigId(""); }}><option value="">请选择团队</option>{teamOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></div>
+              <div className="login-field"><label htmlFor="login-company">飞书企业</label><div className="login-input-wrap"><select id="login-company" value={selectedConfigId} disabled={!selectedTeamId || feishuLoading} onChange={(event) => setSelectedConfigId(event.target.value)}><option value="">请选择飞书企业</option>{configOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></div>
+              {error ? <div className="login-error" role="alert">{error}</div> : null}
+              <button className="login-submit" type="button" disabled={feishuLoading} onClick={handleFeishuLogin}>{feishuLoading ? <><Loader2 size={18} className="animate-spin" />登录中…</> : <>使用飞书登录<ArrowRight size={18} /></>}</button>
             </div>
           )}
-
-        </div>
-      </div>
+        </section>
+        <footer className="login-footer"><span />任务有序 · 协作高效<span /></footer>
+      </main>
     </div>
   );
 }

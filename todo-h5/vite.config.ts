@@ -8,6 +8,10 @@ export default defineConfig({
     allowedHosts: true,
     port: 4173,
     strictPort: true,
+    watch: {
+      // Wait for editor/script writes to finish before transforming page modules.
+      awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+    },
     proxy: {
       "/api": "http://127.0.0.1:4000",
     },

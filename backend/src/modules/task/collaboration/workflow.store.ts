@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../shared/prisma.js";
 import type { WorkflowQuestionType as PrismaQuestionType } from "@prisma/client";
+import { notifyWorkflowStepCompleted } from "../notify/workflow-completion-notify.service.js";
 
 export type WorkflowTaskStatus = "in_progress" | "completed" | "ended";
 export type WorkflowStepStatus = "pending" | "active" | "completed";
@@ -234,7 +235,7 @@ export async function submitWorkflowStep(
 ): Promise<{ success: boolean; task?: WorkflowTaskRecord; error?: string }> {
   const step = await prisma.workflowStep.findUnique({
     where: { id: stepId },
-    include: { task: true },
+    include: { questions: STEP_INCLUDE.questions, task: true },
   });
   if (!step || step.taskId !== taskId) return { success: false, error: "STEP_NOT_FOUND" };
   if (step.assigneeUserId !== userId) return { success: false, error: "FORBIDDEN" };
@@ -242,7 +243,15 @@ export async function submitWorkflowStep(
 
   const now = new Date();
 
-  await prisma.$transaction(async (tx) => {
+  const stepCompleted = await prisma.$transaction(async (tx) => {
+    // Claim the transition in the database, so concurrent submissions notify only once.
+    // Answers and completion are committed together; a rollback permits a later retry.
+    const claimed = await tx.workflowStep.updateMany({
+      where: { id: stepId, status: { not: "completed" } },
+      data: { status: "completed", submittedAt: now, submittedByUserId: userId, completedAt: now },
+    });
+    if (claimed.count === 0) return false;
+
     // 批量 upsert 答案
     for (const ans of answers) {
       await tx.workflowAnswer.upsert({
@@ -264,17 +273,6 @@ export async function submitWorkflowStep(
       });
     }
 
-    // 标记节点完成
-    await tx.workflowStep.update({
-      where: { id: stepId },
-      data: {
-        status: "completed",
-        submittedAt: now,
-        submittedByUserId: userId,
-        completedAt: now,
-      },
-    });
-
     // 检查是否所有节点都完成
     const allSteps = await tx.workflowStep.findMany({ where: { taskId } });
     const updatedSteps = allSteps.map((s) => (s.id === stepId ? { ...s, status: "completed" } : s));
@@ -289,6 +287,13 @@ export async function submitWorkflowStep(
         updatedAt: now,
       },
     });
+    return true;
+  });
+
+  if (!stepCompleted) return { success: false, error: "STEP_ALREADY_COMPLETED" };
+  await notifyWorkflowStepCompleted({
+    taskId, taskTitle: step.task.title, issuerUserId: step.task.createdByUserId,
+    stepId, questions: step.questions, assigneeName: step.assigneeName,
   });
 
   const updated = await getWorkflowTaskById(taskId);
@@ -306,7 +311,7 @@ export async function saveStepQuestionAnswer(
 ): Promise<{ success: boolean; task?: WorkflowTaskRecord; stepCompleted?: boolean; error?: string }> {
   const step = await prisma.workflowStep.findUnique({
     where: { id: stepId },
-    include: { questions: true, task: true },
+    include: { questions: STEP_INCLUDE.questions, task: true },
   });
   if (!step || step.taskId !== taskId) return { success: false, error: "STEP_NOT_FOUND" };
   if (step.assigneeUserId !== userId) return { success: false, error: "FORBIDDEN" };
@@ -350,10 +355,9 @@ export async function saveStepQuestionAnswer(
 
   let stepCompleted = false;
   if (allRequiredFilled) {
-    stepCompleted = true;
-    await prisma.$transaction(async (tx) => {
-      await tx.workflowStep.update({
-        where: { id: stepId },
+    stepCompleted = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.workflowStep.updateMany({
+        where: { id: stepId, status: { not: "completed" } },
         data: {
           status: "completed",
           submittedAt: now,
@@ -361,6 +365,7 @@ export async function saveStepQuestionAnswer(
           completedAt: now,
         },
       });
+      if (claimed.count === 0) return false;
 
       const allSteps = await tx.workflowStep.findMany({ where: { taskId } });
       const updatedSteps = allSteps.map((s) => (s.id === stepId ? { ...s, status: "completed" } : s));
@@ -375,6 +380,7 @@ export async function saveStepQuestionAnswer(
           updatedAt: now,
         },
       });
+      return true;
     });
   } else {
     // 仅更新 updatedAt
@@ -384,6 +390,12 @@ export async function saveStepQuestionAnswer(
     });
   }
 
+  if (stepCompleted) {
+    await notifyWorkflowStepCompleted({
+      taskId, taskTitle: step.task.title, issuerUserId: step.task.createdByUserId,
+      stepId, questions: step.questions, assigneeName: step.assigneeName,
+    });
+  }
   const updated = await getWorkflowTaskById(taskId);
   return { success: true, task: updated ?? undefined, stepCompleted };
 }

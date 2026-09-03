@@ -1,12 +1,41 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { Bell, Building2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, GitBranch, LogOut, Megaphone, RefreshCcw, Send } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Building2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GitBranch, ListTodo, LogOut, Megaphone, RefreshCcw, Send, UserRound, Users } from "lucide-react";
 import { taskApi } from "../services/task";
 import { useAuthStore } from "../stores/auth";
+import { WorkflowCard, BroadcastCard } from "../components/CollaborationTaskCards";
 import { MobileBottomNav } from "../components/MobileBottomNav";
-import type { BroadcastTask, CollaborationAnswer, CollaborationQuestion, HallDailyRecord, PersonalReminder, TaskRecord, WorkflowTask } from "../types";
+import type { BroadcastTask, HallDailyRecord, TaskRecord, WorkflowTask } from "../types";
 
-type DashboardView = "all" | "daily" | "hall" | "temporary" | "workflow" | "broadcast";
+type CategoryKey = "daily" | "hall" | "account" | "anchor" | "manager" | "workflow" | "broadcast";
+
+const categories: Array<{ key: CategoryKey; label: string; icon: ReactNode; tone: string }> = [
+  { key: "daily", label: "主播日常", icon: <CheckCircle2 size={20} />, tone: "blue" },
+  { key: "hall", label: "厅管日常", icon: <Building2 size={20} />, tone: "teal" },
+  { key: "account", label: "触达式", icon: <Send size={20} />, tone: "sky" },
+  { key: "anchor", label: "主播式", icon: <UserRound size={20} />, tone: "green" },
+  { key: "manager", label: "管理式", icon: <Users size={20} />, tone: "violet" },
+  { key: "workflow", label: "流转任务", icon: <GitBranch size={20} />, tone: "indigo" },
+  { key: "broadcast", label: "厅内直达", icon: <Megaphone size={20} />, tone: "orange" },
+];
+
+const roleLabels: Record<string, string> = {
+  DEV_ADMIN: "开发管理员",
+  HQ_ADMIN: "总部管理员",
+  BASE_ADMIN: "基地运营",
+  TEAM_ADMIN: "团队运营",
+  HALL_MANAGER: "厅管",
+  ANCHOR: "主播",
+};
+
+function isComplete(status: string) {
+  return status === "submitted" || status === "completed";
+}
+
+function workflowComplete(task: WorkflowTask, userId?: string) {
+  const mySteps = task.steps.filter((step) => step.assigneeUserId === userId);
+  return task.status === "completed" || (mySteps.length > 0 && mySteps.every((step) => step.status === "completed"));
+}
 
 function taskStatusMeta(status: string) {
   if (status === "submitted" || status === "completed") return { text: "已完成", cls: "tag-green" };
@@ -32,39 +61,22 @@ function formatDeadline(value?: string | null) {
   return `${month}-${day} ${hour}:${minute}`;
 }
 
-function parseReminderTime(value?: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function isReminderOverdue(reminder: PersonalReminder) {
-  const remindEnd = parseReminderTime(reminder.remindEnd);
-  return reminder.status !== "done" && Boolean(remindEnd && remindEnd.getTime() < Date.now());
-}
-
-function isReminderUrgent(reminder: PersonalReminder) {
-  const remindEnd = parseReminderTime(reminder.remindEnd);
-  if (reminder.status === "done" || !remindEnd) return false;
-  const diff = remindEnd.getTime() - Date.now();
-  return diff > 0 && diff <= 3 * 24 * 60 * 60 * 1000;
-}
-
-function hasAnswer(answer?: CollaborationAnswer) {
-  return Boolean(answer && (answer.answerText?.trim() || answer.answerOptions?.length || answer.isLinkConfirmed || answer.attachmentUrls?.length));
-}
-
-function answerText(question: CollaborationQuestion, answer?: CollaborationAnswer) {
-  if (!answer || !hasAnswer(answer)) return "未填写";
-  if (question.itemType === "QA" || question.itemType === "FILL_BLANK") return answer.answerText || "未填写";
-  if (question.itemType === "SINGLE_CHOICE" || question.itemType === "MULTI_CHOICE") return answer.answerOptions?.join("、") || "未选择";
-  if (question.itemType === "LINK") return answer.isLinkConfirmed ? "已完成学习并确认" : "未确认";
-  if (question.itemType === "ATTACHMENT") return `已上传 ${answer.attachmentUrls?.length ?? 0} 个文件`;
-  return "已填写";
-}
-
 function DashboardSection({ icon, title, count, tone, children }: { icon: ReactNode; title: string; count: number; tone: string; children: ReactNode }) {
   return <section className="dashboard-section card"><div className="dashboard-section-header"><span className={`dashboard-section-icon ${tone}`}>{icon}</span><h2>{title}</h2><span className="dashboard-section-count">{count}</span></div><div className="list">{children}</div></section>;
+}
+
+type CategoryEntry = { id: string; completed: boolean; content: ReactNode };
+
+function CompletionGroupedList({ entries }: { entries: CategoryEntry[] }) {
+  const pending = entries.filter((entry) => !entry.completed);
+  const completed = entries.filter((entry) => entry.completed);
+  return <>
+    {pending.map((entry) => <div key={entry.id}>{entry.content}</div>)}
+    {completed.length > 0 ? <details className="todo-completed-group">
+      <summary><CheckCircle2 size={16} /><span>已完成（{completed.length}）</span><ChevronDown size={16} /></summary>
+      <div className="list">{completed.map((entry) => <div key={entry.id}>{entry.content}</div>)}</div>
+    </details> : null}
+  </>;
 }
 
 function RecordCard({ record, daily, onOpen }: { record: TaskRecord; daily: boolean; onOpen: () => void }) {
@@ -78,79 +90,168 @@ function HallCard({ record }: { record: HallDailyRecord }) {
   return <div className="dashboard-task-card"><div className="dashboard-card-topline"><div className="dashboard-tags"><span className="tag tag-teal">厅管日常</span><span className="tag tag-slate">{record.recordDate}</span></div><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{record.assignment?.template?.title ?? "厅管日常任务"}</p><div className="dashboard-meta"><span>{record.hallOrg?.name ?? "当前厅"}</span><span>进度 {record.doneItems}/{record.totalItems}</span></div><div className="dashboard-progress dashboard-progress-teal"><span style={{ width: `${record.totalItems ? Math.round(record.doneItems / record.totalItems * 100) : 0}%` }} /></div></div>;
 }
 
-function WorkflowCard({ task, currentUserId }: { task: WorkflowTask; currentUserId?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const mySteps = task.steps.filter((step) => step.assigneeUserId === currentUserId);
-  const mineDone = mySteps.length > 0 && mySteps.every((step) => step.status === "completed");
-  const status = task.status === "completed" || mineDone ? taskStatusMeta("completed") : taskStatusMeta("in_progress");
-  return <div className="dashboard-task-card"><button className="dashboard-card-toggle" onClick={() => setExpanded((value) => !value)}><div className="dashboard-card-main"><div className="dashboard-card-topline"><span className="tag tag-purple">流转任务</span><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{task.title}</p><div className="dashboard-meta"><span>{task.createdByName}</span><span>{task.targetOrgName}</span><span>截止 {formatDeadline(task.dueAt)}</span></div></div>{expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button>{expanded ? <div className="dashboard-expanded">{task.description ? <p className="dashboard-description dashboard-description-full">说明：{task.description}</p> : null}{task.steps.map((step) => <div className="collaboration-step" key={step.id}><div className="dashboard-card-topline"><strong>{step.order}. {step.title}</strong><span className={`tag ${taskStatusMeta(step.status).cls}`}>{taskStatusMeta(step.status).text}</span></div>{step.requirement ? <p className="dashboard-description dashboard-description-full">{step.requirement}</p> : null}{step.questions.map((question) => { const answer = step.stepAnswers?.find((item) => item.questionId === question.id); return <div className="answer-row" key={question.id}><span>{question.title}</span><strong>{answerText(question, answer)}</strong></div>; })}</div>)}</div> : null}</div>;
-}
-
-function BroadcastCard({ task }: { task: BroadcastTask }) {
-  const [expanded, setExpanded] = useState(false);
-  const answered = task.questions.filter((question) => hasAnswer(task.myRecord.answers.find((answer) => answer.questionId === question.id))).length;
-  const status = taskStatusMeta(task.myRecord.status);
-  return <div className="dashboard-task-card"><button className="dashboard-card-toggle" onClick={() => setExpanded((value) => !value)}><div className="dashboard-card-main"><div className="dashboard-card-topline"><span className="tag tag-orange">厅内直达</span><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{task.title}</p><div className="dashboard-meta"><span>{task.createdByName} · {task.hallOrgName}</span><span>进度 {answered}/{task.questions.length}</span><span>截止 {formatDeadline(task.dueAt)}</span></div></div>{expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button>{expanded ? <div className="dashboard-expanded">{task.description ? <p className="dashboard-description dashboard-description-full">说明：{task.description}</p> : null}{task.questions.map((question) => { const answer = task.myRecord.answers.find((item) => item.questionId === question.id); return <div className="answer-row" key={question.id}><span>{question.title}</span><strong>{answerText(question, answer)}</strong></div>; })}</div> : null}</div>;
-}
-
 export function TodoListPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = categories.find((item) => item.key === searchParams.get("category"));
+  const hideEmpty = searchParams.get("hideEmpty") !== "0";
   const logout = useAuthStore((state) => state.logout);
   const currentIdentity = useAuthStore((state) => state.currentIdentity);
   const [records, setRecords] = useState<TaskRecord[]>([]);
   const [hallRecords, setHallRecords] = useState<HallDailyRecord[]>([]);
   const [workflowTasks, setWorkflowTasks] = useState<WorkflowTask[]>([]);
   const [broadcastTasks, setBroadcastTasks] = useState<BroadcastTask[]>([]);
-  const [reminders, setReminders] = useState<PersonalReminder[]>([]);
-  const [view, setView] = useState<DashboardView>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [categoryErrors, setCategoryErrors] = useState<Partial<Record<CategoryKey, string>>>({});
+  const requestId = useRef(0);
 
   async function load() {
-    setLoading(true); setError("");
+    const id = ++requestId.current;
+    setLoading(true);
+    setError("");
     try {
-      const [taskData, reminderData, hallData, workflowData, broadcastData] = await Promise.all([
+      const [taskData, hallData, workflowData, broadcastData] = await Promise.allSettled([
         taskApi.getMyRecords(),
-        taskApi.getReminders("active").catch(() => [] as PersonalReminder[]),
-        taskApi.getHallDailyRecords().catch(() => [] as HallDailyRecord[]),
-        taskApi.getWorkflowTasks().catch(() => [] as WorkflowTask[]),
-        taskApi.getBroadcastTasks().catch(() => [] as BroadcastTask[]),
+        taskApi.getHallDailyRecords(),
+        taskApi.getWorkflowTasks(),
+        taskApi.getBroadcastTasks(),
       ]);
-      setRecords(taskData); setReminders(reminderData); setHallRecords(hallData); setWorkflowTasks(workflowData); setBroadcastTasks(broadcastData);
-    } catch (err) { setError(err instanceof Error ? err.message : "加载待办失败"); }
-    finally { setLoading(false); }
+      if (id !== requestId.current) return;
+      setRecords(taskData.status === "fulfilled" ? taskData.value : []);
+      setHallRecords(hallData.status === "fulfilled" ? hallData.value : []);
+      setWorkflowTasks(workflowData.status === "fulfilled" ? workflowData.value : []);
+      setBroadcastTasks(broadcastData.status === "fulfilled" ? broadcastData.value : []);
+      const errors: Partial<Record<CategoryKey, string>> = {};
+      for (const key of ["daily", "account", "anchor", "manager"] as const) {
+        if (taskData.status === "rejected") errors[key] = "任务加载失败，请刷新重试";
+      }
+      if (hallData.status === "rejected") errors.hall = "厅管日常加载失败，请刷新重试";
+      if (workflowData.status === "rejected") errors.workflow = "流转任务加载失败，请刷新重试";
+      if (broadcastData.status === "rejected") errors.broadcast = "厅内直达加载失败，请刷新重试";
+      setCategoryErrors(errors);
+    } catch (err) {
+      if (id === requestId.current) setError(err instanceof Error ? err.message : "加载待办失败，请刷新重试");
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
   }
 
-  useEffect(() => { void load(); }, [currentIdentity?.id]);
-  const dailyRecords = useMemo(() => records.filter((item) => item.assignment?.category === "DAILY"), [records]);
-  const temporaryRecords = useMemo(() => records.filter((item) => item.assignment?.category === "TEMPORARY"), [records]);
-  const reminderSummary = useMemo(() => ({ total: reminders.length, overdue: reminders.filter(isReminderOverdue).length, urgent: reminders.filter(isReminderUrgent).length, important: reminders.filter((item) => item.isImportant).length }), [reminders]);
-  const totalTasks = dailyRecords.length + hallRecords.length + temporaryRecords.length + workflowTasks.length + broadcastTasks.length;
-  const tabs: Array<{ key: DashboardView; label: string; count: number; icon: ReactNode }> = [
-    { key: "all", label: "全部", count: totalTasks, icon: <CheckCircle2 size={15} /> },
-    { key: "daily", label: "主播日常", count: dailyRecords.length, icon: <CheckCircle2 size={15} /> },
-    { key: "hall", label: "厅管日常", count: hallRecords.length, icon: <Building2 size={15} /> },
-    { key: "temporary", label: "临时任务", count: temporaryRecords.length, icon: <Send size={15} /> },
-    { key: "workflow", label: "流转任务", count: workflowTasks.length, icon: <GitBranch size={15} /> },
-    { key: "broadcast", label: "厅内直达", count: broadcastTasks.length, icon: <Megaphone size={15} /> },
-  ];
-  const show = (key: Exclude<DashboardView, "all">) => view === "all" || view === key;
+  useEffect(() => {
+    void load();
+    return () => { requestId.current += 1; };
+  }, [currentIdentity?.id]);
 
-  return <div className="page-shell"><div className="mobile-page bottom-safe dashboard-page">
-    <div className="hero-panel dashboard-hero"><div className="dashboard-hero-row"><div className="dashboard-identity"><div className="hero-kicker">{currentIdentity?.roleCode ?? "当前身份"}</div><h1 className="hero-title">我的待办</h1><p className="hero-subtitle">{currentIdentity?.org?.name ?? currentIdentity?.anchorProfile?.nickname ?? "当前身份"}</p></div><div className="dashboard-actions"><button className="btn btn-ghost icon-btn" onClick={() => void load()} title="刷新"><RefreshCcw size={16} /></button><button className="btn btn-ghost dashboard-identity-button" onClick={() => navigate("/identity")}>身份</button><button className="btn btn-ghost icon-btn" onClick={() => { logout(); navigate("/login", { replace: true }); }} title="退出登录"><LogOut size={16} /></button></div></div></div>
-    <div className="section dashboard-content">
-      <div className="dashboard-summary card"><div><strong>{totalTasks}</strong><span>截止前任务</span></div><div><strong>{workflowTasks.length}</strong><span>流转任务</span></div><div><strong>{broadcastTasks.length}</strong><span>直达任务</span></div><div><strong>{reminderSummary.total}</strong><span>个人提醒</span></div></div>
-      <div className="dashboard-tabs" role="tablist" aria-label="任务分类">{tabs.map((tab) => <button key={tab.key} role="tab" aria-selected={view === tab.key} className={`dashboard-tab ${view === tab.key ? "dashboard-tab-active" : ""}`} onClick={() => setView(tab.key)}>{tab.icon}<span>{tab.label}</span><b>{tab.count}</b></button>)}</div>
-      <button className="reminder-entry-card card" onClick={() => navigate("/reminders") }><div className="reminder-entry-content"><div className="reminder-entry-icon"><Bell size={18} /></div><div className="reminder-entry-main"><div className="dashboard-card-topline"><div className="card-title">个人提醒</div>{reminderSummary.overdue > 0 ? <span className="tag tag-red">逾期 {reminderSummary.overdue}</span> : null}{reminderSummary.urgent > 0 ? <span className="tag tag-purple">紧急 {reminderSummary.urgent}</span> : null}</div><div className="section-note">{reminderSummary.total > 0 ? `进行中 ${reminderSummary.total} 条，重要 ${reminderSummary.important} 条` : "记录自己的事项"}</div></div><ChevronRight size={18} color="#64748b" /></div></button>
-      {loading ? <div className="card dashboard-state">正在加载全部待办...</div> : null}{error ? <div className="card error dashboard-state">{error}</div> : null}
-      {!loading && !error ? <div className="dashboard-sections">
-        {show("daily") ? <DashboardSection icon={<CheckCircle2 size={17} />} title="主播日常任务" count={dailyRecords.length} tone="section-blue">{dailyRecords.map((record) => <RecordCard key={record.id} record={record} daily onOpen={() => navigate(`/todos/${record.id}`)} />)}{dailyRecords.length === 0 ? <div className="dashboard-empty">今日暂无主播日常任务</div> : null}</DashboardSection> : null}
-        {show("hall") ? <DashboardSection icon={<Building2 size={17} />} title="厅管日常任务" count={hallRecords.length} tone="section-teal">{hallRecords.map((record) => <HallCard key={record.id} record={record} />)}{hallRecords.length === 0 ? <div className="dashboard-empty">今日暂无厅管日常任务</div> : null}</DashboardSection> : null}
-        {show("temporary") ? <DashboardSection icon={<Send size={17} />} title="临时任务" count={temporaryRecords.length} tone="section-violet">{temporaryRecords.map((record) => <RecordCard key={record.id} record={record} daily={false} onOpen={() => navigate(`/todos/${record.id}`)} />)}{temporaryRecords.length === 0 ? <div className="dashboard-empty">暂无截止前临时任务</div> : null}</DashboardSection> : null}
-        {show("workflow") ? <DashboardSection icon={<GitBranch size={17} />} title="流转任务" count={workflowTasks.length} tone="section-indigo">{workflowTasks.map((task) => <WorkflowCard key={task.id} task={task} currentUserId={currentIdentity?.userId} />)}{workflowTasks.length === 0 ? <div className="dashboard-empty">暂无截止前流转任务</div> : null}</DashboardSection> : null}
-        {show("broadcast") ? <DashboardSection icon={<Megaphone size={17} />} title="厅内直达任务" count={broadcastTasks.length} tone="section-orange">{broadcastTasks.map((task) => <BroadcastCard key={task.id} task={task} />)}{broadcastTasks.length === 0 ? <div className="dashboard-empty">暂无截止前厅内直达任务</div> : null}</DashboardSection> : null}
-      </div> : null}
-      <MobileBottomNav />
+  useEffect(() => { window.scrollTo(0, 0); }, [category?.key]);
+
+  const dailyRecords = records.filter((item) => item.assignment?.category === "DAILY");
+  const temporaryRecords = records.filter((item) => item.assignment?.category === "TEMPORARY");
+  const recordGroups: Partial<Record<CategoryKey, TaskRecord[]>> = {
+    daily: dailyRecords,
+    account: temporaryRecords.filter((item) => !item.assignment?.temporaryMode || item.assignment.temporaryMode === "ACCOUNT"),
+    anchor: temporaryRecords.filter((item) => item.assignment?.temporaryMode === "ANCHOR"),
+    manager: temporaryRecords.filter((item) => item.assignment?.temporaryMode === "MANAGER"),
+  };
+  const pendingDaily = dailyRecords.filter((item) => !isComplete(item.status));
+  const dailyTotal = pendingDaily.reduce((sum, item) => sum + item.totalItems, 0);
+  const dailyDone = pendingDaily.reduce((sum, item) => sum + item.doneItems, 0);
+  const dailyProgress = dailyTotal ? Math.min(100, Math.round(dailyDone / dailyTotal * 100)) : 0;
+  const groups = categories.map((item) => {
+    const rows = recordGroups[item.key] ?? [];
+    let total = rows.length;
+    let pending = rows.filter((row) => !isComplete(row.status)).length;
+    if (item.key === "hall") {
+      total = hallRecords.length;
+      pending = hallRecords.filter((row) => !isComplete(row.status)).length;
+    } else if (item.key === "workflow") {
+      total = workflowTasks.length;
+      pending = workflowTasks.filter((row) => !workflowComplete(row, currentIdentity?.userId)).length;
+    } else if (item.key === "broadcast") {
+      total = broadcastTasks.length;
+      pending = broadcastTasks.filter((row) => !isComplete(row.myRecord.status)).length;
+    }
+    return { ...item, total, pending, error: categoryErrors[item.key] };
+  });
+  const pendingCount = groups.reduce((sum, item) => sum + item.pending, 0);
+  const visibleGroups = hideEmpty ? groups.filter((item) => item.total > 0 || item.error) : groups;
+  const selectedGroup = groups.find((item) => item.key === category?.key);
+  const incompleteSummary = category ? Boolean(selectedGroup?.error) : Object.keys(categoryErrors).length > 0;
+
+  function categoryEntries(): CategoryEntry[] {
+    if (!category) return [];
+    if (category.key === "hall") return hallRecords.map((record) => ({ id: record.id, completed: isComplete(record.status), content: <button className="todo-card-button" onClick={() => navigate(`/todos/hall/${record.id}`)}><HallCard record={record} /></button> }));
+    if (category.key === "workflow") return workflowTasks.map((task) => ({ id: task.id, completed: workflowComplete(task, currentIdentity?.userId), content: <WorkflowCard task={task} currentUserId={currentIdentity?.userId} onUpdate={(updated) => setWorkflowTasks((rows) => rows.map((row) => row.id === updated.id ? updated : row))} /> }));
+    if (category.key === "broadcast") return broadcastTasks.map((task) => ({ id: task.id, completed: isComplete(task.myRecord.status), content: <BroadcastCard task={task} onUpdate={(updated) => setBroadcastTasks((rows) => rows.map((row) => row.id === updated.id ? updated : row))} /> }));
+    return (recordGroups[category.key] ?? []).map((record) => ({ id: record.id, completed: isComplete(record.status), content: <RecordCard record={record} daily={category.key === "daily"} onOpen={() => navigate(`/todos/${record.id}`)} /> }));
+  }
+
+  function openCategory(key: CategoryKey) {
+    const params = new URLSearchParams(searchParams);
+    params.set("category", key);
+    setSearchParams(params);
+  }
+
+  function showOverview() {
+    const params = new URLSearchParams(searchParams);
+    params.delete("category");
+    setSearchParams(params);
+  }
+
+  function toggleEmpty() {
+    const params = new URLSearchParams(searchParams);
+    if (hideEmpty) params.set("hideEmpty", "0");
+    else params.delete("hideEmpty");
+    setSearchParams(params, { replace: true });
+  }
+
+  return (
+    <div className="page-shell">
+      <div className="mobile-page bottom-safe dashboard-page todo-overview-page">
+        <header className="todo-header">
+          <div className="mobile-page-brand"><span><ListTodo size={19} /></span><h1>我的待办</h1></div>
+          <button className="todo-identity-switch" onClick={() => navigate("/identity")} aria-label="切换身份">
+            <span className="todo-identity-copy"><strong>{currentIdentity?.org?.name ?? currentIdentity?.anchorProfile?.nickname ?? "当前组织"}</strong><span>{roleLabels[currentIdentity?.roleCode ?? ""] ?? "当前身份"}</span></span>
+            <ChevronDown size={13} />
+          </button>
+          <button className="todo-header-logout" aria-label="退出登录" onClick={() => { logout(); navigate("/login", { replace: true }); }}><LogOut size={16} /></button>
+        </header>
+        <main className="section dashboard-content">
+          <section className="todo-overview-panel" aria-label={category ? `${category.label}任务列表` : "我的待办汇总"}>
+            <div className="todo-overview-heading">
+              <div className="todo-overview-title">
+                {category ? <button className="btn btn-ghost icon-btn" aria-label="返回待办汇总" onClick={showOverview}><ChevronLeft size={19} /></button> : <span className="todo-overview-symbol"><ListTodo size={19} /></span>}
+                <h2>{category?.label ?? "待办汇总"}</h2>
+              </div>
+              <span className="todo-pending-label" aria-live="polite">{loading ? "加载中" : error || incompleteSummary ? "加载异常" : `${selectedGroup?.pending ?? pendingCount}项未完成`}</span>
+              <div className="todo-overview-actions">
+                {!category ? <button className="todo-empty-toggle" disabled={loading || Boolean(error)} aria-label={hideEmpty ? "显示全部分类" : "自动隐藏空项"} title={hideEmpty ? "已自动隐藏空项，点击显示全部" : "自动隐藏空项"} aria-pressed={hideEmpty} onClick={toggleEmpty}>{hideEmpty ? <EyeOff size={15} /> : <Eye size={15} />}</button> : null}
+                <button className="todo-overview-refresh" aria-label="刷新" title="刷新" disabled={loading} onClick={() => void load()}><RefreshCcw size={15} className={loading ? "animate-spin" : ""} /></button>
+              </div>
+            </div>
+            {loading ? <div className="dashboard-state" role="status">正在加载待办...</div> : error ? <div className="error dashboard-state" role="alert">{error}</div> : category && selectedGroup ? (
+              <DashboardSection icon={category.icon} title={category.label.endsWith("任务") ? category.label : `${category.label}任务`} count={selectedGroup.total} tone={`section-${category.tone}`}>
+                <CompletionGroupedList key={`${currentIdentity?.id}:${category.key}`} entries={categoryEntries()} />
+                {selectedGroup.error ? <div className="error dashboard-state" role="alert">{selectedGroup.error}</div> : selectedGroup.total === 0 ? <div className="dashboard-empty">暂无{category.label}任务</div> : null}
+              </DashboardSection>
+            ) : (
+              <>
+                <div className="todo-category-grid">
+                  {visibleGroups.map((group) => (
+                    <button key={group.key} className={`todo-category-card todo-tone-${group.tone}`} onClick={() => openCategory(group.key)}>
+                      <span className="todo-category-icon">{group.icon}</span>
+                      <div className="todo-category-copy"><h3>{group.label}</h3><span>{group.error ? "加载失败" : `共${group.total}项`}</span></div>
+                      <div className="todo-category-metric">{group.error ? <span className="error">请刷新</span> : <><span>未完<strong>{group.pending}</strong></span>{group.key === "daily" ? <strong className="todo-daily-percent" aria-label={`子任务完成进度 ${dailyProgress}%`}>{dailyProgress}<small>%</small></strong> : null}</>}</div>
+                      <ChevronRight className="todo-category-chevron" size={16} />
+                    </button>
+                  ))}
+                </div>
+                {visibleGroups.length === 0 ? <div className="todo-overview-empty"><CheckCircle2 size={28} /><strong>当前暂无任务</strong><span>新任务到达后，对应分类会自动显示</span><button className="btn btn-ghost" onClick={toggleEmpty}>查看全部分类</button></div> : null}
+              </>
+            )}
+          </section>
+        </main>
+        <MobileBottomNav />
+      </div>
     </div>
-  </div></div>;
+  );
 }

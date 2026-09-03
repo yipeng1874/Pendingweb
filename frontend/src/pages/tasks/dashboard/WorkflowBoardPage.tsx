@@ -1013,7 +1013,7 @@ type FilterStatus = "all" | "in_progress" | "completed" | "ended";
 
 export function WorkflowBoardPage() {
   const currentIdentity = useIdentityStore((s) => s.currentIdentity);
-  const isHallManager = currentIdentity?.roleCode === "HALL_MANAGER";
+  const canManageBroadcast = ["HALL_MANAGER", "TEAM_ADMIN"].includes(currentIdentity?.roleCode ?? "");
   const [activeTab, setActiveTab] = useState<"workflow" | "broadcast">("workflow");
 
   const [tasks, setTasks] = useState<WorkflowMyTask[]>([]);
@@ -1078,8 +1078,8 @@ export function WorkflowBoardPage() {
         </div>
       </div>
 
-      {/* Tab 切换器（仅厅管显示群发看板 Tab） */}
-      {isHallManager && (
+      {/* 厅管及团队管理可查看自己发布的群发任务 */}
+      {canManageBroadcast && (
         <div className="mb-5 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 w-fit">
           <button
             type="button"
@@ -1109,7 +1109,7 @@ export function WorkflowBoardPage() {
       )}
 
       {/* ── 群发看板 ── */}
-      {activeTab === "broadcast" && isHallManager && (
+      {activeTab === "broadcast" && canManageBroadcast && (
         <BroadcastBoardView />
       )}
 

@@ -6,6 +6,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:workflow-completion": "tsx --test tests/workflow-completion-notify.test.ts",
+    "test:temporary-completion": "tsx --test tests/temporary-completion-notify.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",

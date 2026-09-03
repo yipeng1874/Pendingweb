@@ -22,6 +22,7 @@ export function App() {
         <Route path="/identity" element={<ProtectedRoute><IdentityPage /></ProtectedRoute>} />
         <Route path="/dashboard" element={<IdentityRequiredRoute><DashboardPage /></IdentityRequiredRoute>} />
         <Route path="/todos" element={<IdentityRequiredRoute><TodoListPage /></IdentityRequiredRoute>} />
+        <Route path="/todos/hall/:id" element={<IdentityRequiredRoute><TodoDetailPage kind="hall" /></IdentityRequiredRoute>} />
         <Route path="/todos/:id" element={<IdentityRequiredRoute><TodoDetailPage /></IdentityRequiredRoute>} />
         <Route path="/reminders" element={<IdentityRequiredRoute><ReminderPage /></IdentityRequiredRoute>} />
         <Route path="*" element={<Navigate to="/login" replace />} />

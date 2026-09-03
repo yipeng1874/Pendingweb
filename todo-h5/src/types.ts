@@ -70,6 +70,7 @@ export interface TaskTemplate {
 
 export interface TaskAssignment {
   id: string;
+  status?: string;
   category: "DAILY" | "TEMPORARY";
   temporaryMode?: "ACCOUNT" | "ANCHOR" | "MANAGER" | string;
   template?: TaskTemplate;
@@ -103,6 +104,7 @@ export interface TaskItemRecord {
 }
 
 export interface TaskRecord {
+  editingBlockedReason?: string;
   id: string;
   assignmentId: string;
   subjectType: "USER" | "ORG" | string;
@@ -123,6 +125,7 @@ export interface TaskRecord {
   itemRecords?: TaskItemRecord[];
   visibleIdentityLinks?: VisibleIdentityLink[];
   exemptionStatus?: string | null;
+  exemption?: { status: string } | null;
   exemptionReason?: string | null;
 }
 
@@ -222,7 +225,10 @@ export interface HallDailyRecord {
   totalItems: number;
   doneItems: number;
   hallOrg?: { id: string; name: string } | null;
-  assignment?: { template?: { id: string; title: string } | null } | null;
+  assignmentId?: string;
+  assignment?: { id?: string; status?: string; template?: TaskTemplate | null } | null;
+  itemRecords?: TaskItemRecord[];
+  leaveRequests?: Array<{ id: string; reason: string; status: "pending" | "approved" | "rejected" | "cancelled" }>;
 }
 
 export interface OrgUnit {

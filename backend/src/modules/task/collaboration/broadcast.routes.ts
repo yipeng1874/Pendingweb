@@ -29,18 +29,22 @@ async function resolveBaseOrg(hallPath: string) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /tasks/collaboration/broadcast/bootstrap
-// 仅 HALL_MANAGER 可用；返回本厅主播及基地内其他厅管
+// 厅管：本厅主播及基地内其他厅管；团队管理：基地内厅管（允许跨团队）
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.get(
-  "/tasks/collaboration/broadcast/bootstrap",
+  ["/tasks/collaboration/broadcast/bootstrap", "/tasks/collaboration/broadcast/hall-managers"],
   identityRequired,
   async (req, res) => {
     const identity = req.identity;
     if (!identity) return fail(res, "UNAUTHORIZED", "请先登录", 401);
+    const searching = req.path.endsWith("/hall-managers");
+    const keyword = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (searching && keyword.length > 80) return fail(res, "SEARCH_TOO_LONG", "搜索词不能超过80个字符", 400);
+    const offset = Math.max(0, Math.min(10000, Math.floor(Number(req.query.offset) || 0)));
 
     // 高权限账号：提示移步临时任务
     if (
-      ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"].includes(identity.roleCode)
+      ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(identity.roleCode)
     ) {
       return ok(res, {
         allowed: false,
@@ -56,19 +60,20 @@ broadcastTaskRoutes.get(
       });
     }
 
-    if (identity.roleCode !== "HALL_MANAGER") {
-      return fail(res, "FORBIDDEN", "群发主播功能仅厅管账号可使用", 403);
+    const isTeamAdmin = identity.roleCode === "TEAM_ADMIN";
+    if (!isTeamAdmin && identity.roleCode !== "HALL_MANAGER") {
+      return fail(res, "FORBIDDEN", "群发任务仅厅管或团队管理账号可使用", 403);
     }
 
     // 加载厅信息
     const hallOrg = identity.orgId
       ? await prisma.orgUnit.findFirst({
-          where: { id: identity.orgId, orgType: "HALL", status: "active" },
+          where: { id: identity.orgId, orgType: isTeamAdmin ? "TEAM" : "HALL", status: "active" },
         })
       : null;
 
     if (!hallOrg) {
-      return fail(res, "HALL_NOT_FOUND", "当前身份未关联有效厅组织，无法使用群发主播", 400);
+      return fail(res, "ORG_NOT_FOUND", "当前身份未关联有效团队或厅组织，无法使用群发任务", 400);
     }
 
     const baseOrg = await resolveBaseOrg(hallOrg.path);
@@ -77,7 +82,8 @@ broadcastTaskRoutes.get(
     }
 
     // 查本厅下所有 active ANCHOR 身份（scopePath 前缀匹配 or 等于厅 path）
-    const anchorIdentities = await prisma.userIdentity.findMany({
+    const recipientScope = baseOrg;
+    const anchorIdentities = isTeamAdmin || searching ? [] : await prisma.userIdentity.findMany({
       where: {
         status: "active",
         roleCode: "ANCHOR",
@@ -133,17 +139,23 @@ broadcastTaskRoutes.get(
       a.nickname.localeCompare(b.nickname),
     );
 
-    const hallManagerIdentities = await prisma.userIdentity.findMany({
+    // 空关键词和初始化请求不查询厅管名单；每次最多读取21条身份以判断下一页。
+    const hallManagerIdentities = !searching || !keyword ? [] : await prisma.userIdentity.findMany({
       where: {
         status: "active",
         roleCode: "HALL_MANAGER",
+        OR: [
+          { user: { nickname: { contains: keyword } } },
+          { user: { phone: { contains: keyword } } },
+          { org: { name: { contains: keyword } } },
+        ],
         userId: { not: identity.userId },
-        scopePath: { startsWith: `${baseOrg.path}/` },
+        scopePath: { startsWith: `${recipientScope.path}/` },
         org: {
           is: {
             status: "active",
             orgType: "HALL",
-            path: { startsWith: `${baseOrg.path}/` },
+            path: { startsWith: `${recipientScope.path}/` },
           },
         },
       },
@@ -153,14 +165,16 @@ broadcastTaskRoutes.get(
         org: { select: { id: true, name: true } },
         user: { select: { nickname: true, phone: true } },
       },
-      orderBy: [{ grantedAt: "desc" }],
+      orderBy: [{ id: "asc" }],
+      skip: offset,
+      take: 21,
     });
 
     const hallManagerMap = new Map<
       string,
       { userId: string; nickname: string; phone: string; orgId: string; orgName: string }
     >();
-    for (const row of hallManagerIdentities) {
+    for (const row of hallManagerIdentities.slice(0, 20)) {
       if (!row.orgId || !row.org || hallManagerMap.has(row.userId)) continue;
       hallManagerMap.set(row.userId, {
         userId: row.userId,
@@ -177,6 +191,7 @@ broadcastTaskRoutes.get(
 
     return ok(res, {
       allowed: true,
+      allowedRecipientTypes: isTeamAdmin ? ["HALL_MANAGER"] : ["ANCHOR", "HALL_MANAGER"],
       redirectHint: null,
       operator: {
         identityId: identity.id,
@@ -188,13 +203,14 @@ broadcastTaskRoutes.get(
       },
       anchors,
       hallManagers,
+      nextOffset: hallManagerIdentities.length > 20 ? offset + 20 : null,
     });
   },
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /tasks/collaboration/broadcast
-// 创建群发主播任务
+// 创建群发任务（团队管理不可投放主播）
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.post(
   "/tasks/collaboration/broadcast",
@@ -202,19 +218,26 @@ broadcastTaskRoutes.post(
   async (req, res) => {
     const identity = req.identity;
     if (!identity) return fail(res, "UNAUTHORIZED", "请先登录", 401);
-    if (identity.roleCode !== "HALL_MANAGER") {
-      return fail(res, "FORBIDDEN", "群发主播功能仅厅管账号可使用", 403);
+    const isTeamAdmin = identity.roleCode === "TEAM_ADMIN";
+    if (!isTeamAdmin && identity.roleCode !== "HALL_MANAGER") {
+      return fail(res, "FORBIDDEN", "群发任务仅厅管或团队管理账号可使用", 403);
+    }
+
+    // 团队管理必须显式选择厅管；拒绝主播模式和旧客户端缺省主播参数。
+    if (isTeamAdmin && req.body?.recipientType !== "HALL_MANAGER") {
+      return fail(res, "FORBIDDEN", "团队管理仅可向当前基地内厅管投放任务，不可投放主播", 403);
     }
 
     const hallOrg = identity.orgId
       ? await prisma.orgUnit.findFirst({
-          where: { id: identity.orgId, orgType: "HALL", status: "active" },
+          where: { id: identity.orgId, orgType: isTeamAdmin ? "TEAM" : "HALL", status: "active" },
         })
       : null;
-    if (!hallOrg) return fail(res, "HALL_NOT_FOUND", "当前身份未关联有效厅组织", 400);
+    if (!hallOrg) return fail(res, "ORG_NOT_FOUND", "当前身份未关联有效团队或厅组织", 400);
 
     const baseOrg = await resolveBaseOrg(hallOrg.path);
     if (!baseOrg) return fail(res, "BASE_NOT_FOUND", "当前直播厅未关联有效基地", 400);
+    const recipientScope = baseOrg;
 
     const issuerUser = await prisma.user.findUnique({
       where: { id: identity.userId },
@@ -306,12 +329,12 @@ broadcastTaskRoutes.post(
             }
           : {
               userId: { in: selectedRecipientUserIds, not: identity.userId },
-              scopePath: { startsWith: `${baseOrg.path}/` },
+              scopePath: { startsWith: `${recipientScope.path}/` },
               org: {
                 is: {
                   status: "active",
                   orgType: "HALL" as const,
-                  path: { startsWith: `${baseOrg.path}/` },
+                  path: { startsWith: `${recipientScope.path}/` },
                 },
               },
             }),
@@ -377,7 +400,8 @@ broadcastTaskRoutes.post(
       dueAt,
       createdByUserId: identity.userId,
       createdByIdentityId: identity.id,
-      createdByName: issuerUser?.nickname ?? "厅管",
+      createdByName: issuerUser?.nickname ?? (isTeamAdmin ? "团队管理" : "厅管"),
+      // 兼容既有字段：记录发布者所属组织，团队管理时为团队。
       hallOrgId: hallOrg.id,
       hallOrgName: hallOrg.name,
       questions,
@@ -444,7 +468,7 @@ broadcastTaskRoutes.post(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /tasks/collaboration/broadcast/issued
-// 仅 HALL_MANAGER 可用；分页返回我发布的群发主播任务（不含答案，节省带宽）
+// 厅管和团队管理可用；分页返回我发布的群发任务（不含答案，节省带宽）
 // 查询参数：?page=1&pageSize=5
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.get(
@@ -454,8 +478,8 @@ broadcastTaskRoutes.get(
     const identity = req.identity;
     if (!identity) return fail(res, "UNAUTHORIZED", "请先登录", 401);
 
-    if (identity.roleCode !== "HALL_MANAGER") {
-      return fail(res, "FORBIDDEN", "群发主播看板仅厅管账号可使用", 403);
+    if (!["HALL_MANAGER", "TEAM_ADMIN"].includes(identity.roleCode)) {
+      return fail(res, "FORBIDDEN", "群发任务看板仅厅管或团队管理账号可使用", 403);
     }
 
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
@@ -468,7 +492,7 @@ broadcastTaskRoutes.get(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /tasks/collaboration/broadcast/issued/:taskId/anchor-answers
-// 仅 HALL_MANAGER 可用；懒加载指定任务的所有主播答案
+// 厅管和团队管理可用；懒加载自己发布任务的所有收件人答案
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.get(
   "/tasks/collaboration/broadcast/issued/:taskId/anchor-answers",
@@ -477,8 +501,8 @@ broadcastTaskRoutes.get(
     const identity = req.identity;
     if (!identity) return fail(res, "UNAUTHORIZED", "请先登录", 401);
 
-    if (identity.roleCode !== "HALL_MANAGER") {
-      return fail(res, "FORBIDDEN", "群发主播看板仅厅管账号可使用", 403);
+    if (!["HALL_MANAGER", "TEAM_ADMIN"].includes(identity.roleCode)) {
+      return fail(res, "FORBIDDEN", "群发任务看板仅厅管或团队管理账号可使用", 403);
     }
 
     const { taskId } = req.params;

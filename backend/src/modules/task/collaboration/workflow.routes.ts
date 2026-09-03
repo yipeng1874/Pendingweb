@@ -483,6 +483,7 @@ workflowTaskRoutes.post(
         STEP_NOT_FOUND: "节点不存在",
         FORBIDDEN: "您无权提交此节点",
         STEP_NOT_ACTIVE: "该节点不处于可提交状态",
+        STEP_ALREADY_COMPLETED: "该节点已完成",
       };
       return fail(res, result.error ?? "SUBMIT_FAILED", errorMessages[result.error ?? ""] ?? "提交失败", 400);
     }

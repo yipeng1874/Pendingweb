@@ -77,10 +77,45 @@ function RecipientList({
 }) {
   const isAnchorMode = recipientType === "ANCHOR";
   const recipientLabel = isAnchorMode ? "主播" : "厅管";
-  const allSelected = recipients.length > 0 && recipients.every((item) => selected.has(item.userId));
   const [search, setSearch] = useState("");
+  const [results, setResults] = useState<BroadcastHallManagerOption[]>([]);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const generation = useRef(0);
+  const knownRecipients = useRef(new Map<string, BroadcastHallManagerOption>());
+  const keyword = search.trim();
+
+  async function loadResults(offset: number, version: number) {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await broadcastTaskApi.searchHallManagers(keyword, offset);
+      if (generation.current !== version) return;
+      const rows = data.hallManagers ?? [];
+      rows.forEach((row) => knownRecipients.current.set(row.userId, row));
+      setResults((previous) => Array.from(new Map((offset ? [...previous, ...rows] : rows).map((row) => [row.userId, row])).values()));
+      setNextOffset(data.nextOffset ?? null);
+    } catch (err) {
+      if (generation.current === version) setError(err instanceof Error ? err.message : "搜索失败，请重试");
+    } finally {
+      if (generation.current === version) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const version = ++generation.current;
+    setResults([]);
+    setNextOffset(null);
+    setError("");
+    setLoading(!isAnchorMode && Boolean(keyword));
+    if (isAnchorMode || !keyword) return;
+    const timer = window.setTimeout(() => void loadResults(0, version), 350);
+    return () => { window.clearTimeout(timer); generation.current++; };
+  }, [keyword, isAnchorMode]);
 
   const filtered = useMemo(() => {
+    if (!isAnchorMode) return results;
     const kw = search.trim().toLowerCase();
     if (!kw) return recipients;
     return recipients.filter((item) => {
@@ -93,17 +128,18 @@ function RecipientList({
         (anchor.anchorNickname ?? "").toLowerCase().includes(kw)
       );
     });
-  }, [recipients, search]);
+  }, [recipients, search, isAnchorMode, results]);
+  const allSelected = filtered.length > 0 && filtered.every((item) => selected.has(item.userId));
 
   function toggleAll() {
     if (allSelected) {
       // 取消全选（只影响当前收件人类型）
       const next = new Set(selected);
-      recipients.forEach((item) => next.delete(item.userId));
+      filtered.forEach((item) => next.delete(item.userId));
       onChange(next);
     } else {
       const next = new Set(selected);
-      recipients.forEach((item) => next.add(item.userId));
+      filtered.forEach((item) => next.add(item.userId));
       onChange(next);
     }
   }
@@ -121,6 +157,7 @@ function RecipientList({
       <div className="flex items-center gap-3">
         <input
           value={search}
+          maxLength={80}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none transition focus:border-feishu-blue focus:ring-2 focus:ring-feishu-blue/10"
           placeholder={isAnchorMode ? "搜索主播昵称、手机号、抖音号…" : "搜索厅管姓名、手机号、所属厅…"}
@@ -128,13 +165,14 @@ function RecipientList({
         <button
           type="button"
           onClick={toggleAll}
+          disabled={loading || filtered.length === 0}
           className={`shrink-0 rounded-2xl border-2 px-4 py-2 text-sm font-semibold transition ${
             allSelected
               ? "border-feishu-blue bg-feishu-pale text-feishu-blue"
               : "border-slate-200 bg-white text-slate-600 hover:border-feishu-blue/50"
           }`}
         >
-          {allSelected ? "取消全选" : "全选"}
+          {allSelected ? "取消当前结果" : "全选当前结果"}
         </button>
       </div>
 
@@ -143,17 +181,31 @@ function RecipientList({
         <div className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
           <CheckCircle2 size={13} />
           已选 {selected.size} 位{recipientLabel}
+          <button type="button" onClick={() => onChange(new Set())}>清空已选</button>
         </div>
       )}
 
+      {!isAnchorMode && selected.size > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Array.from(selected).map((id) => (
+            <button type="button" key={id} onClick={() => toggle(id)} className="rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-700">
+              {knownRecipients.current.get(id)?.nickname ?? "已选厅管"} ×
+            </button>
+          ))}
+        </div>
+      )}
+      {error && <div className="text-sm text-red-600">{error} <button type="button" onClick={() => void loadResults(nextOffset ?? 0, generation.current)}>重试</button></div>}
+      {loading && <p className="text-sm text-slate-400">正在搜索…</p>}
       {/* 收件人列表 */}
-      {recipients.length === 0 ? (
+      {!isAnchorMode && !keyword ? (
+        <p className="py-8 text-center text-sm text-slate-400">输入姓名、手机号或所属厅后搜索，不预加载名单</p>
+      ) : isAnchorMode && recipients.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
-          {isAnchorMode ? "本厅下暂无 active 主播身份" : "当前基地暂无其他 active 厅管"}
+          {isAnchorMode ? "本厅下暂无 active 主播身份" : "当前投放范围内暂无其他有效厅管"}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
-          未找到匹配的{recipientLabel}
+          {loading ? "正在加载结果" : error ? "搜索未成功，请重试" : `未找到匹配的${recipientLabel}`}
         </div>
       ) : (
         <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200 divide-y divide-slate-100">
@@ -191,6 +243,9 @@ function RecipientList({
             );
           })}
         </div>
+      )}
+      {!isAnchorMode && nextOffset !== null && (
+        <button type="button" disabled={loading} onClick={() => void loadResults(nextOffset, generation.current)} className="text-sm text-blue-600">加载更多匹配结果</button>
       )}
     </div>
   );
@@ -370,7 +425,7 @@ function PreviewPanel({
   title: string;
   dueAt: string;
   selectedCount: number;
-  totalCount: number;
+  totalCount?: number;
   recipientLabel: string;
   questionCount: number;
   hallOrgName: string | null;
@@ -406,7 +461,7 @@ function PreviewPanel({
         <div className="mt-4 space-y-2">
           <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${selectedCount > 0 ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-400"}`}>
             <Users size={13} />
-            已选{recipientLabel}：{selectedCount} / {totalCount} 人
+            已选{recipientLabel}：{selectedCount}{totalCount === undefined ? "" : ` / ${totalCount}`} 人
           </div>
           <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${questionCount > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-400"}`}>
             <CheckCircle2 size={13} />
@@ -478,6 +533,7 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
       try {
         const data = await broadcastTaskApi.bootstrap();
         setBootstrap(data);
+        if (data.operator.roleCode === "TEAM_ADMIN") setRecipientType("HALL_MANAGER");
       } catch (err) {
         setPageError(err instanceof Error ? err.message : "加载失败");
       } finally {
@@ -486,14 +542,17 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
     })();
   }, []);
 
+  const isTeamAdmin = bootstrap?.operator.roleCode === "TEAM_ADMIN";
+  const allowedRecipientTypes = bootstrap?.allowedRecipientTypes ?? (isTeamAdmin ? ["HALL_MANAGER"] : ["ANCHOR", "HALL_MANAGER"]);
   const recipients: BroadcastRecipientOption[] = recipientType === "ANCHOR"
     ? (bootstrap?.anchors ?? [])
     : recipientType === "HALL_MANAGER"
       ? (bootstrap?.hallManagers ?? [])
       : [];
-  const recipientLabel = recipientType === "HALL_MANAGER" ? "其他厅管" : "主播";
+  const recipientLabel = recipientType === "HALL_MANAGER" ? (isTeamAdmin ? "基地内厅管" : "其他厅管") : "主播";
 
   function chooseRecipientType(next: BroadcastRecipientType) {
+    if (!allowedRecipientTypes.includes(next)) return;
     if (next === recipientType) return;
     setRecipientType(next);
     setSelectedRecipientIds(new Set());
@@ -581,7 +640,7 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-slate-900">群发任务</h1>
-            <p className="text-xs text-slate-400">向本厅主播或基地内其他厅管批量发布任务</p>
+            <p className="text-xs text-slate-400">{isTeamAdmin ? "可向同一基地内各团队厅管批量发布任务，不支持投放主播" : "向本厅主播或基地内其他厅管批量发布任务"}</p>
           </div>
         </div>
         {bootstrap?.allowed && bootstrap.operator.orgName && (
@@ -707,8 +766,8 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {([
                   { value: "ANCHOR" as const, title: "发送本厅主播", desc: `本厅共 ${bootstrap.anchors.length} 人` },
-                  { value: "HALL_MANAGER" as const, title: "发送其他厅管", desc: `${bootstrap.operator.baseOrgName ?? "当前基地"}内共 ${bootstrap.hallManagers?.length ?? 0} 人` },
-                ]).map((option) => {
+                  { value: "HALL_MANAGER" as const, title: isTeamAdmin ? "发送基地内厅管" : "发送其他厅管", desc: `${bootstrap.operator.baseOrgName ?? "当前基地"}内按关键词搜索` },
+                ]).filter((option) => allowedRecipientTypes.includes(option.value)).map((option) => {
                   const active = recipientType === option.value;
                   return (
                     <button
@@ -738,10 +797,10 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
                   <div>
                     <h2 className="text-base font-semibold text-slate-900 text-left">
                       选择{recipientLabel}
-                      <span className="ml-2 text-sm font-normal text-slate-400">（共 {recipients.length} 人）</span>
+                      <span className="ml-2 text-sm font-normal text-slate-400">{recipientType === "ANCHOR" ? `（共 ${recipients.length} 人）` : "（按需搜索）"}</span>
                     </h2>
                     <p className="text-xs text-slate-400 text-left mt-0.5">
-                      {recipientType === "ANCHOR" ? "仅展示本厅 active 主播身份" : "仅展示当前基地内其他 active 厅管，已排除本人"}
+                      {recipientType === "ANCHOR" ? "仅展示本厅 active 主播身份" : "展示当前基地内各团队有效厅管身份，已排除本人"}
                     </p>
                   </div>
                   {anchorExpanded ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
@@ -749,6 +808,7 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
 
                 {anchorExpanded && (
                   <RecipientList
+                    key={recipientType}
                     recipients={recipients}
                     recipientType={recipientType}
                     selected={selectedRecipientIds}
@@ -769,7 +829,7 @@ export function BroadcastAnchorPage({ onBack }: { onBack: () => void }) {
               title={title}
               dueAt={dueAt}
               selectedCount={selectedRecipientIds.size}
-              totalCount={recipients.length}
+              totalCount={recipientType === "ANCHOR" ? recipients.length : undefined}
               recipientLabel={recipientLabel}
               questionCount={questions.length}
               hallOrgName={bootstrap.operator.orgName}
