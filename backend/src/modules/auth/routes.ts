@@ -395,6 +395,11 @@ function sha1(str: string) {
 }
 
 authRoutes.get("/feishu/jssdk-config", async (req, res) => {
+  // JS-SDK signatures contain a short-lived timestamp. Never allow browsers,
+  // embedded WebViews, proxies, or CDNs to reuse a previous response.
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   const pageUrl = typeof req.query.url === "string" ? req.query.url : "";
   const configId = typeof req.query.configId === "string" ? req.query.configId : "";
   if (!pageUrl) return fail(res, "URL_REQUIRED", "缺少 url 参数", 400);

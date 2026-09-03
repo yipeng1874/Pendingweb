@@ -117,7 +117,9 @@ async function initH5sdk(appId: string, configId: string): Promise<void> {
       timestamp,
       nonceStr,
       signature,
-      jsApiList: ["authorize"],
+      // Mobile webviews prefer requestAccess and retain authorize as a
+      // compatibility fallback, so declare both APIs during SDK config.
+      jsApiList: ["requestAccess", "authorize"],
       onSuccess: () => {
         // config 成功后等 ready
         window.h5sdk!.ready(resolve);

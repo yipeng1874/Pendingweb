@@ -50,38 +50,10 @@ function waitForFeishuSdk() {
   });
 }
 
-async function configureH5Sdk(appId: string, configId: string) {
-  if (!window.h5sdk) return;
-  const pageUrl = window.location.href.split("#")[0];
-  const response = await fetch(`/api/auth/feishu/jssdk-config?url=${encodeURIComponent(pageUrl)}&configId=${encodeURIComponent(configId)}`);
-  const result = await response.json() as {
-    success: boolean;
-    data?: { timestamp: number; nonceStr: string; signature: string };
-    error?: { message?: string };
-  };
-  if (!result.success || !result.data) throw new Error(result.error?.message ?? "获取飞书鉴权配置失败");
-
-  await new Promise<void>((resolve, reject) => {
-    window.h5sdk!.error((error) => reject(new Error(`飞书 H5 鉴权失败：${JSON.stringify(error)}`)));
-    window.h5sdk!.config({
-      appId,
-      timestamp: result.data!.timestamp,
-      nonceStr: result.data!.nonceStr,
-      signature: result.data!.signature,
-      jsApiList: ["authorize"],
-      onSuccess: () => window.h5sdk!.ready(resolve),
-      onFail: (error) => reject(new Error(`飞书 H5 配置失败：${JSON.stringify(error)}`)),
-    });
-  });
-}
-
-export async function getFeishuAuthCode(appId: string, configId: string) {
+export async function getFeishuAuthCode(appId: string, _configId: string) {
   if (!isInFeishuApp()) throw new Error("当前不在飞书客户端内");
   await waitForFeishuSdk();
-  const isDesktop = /Electron/i.test(window.navigator.userAgent);
-  if (!isDesktop) await configureH5Sdk(appId, configId);
-
-  return new Promise<string>((resolve, reject) => {
+  const requestCode = () => new Promise<string>((resolve, reject) => {
     if (window.tt?.requestAccess) {
       window.tt.requestAccess({
         scopeList: [],
@@ -102,4 +74,9 @@ export async function getFeishuAuthCode(appId: string, configId: string) {
     }
     reject(new Error("当前飞书版本不支持免登，请升级飞书后重试"));
   });
+
+  // Feishu's current in-client web SSO flow obtains the temporary code through
+  // requestAccess directly. Do not replace its original error with a legacy
+  // H5 SDK signature error; the caller needs the real errno for diagnosis.
+  return requestCode();
 }
