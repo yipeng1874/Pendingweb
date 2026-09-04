@@ -7,7 +7,7 @@ import { authRequired } from "../../../middleware/authRequired.js";
 import { identityRequired } from "../../../middleware/identityRequired.js";
 import { prisma } from "../../../shared/prisma.js";
 import { fail, ok } from "../../../shared/response.js";
-import { createWorkflowTask, getWorkflowTasksByIssuer, getWorkflowTaskById, getWorkflowTasksForUser, listWorkflowTasks, saveStepQuestionAnswer, submitWorkflowStep } from "./workflow.store.js";
+import { createWorkflowTask, getWorkflowTasksByIssuer, getWorkflowTasksByIssuerPage, getWorkflowTaskById, getWorkflowTasksForUser, listWorkflowTasks, saveStepQuestionAnswer, submitWorkflowStep } from "./workflow.store.js";
 import type { WorkflowStepAnswer } from "./workflow.store.js";
 
 // ── 流转任务附件上传（支持图片 + 常见文档/视频） ──────────────────────────────
@@ -505,6 +505,16 @@ workflowTaskRoutes.get(
     return ok(res, tasks);
   }
 );
+
+// H5 按状态和游标分页；PC 原有 issued 接口保持兼容。
+workflowTaskRoutes.get("/tasks/collaboration/workflows/issued-page", identityRequired, async (req, res) => {
+  const identity = req.identity;
+  if (!identity || !canManageWorkflow(identity.roleCode)) return fail(res, "FORBIDDEN", "当前身份无权查看协同任务看板", 403);
+  const status = req.query.status ?? "in_progress";
+  if (status !== "in_progress" && status !== "completed" && status !== "ended") return fail(res, "INVALID_STATUS", "无效的任务状态", 400);
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  return ok(res, await getWorkflowTasksByIssuerPage(identity.userId, status, cursor));
+});
 
 // GET /tasks/collaboration/workflows/:taskId — 发布者查单个任务详情（含全部答案）
 // 鉴权原则：谁发布谁管理——只有任务的发布者（createdByUserId）才能查看详情；DEV_ADMIN 可查全部

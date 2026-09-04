@@ -1,4 +1,5 @@
 import { prisma } from "../../../shared/prisma.js";
+import { withHallRecordLock } from "./hall-record-lock.js";
 import {
   formatBeijingDate,
   makeBeijingDate,
@@ -781,10 +782,62 @@ function canReviewHallPath(reviewerIdentity: any, hallPath?: string | null) {
 }
 
 export const HallDailyLeaveService = {
+  async batch(data: { recordIds: string[]; taskDate: string; action: "approve" | "cancel"; reason: string; operatorUserId: string; identity: any }) {
+    ensureHallDailyRole(data.identity?.roleCode);
+    if (data.taskDate !== formatBeijingDate(new Date())) throw new Error("HALL_TASK_LEAVE_TODAY_ONLY");
+    const reason = data.reason.trim();
+    if (!reason || reason.length > 1000) throw new Error("HALL_TASK_LEAVE_REASON_INVALID");
+    const ids = [...new Set(data.recordIds)];
+    if (!ids.length || ids.length > 100) throw new Error("HALL_TASK_LEAVE_BATCH_INVALID");
+    const records = await prisma.hallTaskRecord.findMany({ where: { id: { in: ids } }, include: { hallOrg: true } });
+    // Reject the entire request before any writes if any selected record is unauthorized.
+    if (records.length !== ids.length || records.some((r) => r.recordDate !== data.taskDate || r.hallOrg.status !== "active" || !canReviewHallPath(data.identity, r.hallOrg.path))) {
+      throw new Error("HALL_TASK_LEAVE_REVIEW_FORBIDDEN");
+    }
+    if (new Set(records.map((r) => r.hallOrgId)).size !== records.length) throw new Error("HALL_TASK_LEAVE_BATCH_INVALID");
+    const results: Array<{ recordId: string; hallName: string; status: string }> = [];
+    for (const selected of records) {
+      try {
+        const status = await withHallRecordLock(selected.id, async (tx) => {
+          if (data.taskDate !== formatBeijingDate(new Date())) throw new Error("HALL_TASK_LEAVE_TODAY_ONLY");
+          const record = await tx.hallTaskRecord.findUniqueOrThrow({ where: { id: selected.id }, include: { hallOrg: true, leaveRequests: true } });
+          if (!canReviewHallPath(data.identity, record.hallOrg.path) || record.hallOrg.status !== "active") throw new Error("HALL_TASK_LEAVE_REVIEW_FORBIDDEN");
+          const candidates = await tx.hallTaskRecord.findMany({ where: { hallOrgId: record.hallOrgId, recordDate: data.taskDate, assignment: { status: { in: ["active", "ended"] } } }, include: { assignment: { select: { status: true } } }, orderBy: { createdAt: "desc" } });
+          const preferred = candidates.find((r) => r.assignment.status === "active") ?? candidates[0];
+          if (preferred?.id !== record.id) return "stale_record";
+          const active = record.leaveRequests.filter((l) => l.status === "approved" || l.status === "pending");
+          const audit = `[管理批量${data.action === "approve" ? "批准" : "取消"} ${new Date().toISOString()} 操作人:${data.operatorUserId}] ${reason}`;
+          if (data.action === "cancel") {
+            if (!active.length) return "not_enabled";
+            for (const leave of active) await tx.hallTaskLeaveRequest.update({ where: { id: leave.id }, data: { status: "cancelled", reviewComment: [leave.reviewComment, audit].filter(Boolean).join("\n") } });
+            return "cancelled";
+          }
+          if (record.status === "submitted") return "completed";
+          if (active.some((l) => l.status === "approved")) return "already_approved";
+          const pending = active.find((l) => l.status === "pending");
+          if (pending) {
+            await tx.hallTaskLeaveRequest.update({ where: { id: pending.id }, data: { status: "approved", reviewedBy: data.operatorUserId, reviewedAt: new Date(), reviewComment: [pending.reviewComment, audit].filter(Boolean).join("\n") } });
+          } else {
+            await tx.hallTaskLeaveRequest.create({ data: { taskRecordId: record.id, applicantUserId: data.operatorUserId, applicantName: "管理直接批准", reason, status: "approved", reviewedBy: data.operatorUserId, reviewedAt: new Date(), reviewComment: audit } });
+          }
+          return "approved";
+        });
+        results.push({ recordId: selected.id, hallName: selected.hallOrg.name, status });
+      } catch (error) {
+        console.error("[hall-leave-batch]", { recordId: selected.id, operatorUserId: data.operatorUserId, action: data.action, error });
+        results.push({ recordId: selected.id, hallName: selected.hallOrg.name, status: "failed" });
+      }
+    }
+    return { results };
+  },
   async apply(data: { recordId: string; userId: string; reason: string }) {
     const reason = data.reason.trim();
     if (!reason) throw new Error("HALL_TASK_LEAVE_REASON_REQUIRED");
     const { record, identity } = await ensureHallManagerOwnsRecord(data.recordId, data.userId);
+    return withHallRecordLock(record.id, async (prisma) => {
+    const current = await prisma.hallTaskRecord.findUniqueOrThrow({ where: { id: record.id } });
+    if (current.status === "submitted") throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
+    if (await prisma.hallTaskLeaveRequest.findFirst({ where: { taskRecordId: record.id, status: "approved" } })) throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
     if (record.status === "submitted") throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
     const now = new Date();
     if (isDailyRecordCollectionClosed(record.recordDate, now)) throw new Error("HALL_TASK_SUPPLEMENT_DEADLINE_PASSED");
@@ -803,6 +856,7 @@ export const HallDailyLeaveService = {
         reason,
       },
     });
+    });
   },
 
   async cancel(leaveRequestId: string, userId: string) {
@@ -811,11 +865,15 @@ export const HallDailyLeaveService = {
       include: { taskRecord: true },
     });
     if (!leave || leave.applicantUserId !== userId) throw new Error("HALL_TASK_LEAVE_REQUEST_NOT_FOUND");
+    return withHallRecordLock(leave.taskRecordId, async (prisma) => {
+    const current = await prisma.hallTaskLeaveRequest.findUniqueOrThrow({ where: { id: leaveRequestId } });
+    if (current.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
     if (leave.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
     if (isDailyRecordCollectionClosed(leave.taskRecord.recordDate, new Date())) throw new Error("HALL_TASK_SUPPLEMENT_DEADLINE_PASSED");
     return prisma.hallTaskLeaveRequest.update({
       where: { id: leaveRequestId },
       data: { status: "cancelled" },
+    });
     });
   },
 
@@ -832,6 +890,10 @@ export const HallDailyLeaveService = {
       include: { taskRecord: { include: { hallOrg: { select: { path: true } } } } },
     });
     if (!leave) throw new Error("HALL_TASK_LEAVE_REQUEST_NOT_FOUND");
+    return withHallRecordLock(leave.taskRecordId, async (prisma) => {
+    const current = await prisma.hallTaskLeaveRequest.findUniqueOrThrow({ where: { id: data.leaveRequestId }, include: { taskRecord: true } });
+    if (current.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
+    if (data.action === "approved" && current.taskRecord.status === "submitted") throw new Error("HALL_TASK_LEAVE_NOT_ALLOWED");
     if (leave.status !== "pending") throw new Error("HALL_TASK_LEAVE_NOT_PENDING");
     if (!canReviewHallPath(data.reviewerIdentity, leave.taskRecord.hallOrg?.path)) {
       throw new Error("HALL_TASK_LEAVE_REVIEW_FORBIDDEN");
@@ -844,6 +906,7 @@ export const HallDailyLeaveService = {
         reviewedAt: new Date(),
         reviewComment: data.comment?.trim() || null,
       },
+    });
     });
   },
 };
@@ -928,6 +991,7 @@ export const HallDailyRecordService = {
     isLinkConfirmed?: boolean;
     done: boolean;
   }) {
+    return withHallRecordLock(data.taskRecordId, async (prisma) => {
     const record = await prisma.hallTaskRecord.findUnique({
       where: { id: data.taskRecordId },
       select: { id: true, hallOrgId: true, status: true, recordDate: true, totalItems: true },
@@ -996,12 +1060,14 @@ export const HallDailyRecordService = {
     });
 
     return itemRecord;
+    });
   },
 
   /**
    * 整条 Record 提交
    */
   async submitRecord(recordId: string, userId: string) {
+    return withHallRecordLock(recordId, async (prisma) => {
     const record = await prisma.hallTaskRecord.findUnique({
       where: { id: recordId },
       include: {
@@ -1038,6 +1104,7 @@ export const HallDailyRecordService = {
     return prisma.hallTaskRecord.update({
       where: { id: recordId },
       data: { status: "submitted", submittedAt: now, submittedBy: userId },
+    });
     });
   },
 };

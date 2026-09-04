@@ -1,10 +1,12 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { RefreshCcw, ArrowLeft, CloudOff } from "lucide-react";
 
-export class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+export class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean; resourceFailed: boolean }> {
+  state = { failed: false, resourceFailed: false };
 
-  static getDerivedStateFromError() {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { failed: true, resourceFailed: /dynamically imported module|loading chunk|chunkloaderror|importing a module script|module script failed|preload css/i.test(message) };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -15,13 +17,14 @@ export class PageErrorBoundary extends Component<{ children: ReactNode }, { fail
     if (!this.state.failed) return this.props.children;
     return (
       <div className="page-shell">
-        <main className="mobile-page section" style={{ paddingTop: 60 }}>
-          <div className="card detail-block" role="alert">
-            <h1 className="card-title">页面暂时无法显示</h1>
-            <p className="card-subtitle">请重新加载页面后再试。</p>
-            <div className="action-row">
-              <button className="btn btn-primary" onClick={() => window.location.reload()}>重新加载</button>
-              <a className="btn btn-ghost" href="/todos">返回我的待办</a>
+        <main className="mobile-page page-recovery">
+          <div className="page-recovery-card" role="alert">
+            <div className="page-recovery-icon" aria-hidden="true">{this.state.resourceFailed ? <RefreshCcw size={28}/> : <CloudOff size={28}/>}</div>
+            <h1>{this.state.resourceFailed ? "页面需要重新载入" : "页面暂时未能打开"}</h1>
+            <p>{this.state.resourceFailed ? "可能是页面版本已更新，或网络暂时中断。请重新载入后继续。" : "请重新载入试试，也可以先返回我的待办。"}</p>
+            <div className="page-recovery-actions">
+              <button className="btn btn-primary" onClick={() => window.location.reload()}><RefreshCcw size={16}/>重新载入</button>
+              <a className="page-recovery-back" href="/todos"><ArrowLeft size={15}/>返回我的待办</a>
             </div>
           </div>
         </main>

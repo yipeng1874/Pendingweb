@@ -5,6 +5,10 @@ import { IdentityRequiredRoute } from "./components/IdentityRequiredRoute";
 
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const IdentityPage = lazy(() => import("./pages/IdentityPage").then((m) => ({ default: m.IdentityPage })));
+const TemporaryPublishPage = lazy(() => import("./pages/TemporaryPublishPage").then(m => ({ default: m.TemporaryPublishPage })));
+const PublishTypePage = lazy(() => import("./pages/PublishTypePage").then(m => ({ default: m.PublishTypePage })));
+const BroadcastPublishPage = lazy(() => import("./pages/BroadcastPublishPage").then(m => ({ default: m.BroadcastPublishPage })));
+const WorkflowPublishPage = lazy(() => import("./pages/WorkflowPublishPage").then((m) => ({ default: m.WorkflowPublishPage })));
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const TodoListPage = lazy(() => import("./pages/TodoListPage").then((m) => ({ default: m.TodoListPage })));
 const TodoDetailPage = lazy(() => import("./pages/TodoDetailPage").then((m) => ({ default: m.TodoDetailPage })));
@@ -22,6 +26,10 @@ export function App() {
         <Route path="/identity" element={<ProtectedRoute><IdentityPage /></ProtectedRoute>} />
         <Route path="/dashboard" element={<IdentityRequiredRoute><DashboardPage /></IdentityRequiredRoute>} />
         <Route path="/todos" element={<IdentityRequiredRoute><TodoListPage /></IdentityRequiredRoute>} />
+        <Route path="/publish" element={<IdentityRequiredRoute><PublishTypePage /></IdentityRequiredRoute>} />
+        <Route path="/publish/workflow" element={<IdentityRequiredRoute><WorkflowPublishPage /></IdentityRequiredRoute>} />
+        <Route path="/publish/temporary" element={<IdentityRequiredRoute><TemporaryPublishPage /></IdentityRequiredRoute>} />
+        <Route path="/publish/broadcast" element={<IdentityRequiredRoute><BroadcastPublishPage /></IdentityRequiredRoute>} />
         <Route path="/todos/hall/:id" element={<IdentityRequiredRoute><TodoDetailPage kind="hall" /></IdentityRequiredRoute>} />
         <Route path="/todos/:id" element={<IdentityRequiredRoute><TodoDetailPage /></IdentityRequiredRoute>} />
         <Route path="/reminders" element={<IdentityRequiredRoute><ReminderPage /></IdentityRequiredRoute>} />

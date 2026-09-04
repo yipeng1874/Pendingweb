@@ -8,6 +8,7 @@ import { identityRequired } from "../../../middleware/identityRequired.js";
 import { permissionRequired } from "../../../middleware/permissionRequired.js";
 import { prisma } from "../../../shared/prisma.js";
 import { fail, ok } from "../../../shared/response.js";
+import { withHallRecordLock } from "../hall-daily/hall-record-lock.js";
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const MAX_SIZE = 1 * 1024 * 1024;
@@ -171,6 +172,13 @@ uploadRoutes.post(
     const uploadsIdx = relPath.indexOf("uploads/");
     const fileUrl = "/" + relPath.slice(uploadsIdx);
 
+    return withHallRecordLock(itemRecord.taskRecordId, async (prisma) => {
+    const record = await prisma.hallTaskRecord.findUniqueOrThrow({ where: { id: itemRecord.taskRecordId }, include: { leaveRequests: { where: { status: "approved" } } } });
+    const owner = await prisma.userIdentity.findFirst({ where: { userId: req.userId, roleCode: "HALL_MANAGER", status: "active", orgId: record.hallOrgId } });
+    if (!owner || record.status === "submitted" || record.leaveRequests.length) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return fail(res, "HALL_TASK_LOCKED", "无权修改或任务已完成、已批准请假，不能上传附件", 409);
+    }
     const attachment = await prisma.hallTaskItemAttachment.create({
       data: {
         hallTaskItemRecordId,
@@ -183,6 +191,10 @@ uploadRoutes.post(
     });
 
     return ok(res, attachment);
+    }).catch((error) => {
+      console.error("[hall-upload]", error);
+      return fail(res, "UPLOAD_ERROR", "上传失败，请稍后重试", 500);
+    });
   }
 );
 
@@ -190,13 +202,20 @@ uploadRoutes.delete(
   "/tasks/hall-daily/attachments/:id",
   permissionRequired("task:record:submit"),
   async (req: any, res: any) => {
-    const attachment = await prisma.hallTaskItemAttachment.findUnique({ where: { id: req.params.id } });
+    const attachment = await prisma.hallTaskItemAttachment.findUnique({ where: { id: req.params.id }, include: { hallTaskItemRecord: true } });
     if (!attachment) return fail(res, "ATTACHMENT_NOT_FOUND", "附件不存在", 404);
     if (attachment.uploadedBy !== req.userId) return fail(res, "FORBIDDEN", "无权删除该附件", 403);
 
+    return withHallRecordLock(attachment.hallTaskItemRecord.taskRecordId, async (prisma) => {
+    const record = await prisma.hallTaskRecord.findUniqueOrThrow({ where: { id: attachment.hallTaskItemRecord.taskRecordId }, include: { leaveRequests: { where: { status: "approved" } } } });
+    if (record.status === "submitted" || record.leaveRequests.length) return fail(res, "HALL_TASK_LOCKED", "任务已完成或已批准请假，不能删除附件", 409);
     const filePath = path.join(process.cwd(), attachment.fileUrl);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await prisma.hallTaskItemAttachment.delete({ where: { id: req.params.id } });
     return ok(res, { deleted: true });
+    }).catch((error) => {
+      console.error("[hall-attachment-delete]", error);
+      return fail(res, "DELETE_ERROR", "删除失败，请稍后重试", 500);
+    });
   }
 );

@@ -1634,7 +1634,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
         total: teamTotal,
         completed: stat.completed,
         exemptions: stat.exemptions,
-        completionRate: teamTotal > 0 ? Math.round((stat.completed / teamTotal) * 100) : 0,
+        completionRate: calculateCompletionRate(stat.completed, teamTotal, stat.exemptions),
         exemptionRate: teamTotal > 0 ? Math.round((stat.exemptions / teamTotal) * 100) : 0,
       };
     })
@@ -1649,7 +1649,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
       total,
       completed: totalCompleted,
       exemptions: totalExemptions,
-      completionRate: total > 0 ? Math.round((totalCompleted / total) * 100) : 0,
+      completionRate: calculateCompletionRate(totalCompleted, total, totalExemptions),
       exemptionRate: total > 0 ? Math.round((totalExemptions / total) * 100) : 0,
     },
     teams,
@@ -2600,7 +2600,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
     }
 
     // 完成率 = 已提交 + 已请假 / 参与任务的厅（分母不排除 noRecord，保留透明度）
-    const completionRate = assignedHalls > 0 ? Math.round(((submittedCount + leaveApprovedCount) / assignedHalls) * 100) : 0;
+    const completionRate = calculateCompletionRate(submittedCount, assignedHalls, leaveApprovedCount);
 
     return {
       teamOrgId: team.id,
@@ -2628,7 +2628,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
   const baseSubmittedHalls = teamSummaries.reduce((s, t) => s + t.submittedCount, 0);
   const baseLeaveApprovedHalls = teamSummaries.reduce((s, t) => s + t.leaveApprovedCount, 0);
   const baseLeavePendingHalls = teamSummaries.reduce((s, t) => s + t.leavePendingCount, 0);
-  const baseCompletionRate = baseAssignedHalls > 0 ? Math.round(((baseSubmittedHalls + baseLeaveApprovedHalls) / baseAssignedHalls) * 100) : 0;
+  const baseCompletionRate = calculateCompletionRate(baseSubmittedHalls, baseAssignedHalls, baseLeaveApprovedHalls);
 
   return ok(res, {
     taskDate,

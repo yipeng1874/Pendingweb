@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Building2, ChevronDown, RefreshCcw, TrendingUp, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Building2, ChevronDown, ChevronLeft, ChevronRight, RefreshCcw, TrendingUp, Users } from "lucide-react";
 import { MobileBottomNav } from "../components/MobileBottomNav";
 import { taskApi } from "../services/task";
 import { useAuthStore } from "../stores/auth";
@@ -17,6 +17,30 @@ const emptyRanges = (): RangeMap => ({ yesterday: null, last3: null, last7: null
 const rangeLabels: Record<RangeKey, string> = { yesterday: "昨天", last3: "近3天", last7: "近7天", thisMonth: "本月" };
 const rangeKeys: RangeKey[] = ["yesterday", "last3", "last7", "thisMonth"];
 const probationOptions = [0, 5, 10, 15, 20, 25, 30];
+
+function AnchorStatCarousel({ children }: { children: ReactNode }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const update = () => setEdges({ left: element.scrollLeft > 2, right: element.scrollWidth - element.clientWidth - element.scrollLeft > 2 });
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => { element.removeEventListener("scroll", update); observer.disconnect(); };
+  }, []);
+  function slide(direction: number) {
+    const element = track.current;
+    if (element) element.scrollBy({ left: direction * (element.clientWidth + 8) / 2, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  return <div className="anchor-stat-carousel" role="region" aria-label="主播数量统计，左右滑动查看更多">
+    <button type="button" className="anchor-stat-arrow" disabled={!edges.left} aria-label="查看左侧统计" onClick={() => slide(-1)}><ChevronLeft size={18}/></button>
+    <div ref={track} className="anchor-stat-grid">{children}</div>
+    <button type="button" className="anchor-stat-arrow" disabled={!edges.right} aria-label="查看右侧统计" onClick={() => slide(1)}><ChevronRight size={18}/></button>
+  </div>;
+}
 
 function beijingDate(offsetDays = 0) {
   const now = new Date(Date.now() + 8 * 60 * 60 * 1000 + offsetDays * 86400000);
@@ -309,11 +333,11 @@ export function DashboardPage() {
 
         <section className="card simple-module anchor-summary-module">
           <div className="simple-module-title anchor-summary-title"><div><Users size={17} /><div><h2><span>{anchorTrend?.baseOrgName ? `${anchorTrend.baseOrgName}${anchorTrend.teamOrgName ? `-${anchorTrend.teamOrgName}` : ""} · 主播数量统计` : "基地主播数量统计"}</span><small>{anchorTrend?.latest ? `数据 ${anchorTrend.latest.recordDate}` : "主播规模概览"}</small></h2></div></div><select value={probationDays} onChange={(event) => { setProbationDays(Number(event.target.value)); setAnchorDetailMode(null); }} aria-label="选择试用期">{probationOptions.map((days) => <option key={days} value={days}>{days ? `${days} 天试用期` : "无试用期"}</option>)}</select></div>
-          {anchorError ? <div className="dashboard-empty anchor-summary-empty">{anchorError}</div> : anchorLoading && !anchorTrend ? <div className="dashboard-empty anchor-summary-empty">主播数据加载中…</div> : !anchorTrend?.latest ? <div className="dashboard-empty anchor-summary-empty">当前基地暂无主播数量数据</div> : <div className="anchor-stat-grid">
+          {anchorError ? <div className="dashboard-empty anchor-summary-empty">{anchorError}</div> : anchorLoading && !anchorTrend ? <div className="dashboard-empty anchor-summary-empty">主播数据加载中…</div> : !anchorTrend?.latest ? <div className="dashboard-empty anchor-summary-empty">当前基地暂无主播数量数据</div> : <AnchorStatCarousel>
             <button className={`anchor-stat-card anchor-stat-total ${anchorDetailMode === "total" ? "active" : ""}`} onClick={() => setAnchorDetailMode((current) => current === "total" ? null : "total")}><span>主播总数</span><strong>{anchorTrend.latest.totalCount}</strong><small>线上{anchorTrend.latest.onlineCount} / 线下{anchorTrend.latest.offlineCount}</small><ChevronDown size={13} /></button>
             <button className={`anchor-stat-card anchor-stat-seven ${anchorDetailMode === "within7" ? "active" : ""}`} onClick={() => setAnchorDetailMode((current) => current === "within7" ? null : "within7")}><span>7天内新增</span><strong>{anchorTrend.latest.within7Days}</strong><small>占比 {anchorTrend.latest.totalCount ? (anchorTrend.latest.within7Days / anchorTrend.latest.totalCount * 100).toFixed(1) : "0.0"}%</small><ChevronDown size={13} /></button>
             <button className={`anchor-stat-card anchor-stat-twenty ${anchorDetailMode === "within20" ? "active" : ""}`} onClick={() => setAnchorDetailMode((current) => current === "within20" ? null : "within20")}><span>20天内新增</span><strong>{anchorTrend.latest.within20Days}</strong><small>占比 {anchorTrend.latest.totalCount ? (anchorTrend.latest.within20Days / anchorTrend.latest.totalCount * 100).toFixed(1) : "0.0"}%</small><ChevronDown size={13} /></button>
-          </div>}
+          </AnchorStatCarousel>}
           {anchorTrend?.latest && anchorDetailMode ? <div className="anchor-operator-detail"><div className="history-detail-title"><strong>{anchorDetailMode === "total" ? "运营主播总数明细" : anchorDetailMode === "within7" ? "7天内新增运营明细" : "20天内新增运营明细"}</strong><span>{anchorTrend.latest.operatorStats.length} 个运营</span></div><div className="anchor-operator-grid">{[...anchorTrend.latest.operatorStats].sort((a, b) => operatorValues(b, anchorDetailMode).total - operatorValues(a, anchorDetailMode).total).map((operator) => { const values = operatorValues(operator, anchorDetailMode); const overall = operator.onlineCount + operator.offlineCount; const onlineRate = overall ? operator.onlineCount / overall * 100 : 0; return <div key={operator.name}><div className="anchor-operator-row"><strong>{operator.name}</strong><b>{values.total}</b></div><div className="anchor-channel-bar"><span style={{ width: `${100 - onlineRate}%` }} /><i style={{ width: `${onlineRate}%` }} /></div><small>线上 {values.online} · 线下 {values.offline}</small></div>; })}{!anchorTrend.latest.operatorStats.length ? <div className="dashboard-empty">暂无运营明细</div> : null}</div></div> : null}
           {anchorTrend?.latest && probationDays > 0 && (anchorTrend.latest.probationExcluded ?? 0) > 0 ? <div className="anchor-probation-note">试用期 {probationDays} 天内入职的 {anchorTrend.latest.probationExcluded} 人未计入统计</div> : null}
         </section>

@@ -461,6 +461,8 @@ export type HallTaskAssignment = {
 };
 
 export const hallDailyApi = {
+  batchLeave: (data: { recordIds: string[]; taskDate: string; action: "approve" | "cancel"; reason: string }) =>
+    api.post<{ results: Array<{ recordId: string; hallName: string; status: string }> }>("/hall-daily/leave-requests/batch", data),
   // ── 模板 ──
   listTemplates: (params?: { teamOrgId?: string; status?: string; neverPublished?: boolean; limit?: number; offset?: number }) =>
     api.get<HallTaskTemplate[]>(`/hall-daily/templates${buildQuery(params)}`),

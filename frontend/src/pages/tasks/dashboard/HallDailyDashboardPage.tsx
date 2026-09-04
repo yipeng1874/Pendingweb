@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw } from "lucide-react";
+import { CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock3, Loader2, RefreshCw, X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import type {
   HallDailyDashboardResponse,
@@ -476,11 +477,28 @@ function HallProgressRow({ hall, taskDate }: { hall: HallDailyAdminHallRow; task
 
 // ── 管理员视图：团队汇总卡片（含懒加载厅列表）───────────────────────────────
 
-function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; taskDate: string }) {
+function TeamSummaryCard({ team, taskDate, canBatch, onChanged }: { team: HallDailyAdminTeamSummary; taskDate: string; canBatch: boolean; onChanged: (message: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [halls, setHalls] = useState<HallDailyAdminHallRow[] | null>(null);
   const [hallsLoading, setHallsLoading] = useState(false);
   const [hallsError, setHallsError] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [batchError, setBatchError] = useState("");
+  const [action, setAction] = useState<"approve" | "cancel" | null>(null);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const selectable = (halls ?? []).filter((hall) => hall.hasTask && hall.recordId);
+  async function batchLeave() {
+    if (!action || !reason.trim() || !selected.length || saving) return;
+    setSaving(true);
+    setBatchError("");
+    try {
+      const result = await hallDailyApi.batchLeave({ recordIds: selected, taskDate, action, reason: reason.trim() });
+      const labels: Record<string, string> = { approved: "请假成功", cancelled: "取消成功", completed: "已完成跳过", already_approved: "已请假跳过", not_enabled: "无请假跳过", stale_record: "任务已更新，请刷新后重试", failed: "失败，可重试" };
+      onChanged(result.results.map((row) => `${row.hallName}：${labels[row.status] ?? row.status}`).join("；"));
+    } catch (err) { setBatchError(err instanceof Error ? err.message : "批量操作失败"); }
+    finally { setSaving(false); }
+  }
 
   async function toggle() {
     const next = !expanded;
@@ -564,7 +582,7 @@ function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; 
                 </span>
               )}
               <span className={`ml-1 min-w-[3rem] text-right text-lg font-bold tabular-nums ${completionTextColor}`}>
-                {team.completionRate}%
+                {team.assignedHalls > 0 && team.assignedHalls === team.leaveApprovedCount ? "—（无需考核）" : `${team.completionRate}%`}
               </span>
             </>
           ) : (
@@ -584,15 +602,70 @@ function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; 
           ) : halls && halls.length === 0 ? (
             <div className="py-3 text-sm text-slate-400">该团队暂无直播厅。</div>
           ) : (
+            <div>
+              {canBatch && selectable.length > 0 && (
+                <div className="mb-3 space-y-2 border-b border-slate-200 pb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                      <input type="checkbox" disabled={saving} checked={selected.length > 0 && selectable.slice(0, 100).every((h) => selected.includes(h.recordId!))} onChange={(event) => setSelected(event.target.checked ? selectable.slice(0, 100).map((h) => h.recordId!) : [])} className="h-4 w-4 accent-blue-500" />
+                      全选厅（已选 {selected.length} 个）
+                    </label>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={saving || !selected.length} onClick={() => { setAction("approve"); setReason(""); setBatchError(""); }} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40"><CheckSquare size={14} />批量请假</button>
+                      <button type="button" disabled={saving || !selected.length} onClick={() => { setAction("cancel"); setReason(""); setBatchError(""); }} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40">取消请假</button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400">仅操作当天整厅任务，非个人请假。每批最多100个厅{selectable.length > 100 ? "，全选仅选前100个，请分批处理" : ""}。</p>
+                </div>
+              )}
             <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
               {[...(halls ?? [])]
                 .sort((a, b) => (b.hasTask ? 1 : 0) - (a.hasTask ? 1 : 0))
                 .map((hall) => (
-                  <HallProgressRow key={hall.hallOrgId} hall={hall} taskDate={taskDate} />
+                  <div key={hall.hallOrgId}>
+                    {canBatch && hall.recordId && <label className="flex items-center gap-2 px-2 py-2 text-sm text-slate-600"><input type="checkbox" className="h-4 w-4 accent-blue-500" disabled={saving || (!selected.includes(hall.recordId) && selected.length >= 100)} checked={selected.includes(hall.recordId)} onChange={(e) => setSelected((old) => e.target.checked ? [...old, hall.recordId!] : old.filter((id) => id !== hall.recordId))} />选择{hall.hallOrgName}</label>}
+                    <HallProgressRow hall={hall} taskDate={taskDate} />
+                  </div>
                 ))}
+            </div>
             </div>
           )}
         </div>
+      )}
+      {action && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4">
+          <div role="dialog" aria-modal="true" aria-label={action === "approve" ? "确认批量请假" : "确认取消请假"} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl" onKeyDown={(event) => {
+            if (event.key === "Escape" && !saving) setAction(null);
+            if (event.key === "Tab") {
+              const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), textarea:not(:disabled)'));
+              const first = elements[0], last = elements[elements.length - 1];
+              if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+              else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+          }}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">{action === "approve" ? "确认批量请假" : "确认取消请假"}</h3>
+                <p className="mt-1 text-sm text-slate-500">范围：{team.teamOrgName} · 已选 {selected.length} 个厅</p>
+              </div>
+              <button type="button" aria-label="关闭确认弹窗" disabled={saving} onClick={() => setAction(null)} className="rounded-xl border border-slate-200 p-2 text-slate-500 disabled:opacity-40"><X size={18} /></button>
+            </div>
+            <div className="space-y-3 px-6 py-5">
+              <p className="text-sm font-medium text-slate-700">任务日期：{taskDate}</p>
+              <p className="max-h-28 overflow-y-auto rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{selectable.filter((h) => selected.includes(h.recordId!)).map((h) => h.hallOrgName).join("、")}</p>
+              <p className="text-sm text-slate-600">{action === "approve" ? "确认后立即生效，无需再次审批；已完成和已请假的任务会自动跳过。影响整厅当天任务，并非个人请假。" : "取消后恢复正常任务统计，已有任务进度不会清空，填写仍需遵守任务截止时间。"}</p>
+              <textarea autoFocus aria-label={action === "approve" ? "请假原因" : "取消请假原因"} value={reason} maxLength={1000} rows={4} disabled={saving} onChange={(e) => setReason(e.target.value)} placeholder={action === "approve" ? "请填写请假原因（必填）" : "请填写取消原因（必填，保留操作历史）"} className="w-full resize-none rounded-xl border border-amber-200 px-3 py-2 text-sm outline-none focus:border-amber-400" />
+              <p className="text-right text-xs text-slate-400">{reason.length}/1000</p>
+              {batchError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{batchError}</p>}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button type="button" disabled={saving} onClick={() => setAction(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 disabled:opacity-40">返回</button>
+              <button type="button" disabled={saving || !selected.length || !reason.trim()} onClick={() => void batchLeave()} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white disabled:opacity-40 ${action === "approve" ? "bg-amber-500 hover:bg-amber-600" : "bg-slate-700 hover:bg-slate-800"}`}>
+                {saving && <Loader2 size={14} className="animate-spin" />}{saving ? "处理中…" : action === "approve" ? "确认请假" : "确认取消请假"}
+              </button>
+            </div>
+          </div>
+        </div>, document.body,
       )}
     </div>
   );
@@ -601,6 +674,7 @@ function TeamSummaryCard({ team, taskDate }: { team: HallDailyAdminTeamSummary; 
 // ── 管理员视图 ───────────────────────────────────────────────────────────────
 
 function AdminView() {
+  const [notice, setNotice] = useState("");
   const currentIdentity = useIdentityStore((state) => state.currentIdentity);
   const identityVersion = useIdentityStore((state) => state.identityVersion);
   const roleCode = currentIdentity?.roleCode ?? "";
@@ -653,6 +727,7 @@ function AdminView() {
 
   return (
     <div className="space-y-6">
+      {notice && <div role="status" className="rounded-xl bg-blue-50 p-4 text-sm text-blue-800">{notice}</div>}
       {/* 顶栏 */}
       <section className="rounded-3xl bg-white px-5 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
         <div className="flex flex-wrap items-center justify-between gap-4 xl:flex-nowrap">
@@ -727,7 +802,7 @@ function AdminView() {
           {/* 汇总数字：基地层面 */}
           {(() => {
             const s: HallDailyAdminBaseSummary = data.baseSummary;
-            const unsubmitted = s.assignedHalls - s.submittedHalls;
+            const unsubmitted = Math.max(0, s.assignedHalls - s.submittedHalls - (s.leaveApprovedHalls ?? 0));
             const rateColor = s.completionRate >= 80 ? "text-emerald-600" : s.completionRate >= 50 ? "text-amber-600" : "text-red-600";
             const rateBg = s.completionRate >= 80 ? "bg-emerald-50 ring-emerald-100" : s.completionRate >= 50 ? "bg-amber-50 ring-amber-100" : "bg-red-50 ring-red-100";
             return (
@@ -766,7 +841,7 @@ function AdminView() {
                   {/* 完成率 */}
                   <div className="flex items-baseline gap-2 pl-5">
                     <span className="text-xs text-slate-400">完成率</span>
-                    <span className={`text-2xl font-bold tabular-nums ${rateColor}`}>{s.completionRate}%</span>
+                    <span className={`text-2xl font-bold tabular-nums ${rateColor}`}>{s.assignedHalls > 0 && s.assignedHalls === s.leaveApprovedHalls ? "—（无需考核）" : `${s.completionRate}%`}</span>
                     <span className="text-xs text-slate-300">= 已完成/参与任务</span>
                   </div>
                 </div>
@@ -791,7 +866,7 @@ function AdminView() {
               [...data.teams]
                 .sort((a, b) => (b.hasTask ? 1 : 0) - (a.hasTask ? 1 : 0))
                 .map((team) => (
-                  <TeamSummaryCard key={team.teamOrgId} team={team} taskDate={data.taskDate} />
+                  <TeamSummaryCard key={`${team.teamOrgId}:${data.taskDate}`} team={team} taskDate={data.taskDate} canBatch={data.taskDate === data.quickRanges.today} onChanged={(message) => { setNotice(message); void load(); }} />
                 ))
             )}
           </section>

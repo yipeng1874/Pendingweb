@@ -62,7 +62,8 @@ export const AssignmentController = {
         req.identity?.id,
         t(req.query.status) || undefined,
         Number(req.query.limit) || undefined,
-        Number(req.query.offset) || undefined
+        Number(req.query.offset) || undefined,
+        t(req.query.mode) || undefined
       );
       return ok(res, data);
     } catch (error: any) {

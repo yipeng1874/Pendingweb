@@ -5,6 +5,9 @@ const t = (v: any): string => (typeof v === "string" ? v.trim() : "");
 
 function handleHallDailyError(res: any, error: any) {
   const map: Record<string, [string, number]> = {
+    HALL_TASK_LEAVE_TODAY_ONLY: ["批量请假仅可操作北京时间当天", 400],
+    HALL_TASK_LEAVE_REASON_INVALID: ["请填写1至1000字符的操作原因", 400],
+    HALL_TASK_LEAVE_BATCH_INVALID: ["每次请选择1至100个厅任务", 400],
     HALL_DAILY_ROLE_FORBIDDEN:              ["当前身份无权维护厅管日常任务，需团队管理员及以上身份", 403],
     HALL_DAILY_TEAM_SCOPE_REQUIRED:         ["请先选择要管理的团队", 400],
     HALL_DAILY_TEAM_ORG_NOT_FOUND:          ["所选团队不存在或已停用", 404],
@@ -262,6 +265,16 @@ export const HallDailyAssignmentController = {
 // ─── 执行层 Controller（厅管填报） ────────────────────────────────────────────
 
 export const HallDailyLeaveController = {
+  async batch(req: any, res: any) {
+    if (!["approve", "cancel"].includes(req.body.action)) return fail(res, "INVALID_ACTION", "操作类型无效", 400);
+    try {
+      return ok(res, await HallDailyLeaveService.batch({
+        recordIds: Array.isArray(req.body.recordIds) ? req.body.recordIds.map(t).filter(Boolean) : [],
+        taskDate: t(req.body.taskDate), action: req.body.action, reason: t(req.body.reason),
+        operatorUserId: req.userId, identity: req.identity,
+      }));
+    } catch (error) { return handleHallDailyError(res, error); }
+  },
   async apply(req: any, res: any) {
     try {
       const result = await HallDailyLeaveService.apply({

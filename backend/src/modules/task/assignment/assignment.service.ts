@@ -503,11 +503,12 @@ async function toggleAssignmentActive(id: string, isActive: boolean, _scopePath?
   });
 }
 
-async function listAssignments(scopePath?: string, roleCode?: string, category?: string, scopeOrgId?: string, userId?: string, identityId?: string, status?: string, limit?: number, offset?: number) {
+async function listAssignments(scopePath?: string, roleCode?: string, category?: string, scopeOrgId?: string, userId?: string, identityId?: string, status?: string, limit?: number, offset?: number, mode?: string) {
   await reconcileDailyAssignments(scopePath);
   await reconcileTemporaryAssignments();
   const where: any = { ...(await buildScopeWhere(scopePath, roleCode)) };
   if (category) where.category = category;
+  if (category === "TEMPORARY" && mode && ["ACCOUNT", "ANCHOR", "MANAGER"].includes(mode)) where.temporaryMode = mode;
   if (scopeOrgId) {
     if (category === "DAILY") {
       where.targets = { some: { orgId: scopeOrgId } };

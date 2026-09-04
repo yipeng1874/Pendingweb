@@ -9,6 +9,35 @@ import type { BroadcastQuestionType } from "./broadcast.store.js";
 export const broadcastTaskRoutes = Router();
 broadcastTaskRoutes.use(authRequired);
 
+// Mobile summaries omit recipient lists; recipients and answers are paged on expansion.
+broadcastTaskRoutes.get("/tasks/collaboration/broadcast/mobile-issued", identityRequired, async (req, res) => {
+  const identity = req.identity;
+  if (!identity || !["HALL_MANAGER", "TEAM_ADMIN"].includes(identity.roleCode)) return fail(res, "FORBIDDEN", "无群发权限", 403);
+  const status = String(req.query.status || "active");
+  if (!["active", "completed", "ended"].includes(status)) return fail(res, "INVALID_STATUS", "状态无效", 400);
+  const page = Math.min(10000, Math.max(1, Math.floor(Number(req.query.page) || 1)));
+  const complete = { some: {}, every: { status: "submitted" as const } };
+  const where = { createdByUserId: identity.userId, ...(status === "completed" ? { anchorRecords: complete } : {
+    NOT: { anchorRecords: complete },
+    ...(status === "active" ? { status: "active" as const, OR: [{ dueAt: null }, { dueAt: { gte: new Date() } }] } : { OR: [{ status: "ended" as const }, { dueAt: { lt: new Date() } }] }),
+  }) };
+  const rows = await prisma.broadcastTask.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * 10, take: 11,
+    include: { questions: true, _count: { select: { anchorRecords: true } } } });
+  const counts = rows.length ? await prisma.broadcastAnchorRecord.groupBy({ by: ["taskId"], where: { taskId: { in: rows.slice(0, 10).map(row => row.id) }, status: "submitted" }, _count: { _all: true } }) : [];
+  const tasks = rows.slice(0, 10).map(row => ({ ...row, completedCount: counts.find(count => count.taskId === row.id)?._count._all || 0 }));
+  return ok(res, { tasks, hasMore: rows.length > 10 });
+});
+
+broadcastTaskRoutes.get("/tasks/collaboration/broadcast/mobile-issued/:taskId/recipients", identityRequired, async (req, res) => {
+  const identity = req.identity;
+  if (!identity || !["HALL_MANAGER", "TEAM_ADMIN"].includes(identity.roleCode)) return fail(res, "FORBIDDEN", "无群发权限", 403);
+  const task = await prisma.broadcastTask.findFirst({ where: { id: req.params.taskId, createdByUserId: identity.userId }, select: { id: true } });
+  if (!task) return fail(res, "NOT_FOUND", "任务不存在或无权限", 404);
+  const page = Math.min(10000, Math.max(1, Math.floor(Number(req.query.page) || 1)));
+  const rows = await prisma.broadcastAnchorRecord.findMany({ where: { taskId: task.id }, orderBy: { id: "asc" }, skip: (page - 1) * 10, take: 11, include: { answers: true } });
+  return ok(res, { items: rows.slice(0, 10), hasMore: rows.length > 10 });
+});
+
 type BroadcastRecipientType = "ANCHOR" | "HALL_MANAGER";
 
 function getAncestorPaths(path: string) {
@@ -32,12 +61,16 @@ async function resolveBaseOrg(hallPath: string) {
 // 厅管：本厅主播及基地内其他厅管；团队管理：基地内厅管（允许跨团队）
 // ─────────────────────────────────────────────────────────────────────────────
 broadcastTaskRoutes.get(
-  ["/tasks/collaboration/broadcast/bootstrap", "/tasks/collaboration/broadcast/hall-managers"],
+  ["/tasks/collaboration/broadcast/bootstrap", "/tasks/collaboration/broadcast/hall-managers", "/tasks/collaboration/broadcast/recipients"],
   identityRequired,
   async (req, res) => {
     const identity = req.identity;
     if (!identity) return fail(res, "UNAUTHORIZED", "请先登录", 401);
-    const searching = req.path.endsWith("/hall-managers");
+    const mobile = req.path.endsWith("/recipients");
+    const searchingAnchors = mobile && req.query.type === "ANCHOR";
+    const searching = req.path.endsWith("/hall-managers") || mobile;
+    if (mobile && !["ANCHOR", "HALL_MANAGER"].includes(String(req.query.type))) return fail(res, "INVALID_TYPE", "请选择接收对象", 400);
+    if (searchingAnchors && identity.roleCode === "TEAM_ADMIN") return fail(res, "FORBIDDEN", "团队管理不可投放主播", 403);
     const keyword = typeof req.query.q === "string" ? req.query.q.trim() : "";
     if (searching && keyword.length > 80) return fail(res, "SEARCH_TOO_LONG", "搜索词不能超过80个字符", 400);
     const offset = Math.max(0, Math.min(10000, Math.floor(Number(req.query.offset) || 0)));
@@ -83,9 +116,10 @@ broadcastTaskRoutes.get(
 
     // 查本厅下所有 active ANCHOR 身份（scopePath 前缀匹配 or 等于厅 path）
     const recipientScope = baseOrg;
-    const anchorIdentities = isTeamAdmin || searching ? [] : await prisma.userIdentity.findMany({
+    const anchorIdentities = isTeamAdmin || (searching && !searchingAnchors) ? [] : await prisma.userIdentity.findMany({
       where: {
         status: "active",
+        ...(searchingAnchors && keyword ? { AND: [{ OR: [{ user: { nickname: { contains: keyword } } }, { user: { phone: { contains: keyword } } }, { anchorProfile: { douyinNo: { contains: keyword } } }] }] } : {}),
         roleCode: "ANCHOR",
         OR: [
           { scopePath: hallOrg.path },
@@ -99,7 +133,8 @@ broadcastTaskRoutes.get(
         user: { select: { id: true, nickname: true, phone: true } },
         anchorProfile: { select: { id: true, douyinNo: true, douyinUid: true, nickname: true } },
       },
-      orderBy: [{ grantedAt: "desc" }],
+      orderBy: [{ grantedAt: "desc" }, { id: "asc" }],
+      ...(searchingAnchors ? { skip: offset, take: 21 } : {}),
     });
 
     // 按 userId 聚合（一个账号可能有多个 ANCHOR 身份）
@@ -115,7 +150,7 @@ broadcastTaskRoutes.get(
     };
 
     const anchorMap = new Map<string, AnchorOption>();
-    for (const row of anchorIdentities) {
+    for (const row of searchingAnchors ? anchorIdentities.slice(0, 20) : anchorIdentities) {
       if (anchorMap.has(row.userId)) {
         const existing = anchorMap.get(row.userId)!;
         if (!existing.douyinNo && row.anchorProfile?.douyinNo) existing.douyinNo = row.anchorProfile.douyinNo;
@@ -140,7 +175,7 @@ broadcastTaskRoutes.get(
     );
 
     // 空关键词和初始化请求不查询厅管名单；每次最多读取21条身份以判断下一页。
-    const hallManagerIdentities = !searching || !keyword ? [] : await prisma.userIdentity.findMany({
+    const hallManagerIdentities = !searching || searchingAnchors || !keyword ? [] : await prisma.userIdentity.findMany({
       where: {
         status: "active",
         roleCode: "HALL_MANAGER",
@@ -203,7 +238,7 @@ broadcastTaskRoutes.get(
       },
       anchors,
       hallManagers,
-      nextOffset: hallManagerIdentities.length > 20 ? offset + 20 : null,
+      nextOffset: (searchingAnchors ? anchorIdentities : hallManagerIdentities).length > 20 ? offset + 20 : null,
     });
   },
 );

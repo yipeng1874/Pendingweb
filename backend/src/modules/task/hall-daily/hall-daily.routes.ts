@@ -53,5 +53,6 @@ hallDailyRoutes.post("/hall-daily/item-records", permissionRequired("task:record
 hallDailyRoutes.post("/hall-daily/my-records/:id/submit", permissionRequired("task:record:submit"), HallDailyRecordController.submitRecord);
 hallDailyRoutes.post("/hall-daily/my-records/:id/leave-requests", permissionRequired("task:record:submit"), HallDailyLeaveController.apply);
 hallDailyRoutes.post("/hall-daily/leave-requests/:id/cancel", permissionRequired("task:record:submit"), HallDailyLeaveController.cancel);
+hallDailyRoutes.post("/hall-daily/leave-requests/batch", permissionRequired("task:exemption:review"), HallDailyLeaveController.batch);
 hallDailyRoutes.post("/hall-daily/leave-requests/:id/approve", permissionRequired("task:report:view"), HallDailyLeaveController.approve);
 hallDailyRoutes.post("/hall-daily/leave-requests/:id/reject", permissionRequired("task:report:view"), HallDailyLeaveController.reject);

@@ -206,6 +206,28 @@ export async function getWorkflowTasksForUser(userId: string): Promise<WorkflowT
   return tasks.map((t) => mapDbTaskToRecord(t as unknown as NonNullable<DbTask>));
 }
 
+export async function getWorkflowTasksByIssuerPage(userId: string, status: WorkflowTaskStatus, cursor?: string) {
+  const now = new Date();
+  const lifecycle: Prisma.WorkflowTaskWhereInput = status === "in_progress"
+    ? { status: "in_progress", OR: [{ dueAt: null }, { dueAt: { gte: now } }] }
+    : status === "ended"
+      ? { OR: [{ status: "ended" }, { status: "in_progress", dueAt: { lt: now } }] }
+      : { status: "completed" };
+  const rows = await prisma.workflowTask.findMany({
+    where: { createdByUserId: userId, ...lifecycle },
+    include: TASK_INCLUDE,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 11,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+  const items = rows.slice(0, 10).map(row => {
+    const task = mapDbTaskToRecord(row as unknown as NonNullable<DbTask>);
+    if (status === "ended") task.status = "ended";
+    return task;
+  });
+  return { items, nextCursor: rows.length > 10 ? items[items.length - 1].id : null };
+}
+
 export async function getWorkflowTasksByIssuer(userId: string): Promise<WorkflowTaskRecord[]> {
   await applyWorkflowExpire();
 

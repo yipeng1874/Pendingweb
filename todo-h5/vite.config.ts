@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Open tabs may still lazy-load hashed chunks from the previous build.
+  // Keep those assets available when rebuilding the directory served by Nginx.
+  build: { emptyOutDir: false },
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
