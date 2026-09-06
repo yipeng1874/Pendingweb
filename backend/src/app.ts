@@ -7,6 +7,7 @@ import { auditRoutes } from "./modules/audit/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { identityRoutes } from "./modules/identity/routes.js";
 import { organizationRoutes } from "./modules/organization/routes.js";
+import { organizationDataTransferRoutes } from "./modules/organization/data-transfer.routes.js";
 import { assignmentRoutes } from "./modules/task/assignment/assignment.routes.js";
 import { recordRoutes } from "./modules/task/record/record.routes.js";
 import { reminderRoutes } from "./modules/task/reminder/reminder.routes.js";
@@ -41,6 +42,7 @@ export function createApp() {
   app.use("/api", anchorRoutes);
   app.use("/api", identityRoutes);
   app.use("/api", organizationRoutes);
+  app.use("/api", organizationDataTransferRoutes);
   app.use("/api", accountRoutes);
   app.use("/api", auditRoutes);
 

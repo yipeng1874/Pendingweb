@@ -16,6 +16,7 @@ const permissions = [
   ["org:update", "更新组织", "organization"],
   ["org:pause", "暂停组织", "organization"],
   ["org:restore", "恢复组织", "organization"],
+  ["org:data-transfer", "组织数据转移", "organization"],
   ["account:view", "查看账号", "account"],
   ["account:create", "创建账号", "account"],
   ["identity:grant", "授权身份", "identity"],
@@ -38,7 +39,7 @@ const permissions = [
 const rolePermissions: Record<string, string[]> = {
   DEV_ADMIN: ["*"],
   HQ_ADMIN: [
-    "org:view", "org:create", "org:update", "org:pause", "org:restore",
+    "org:view", "org:create", "org:update", "org:pause", "org:restore", "org:data-transfer",
     "account:view", "account:create", "identity:grant",
     "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review",
     "audit:view",
@@ -46,7 +47,7 @@ const rolePermissions: Record<string, string[]> = {
     "task:record:submit", "task:record:view", "task:exemption:apply", "task:exemption:review", "task:report:view", "task:reminder:manage",
   ],
   BASE_ADMIN: [
-    "org:view", "org:create", "org:update", "org:pause", "org:restore",
+    "org:view", "org:create", "org:update", "org:pause", "org:restore", "org:data-transfer",
     "account:view", "account:create", "identity:grant",
     "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review",
     "task:template:manage", "task:assignment:manage", "task:assignment:view",

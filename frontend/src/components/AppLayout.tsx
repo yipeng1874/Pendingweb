@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Building2, CalendarClock, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, GitBranch, LayoutDashboard, ListTodo, LogOut, PanelLeftClose, PanelLeftOpen, RefreshCw, Send, Settings2, UserRoundCheck, Users } from "lucide-react";
+import { ArrowRightLeft, Building2, CalendarClock, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, GitBranch, LayoutDashboard, ListTodo, LogOut, PanelLeftClose, PanelLeftOpen, RefreshCw, Send, Settings2, UserRoundCheck, Users } from "lucide-react";
 import { IdentitySwitcher } from "./IdentitySwitcher";
 import { PermissionGate } from "./PermissionGate";
 import { useAuthStore } from "../stores/authStore";
@@ -10,6 +10,7 @@ import { isInFeishuApp } from "../shared/utils/feishu";
 
 const orgSubItems = [
   { to: "/organization", label: "组织设立变更", icon: Building2 },
+  { to: "/organization/data-transfer", label: "组织数据转移", icon: ArrowRightLeft },
   { to: "/accounts", label: "组织账号管理", icon: Users },
   { to: "/organization/feishu-configs", label: "飞书企业配置", icon: Settings2 },
 ];
@@ -48,6 +49,10 @@ function OrgNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean; onExp
     if (item.to === "/organization") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"].includes(currentRoleCode))
         && (permissions.includes("*") || permissions.includes("org:view"));
+    }
+    if (item.to === "/organization/data-transfer") {
+      return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))
+        && (permissions.includes("*") || permissions.includes("org:data-transfer"));
     }
     if (item.to === "/organization/feishu-configs") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))
@@ -92,6 +97,7 @@ function OrgNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean; onExp
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.to === "/organization"}
                 className={({ isActive }) => `flex items-center gap-3 rounded-[14px] px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive ? "bg-feishu-pale text-feishu-blue shadow-[0_6px_16px_rgba(76,114,255,0.06)]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
               >
                 <Icon size={16} />

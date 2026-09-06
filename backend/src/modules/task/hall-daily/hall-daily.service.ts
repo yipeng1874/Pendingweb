@@ -692,15 +692,10 @@ export async function ensureHallDailyRecordsForToday() {
     const totalItems = assignment.template.items.length;
 
     for (const target of assignment.targets) {
-      // 检查是否已存在当日 record（幂等）
-      const existing = await prisma.hallTaskRecord.findUnique({
-        where: {
-          assignmentId_hallOrgId_recordDate: {
-            assignmentId: assignment.id,
-            hallOrgId: target.hallOrgId,
-            recordDate: today,
-          },
-        },
+      // 同一个厅同一天只允许一份日常任务。组织数据转移后，旧 assignment
+      // 的当日记录继续有效，新团队从下一业务日自然接管，避免迁移当天重复生成。
+      const existing = await prisma.hallTaskRecord.findFirst({
+        where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: { in: ["active", "ended"] } } },
         select: { id: true },
       });
       if (existing) continue;
@@ -714,15 +709,10 @@ export async function ensureHallDailyRecordsForToday() {
 
       // 创建 record，并同时预建所有题目的 itemRecord
       await prisma.$transaction(async (tx) => {
-        // 双重检查（防并发）
-        const check = await tx.hallTaskRecord.findUnique({
-          where: {
-            assignmentId_hallOrgId_recordDate: {
-              assignmentId: assignment.id,
-              hallOrgId: target.hallOrgId,
-              recordDate: today,
-            },
-          },
+        // 锁定厅行并双重检查，多个后端实例并发执行时也不会跨 assignment 重复建单。
+        await tx.$queryRaw`SELECT id FROM org_units WHERE id = ${target.hallOrgId} FOR UPDATE`;
+        const check = await tx.hallTaskRecord.findFirst({
+          where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: { in: ["active", "ended"] } } },
           select: { id: true },
         });
         if (check) return;

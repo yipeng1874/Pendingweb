@@ -38,8 +38,8 @@ export const applications = [
 
 export const rolePermissions: Record<RoleCode, string[]> = {
   DEV_ADMIN: ["*"],
-  HQ_ADMIN: ["org:view", "org:create", "org:update", "org:pause", "org:restore", "account:view", "account:create", "identity:grant", "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review", "task:view", "task:create", "task:publish", "task:close", "report:view", "report:view_detail", "audit:view"],
-  BASE_ADMIN: ["org:view", "org:create", "org:update", "account:view", "account:create", "identity:grant", "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review", "task:view", "task:create", "task:publish", "task:close", "report:view", "report:view_detail"],
+  HQ_ADMIN: ["org:view", "org:create", "org:update", "org:pause", "org:restore", "org:data-transfer", "account:view", "account:create", "identity:grant", "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review", "task:view", "task:create", "task:publish", "task:close", "report:view", "report:view_detail", "audit:view"],
+  BASE_ADMIN: ["org:view", "org:create", "org:update", "org:data-transfer", "account:view", "account:create", "identity:grant", "anchor:view", "anchor:profile:create", "anchor:profile:bind", "anchor:registration:review", "task:view", "task:create", "task:publish", "task:close", "report:view", "report:view_detail"],
   TEAM_ADMIN: ["org:view", "anchor:view", "task:view", "task:create", "task:publish", "report:view", "report:view_detail"],
   HALL_MANAGER: ["org:view", "anchor:view", "anchor:registration:review", "task:view", "report:view"],
   ANCHOR: ["task:view", "task:submit", "report:view"],

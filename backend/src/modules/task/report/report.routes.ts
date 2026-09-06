@@ -1482,31 +1482,27 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
     });
   }
 
-  // 查询日期范围内有效的 HallTaskAssignment
-  const assignments = await prisma.hallTaskAssignment.findMany({
-    where: {
-      teamOrgId: { in: scopedTeamIds },
-      status: { in: ["active", "ended"] },
-      effectiveAt: { lte: getDailyTaskSupplementDeadline(endDate) },
-      OR: [
-        { endedAt: null },
-        { endedAt: { gte: getDailyTaskDayEnd(startDate) } },
-      ],
-    },
-    include: {
-      targets: { select: { hallOrgId: true } },
-    },
+  // 组织数据转移采用“当前归属制”：历史厅记录跟随厅当前所属团队。
+  // 因此不能再用发布任务时保存的 assignment.teamOrgId 限定历史归属。
+  const currentScopedHalls = await prisma.orgUnit.findMany({
+    where: { status: "active", orgType: "HALL", parentId: { in: scopedTeamIds } },
+    select: { id: true },
   });
+  const currentScopedHallIds = currentScopedHalls.map((hall) => hall.id);
 
-  // 收集目标 hallOrgId 并建立 team 映射
-  const allHallTargetIds = new Set<string>();
-  for (const assignment of assignments) {
-    for (const target of assignment.targets) {
-      allHallTargetIds.add(target.hallOrgId);
-    }
-  }
+  // 历史参与范围直接由执行记录确定。迁移执行时旧团队的活动目标会被移除，
+  // 但历史 HallTaskRecord 保留，因此不能再依赖 assignment.targets 反查历史厅。
+  const participationRows = currentScopedHallIds.length ? await prisma.hallTaskRecord.findMany({
+    where: {
+      hallOrgId: { in: currentScopedHallIds },
+      recordDate: { in: dates },
+      assignment: { status: { in: ["active", "ended"] } },
+    },
+    select: { hallOrgId: true },
+    distinct: ["hallOrgId"],
+  }) : [];
 
-  const targetHallIds = Array.from(allHallTargetIds);
+  const targetHallIds = participationRows.map((row) => row.hallOrgId);
   if (targetHallIds.length === 0) {
     return ok(res, {
       startDate, endDate, effectiveDays: dates.length,
@@ -1551,7 +1547,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
     where: {
       hallOrgId: { in: scopeFilteredHallIdsArr },
       recordDate: { in: dates },
-      assignment: { status: { in: ["active", "ended"] }, teamOrgId: { in: scopedTeamIds } },
+      assignment: { status: { in: ["active", "ended"] } },
     },
     select: {
       assignmentId: true,
@@ -1570,7 +1566,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
   // 按 hallOrgId + recordDate 去重：active assignment 优先
   type HallRawRecord = (typeof allRecordsRaw)[number];
   const recordDedupeMap = new Map<string, HallRawRecord>();
-  const activeAssignmentIds = new Set(assignments.filter((a) => a.status === "active").map((a) => a.id));
+  const activeAssignmentIds = new Set(allRecordsRaw.filter((record) => record.assignment.status === "active").map((record) => record.assignmentId));
 
   for (const record of allRecordsRaw) {
     const key = `${record.hallOrgId}:${record.recordDate}`;
@@ -2505,10 +2501,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
     where: {
       hallOrgId: { in: allHallIdsArr },
       recordDate: taskDate,
-      assignment: {
-        status: { in: ["active", "ended"] },
-        teamOrgId: { in: scopedTeamIds },
-      },
+      assignment: { status: { in: ["active", "ended"] } },
     },
     select: {
       id: true,
@@ -2553,10 +2546,10 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/overview", permissionRequir
     }
   }
 
-  // teamOrgId -> templateTitle（从 hallRecordMap 取，确保对应当天实际显示的任务）
+  // teamOrgId -> templateTitle（按厅当前所属团队归集）
   const teamTemplateTitleMap = new Map<string, string>();
   for (const rec of hallRecordMap.values()) {
-    const teamId = rec.assignment.teamOrgId;
+    const teamId = allHalls.find((hall) => hall.id === rec.hallOrgId)?.parentId;
     if (teamId && rec.assignment.template?.title && !teamTemplateTitleMap.has(teamId)) {
       teamTemplateTitleMap.set(teamId, rec.assignment.template.title);
     }
@@ -2692,10 +2685,7 @@ reportRoutes.get("/tasks/report/hall-daily-dashboard/teams/:teamOrgId/halls", pe
     where: {
       hallOrgId: { in: allTeamHallIds },
       recordDate: taskDate,
-      assignment: {
-        status: { in: ["active", "ended"] },
-        teamOrgId,
-      },
+      assignment: { status: { in: ["active", "ended"] } },
     },
     select: {
       id: true,
