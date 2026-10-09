@@ -187,7 +187,7 @@ staffTurnoverRoutes.get(
     }
 
     const rawDays = parseInt(req.query.days as string, 10);
-    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 30) : 6;
+    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 365) : 6;
 
     // 拉取基地下所有记录
     const allRecords = await prisma.staffTurnoverDaily.findMany({

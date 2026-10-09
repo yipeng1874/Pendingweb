@@ -24,12 +24,13 @@ function formatDateHeader(date: string) {
 }
 
 /** 蓝色渐变进度条单元格 */
-function ProgressCell({ percent, variant = "blue" }: { percent?: number; variant?: "blue" | "amber" | "green" | "purple" }) {
+function ProgressCell({ percent, variant = "blue" }: { percent?: number; variant?: "blue" | "amber" | "green" | "purple" | "cyan" }) {
   const colorMap: Record<string, { bg: string; border: string; from: string; to: string }> = {
     blue:   { bg: "#eef2ff", border: "#dbeafe", from: "#93c5fd", to: "#3b82f6" },
     amber:  { bg: "#fff7ed", border: "#fed7aa", from: "#fdba74", to: "#f97316" },
     green:  { bg: "#f0fdf4", border: "#bbf7d0", from: "#86efac", to: "#22c55e" },
     purple: { bg: "#faf5ff", border: "#e9d5ff", from: "#c084fc", to: "#9333ea" },
+    cyan:   { bg: "#ecfeff", border: "#a5f3fc", from: "#67e8f9", to: "#06b6d4" },
   };
   const c = colorMap[variant];
   if (percent == null) return <span className="text-slate-300 text-[12px]">—</span>;
@@ -286,7 +287,7 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
       {dateEntries.length > 0 && teams.length > 0 ? (() => {
           const recentDates = dateEntries.slice(-7);
 
-          // ── 本周/上周/上月综合计算 ──
+          // ── 本周/本月/上周/上月综合计算 ──
           const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
           const beijingDay = beijingNow.getDay();
           const thisMonday = new Date(beijingNow);
@@ -294,6 +295,8 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
           const toStr = (d: Date) => d.toISOString().slice(0, 10);
           const genRange = (s: Date, e: Date) => { const a: string[] = []; const c = new Date(s); while (c <= e) { a.push(toStr(c)); c.setDate(c.getDate() + 1); } return a; };
           const thisWeekDays = genRange(thisMonday, beijingNow);
+          const thisMonthStart = new Date(beijingNow.getFullYear(), beijingNow.getMonth(), 1);
+          const thisMonthDays = genRange(thisMonthStart, beijingNow);
           const lastSunday = new Date(thisMonday); lastSunday.setDate(thisMonday.getDate() - 1);
           const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
           const lastWeekDays = genRange(lastMonday, lastSunday);
@@ -392,17 +395,19 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
               </table>
             </div>
 
-            {/* ── 右侧：本周综合 + 上周综合 + 上月综合 ── */}
-            <div className="flex-[3] shrink-0 z-10 bg-white border-l border-slate-200">
+            {/* ── 右侧：本周综合 + 上周综合 + 上月综合 + 本月综合 ── */}
+            <div className="flex-[4] shrink-0 z-10 bg-white border-l border-slate-200">
               {/* 表头 */}
               <div className="flex border-b border-slate-100">
                 <div className="flex-1 text-center px-2 py-2 text-amber-500 font-medium text-[12px] h-[44px] flex items-center justify-center">本周综合</div>
                 <div className="flex-1 text-center px-2 py-2 text-emerald-500 font-medium text-[12px] h-[44px] flex items-center justify-center">上周综合</div>
                 <div className="flex-1 text-center px-2 py-2 text-purple-500 font-medium text-[12px] h-[44px] flex items-center justify-center">上月综合</div>
+                <div className="flex-1 text-center px-2 py-2 text-cyan-500 font-medium text-[12px] h-[44px] flex items-center justify-center">本月综合</div>
               </div>
               {/* 团队数据行 */}
               {participatingTeams.map((team) => {
                 const wAvg = calcWeekAvg(team.orgId, thisWeekDays);
+                const currentMonthAvg = calcWeekAvg(team.orgId, thisMonthDays);
                 const lAvg = calcWeekAvg(team.orgId, lastWeekDays);
                 const mAvg = calcWeekAvg(team.orgId, lastMonthDays);
                 return (
@@ -415,6 +420,9 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     </div>
                     <div className="flex-1 px-1.5 py-2">
                       <ProgressCell percent={mAvg} variant="purple" />
+                    </div>
+                    <div className="flex-1 px-1.5 py-2">
+                      <ProgressCell percent={currentMonthAvg} variant="cyan" />
                     </div>
                   </div>
                 );
@@ -440,6 +448,13 @@ export function ProcessMetricCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, lastMonthDays)).filter((v): v is number => v != null);
                     const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
                     return <ProgressCell percent={a} variant="purple" />;
+                  })()}
+                </div>
+                <div className="flex-1 px-1.5 py-2">
+                  {(() => {
+                    const vs = participatingTeams.map(t => calcWeekAvg(t.orgId, thisMonthDays)).filter((v): v is number => v != null);
+                    const a = vs.length > 0 ? vs.reduce((s, v) => s + v, 0) / vs.length : undefined;
+                    return <ProgressCell percent={a} variant="cyan" />;
                   })()}
                 </div>
               </div>

@@ -692,10 +692,11 @@ export async function ensureHallDailyRecordsForToday() {
     const totalItems = assignment.template.items.length;
 
     for (const target of assignment.targets) {
-      // 同一个厅同一天只允许一份日常任务。组织数据转移后，旧 assignment
-      // 的当日记录继续有效，新团队从下一业务日自然接管，避免迁移当天重复生成。
+      // 同一个厅同一天只允许一份“有效任务”记录。
+      // 旧 assignment 已结束但仍保留历史记录时，不能阻挡当天新 active assignment 接管；
+      // 否则新任务会因旧记录存在而永远无法生成执行记录。
       const existing = await prisma.hallTaskRecord.findFirst({
-        where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: { in: ["active", "ended"] } } },
+        where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: "active" } },
         select: { id: true },
       });
       if (existing) continue;
@@ -712,7 +713,7 @@ export async function ensureHallDailyRecordsForToday() {
         // 锁定厅行并双重检查，多个后端实例并发执行时也不会跨 assignment 重复建单。
         await tx.$queryRaw`SELECT id FROM org_units WHERE id = ${target.hallOrgId} FOR UPDATE`;
         const check = await tx.hallTaskRecord.findFirst({
-          where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: { in: ["active", "ended"] } } },
+          where: { hallOrgId: target.hallOrgId, recordDate: today, assignment: { status: "active" } },
           select: { id: true },
         });
         if (check) return;

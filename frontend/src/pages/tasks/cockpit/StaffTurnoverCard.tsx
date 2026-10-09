@@ -42,6 +42,15 @@ const COLORS = {
 };
 const fmt = (v: number) => (Number.isFinite(v) && v > 0 ? (v >= 10000 ? `${(v / 10000).toFixed(2)}万` : v.toFixed(2)) : "-");
 
+function teamRecordHasData(record: StaffTurnoverTeamRecord) {
+  return [
+    record.lossOnlineCount, record.lossOnlineAvgWave,
+    record.lossOfflineCount, record.lossOfflineAvgWave,
+    record.activeOnlineCount, record.activeOnlineAvgWave,
+    record.activeOfflineCount, record.activeOfflineAvgWave,
+  ].some((item) => Number(item) !== 0);
+}
+
 /** 精简 tooltip：人数图表使用 */
 function CountTooltip({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null;
@@ -156,11 +165,13 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const [dateEntries, setDateEntries] = useState<StaffTurnoverDateEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState("");
   const [contrastTeamA, setContrastTeamA] = useState<string>(""); // 对比团队 A
   const [contrastTeamB, setContrastTeamB] = useState<string>(""); // 对比团队 B
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
   const [dataTableOpen, setDataTableOpen] = useState(false);  // 数据明细表折叠（默认收起）
   const [teamTableOpen, setTeamTableOpen] = useState(false);  // 团队明细表折叠（默认收起）
+  const [showZeroTeamDetails, setShowZeroTeamDetails] = useState(false);
 
   const toggleKey = (k: string) => {
     setHiddenKeys((prev) => {
@@ -194,6 +205,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   const [formDay, setFormDay] = useState<number | "">("");
   const [formRows, setFormRows] = useState<FormRow[]>([]);
   const [submitProgress, setSubmitProgress] = useState("");
+  const [showZeroFormRows, setShowZeroFormRows] = useState(false);
 
   /** 由年/月/日组合成日期字符串（仅当日期都选齐时有效） */
   const formDate = formDay ? `${formYear}-${pad2(formMonth)}-${pad2(formDay)}` : "";
@@ -206,7 +218,8 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     try {
       const [orgTree, byDateRes] = await Promise.all([
         fetchOrgTree(),
-        staffTurnoverApi.getByDate(sid),
+        // 预取可用历史数据；默认视图仍只展示最近 3 期，切换历史时无需再次请求。
+        staffTurnoverApi.getByDate(sid, 365),
       ]);
 
       const baseOrg = orgTree.find((o) => o.id === sid);
@@ -227,7 +240,9 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
         : entries;
       setDateEntries(filteredEntries);
       if (filteredEntries.length > 0) {
-        setSelectedDate(filteredEntries[filteredEntries.length - 1].recordDate);
+        const latestDate = filteredEntries[filteredEntries.length - 1].recordDate;
+        setSelectedDate(latestDate);
+        setSelectedMonth(latestDate.slice(0, 7));
       }
     } catch { /* 静默 */ }
     finally { setLoading(false); }
@@ -278,8 +293,29 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     })));
   };
 
+  const availableMonths = Array.from(new Set(dateEntries.map((entry) => entry.recordDate.slice(0, 7)))).sort().reverse();
+  const monthEntries = selectedMonth
+    ? dateEntries.filter((entry) => entry.recordDate.startsWith(`${selectedMonth}-`))
+    : dateEntries;
+
   // 当前选中日期的聚合摘要 + 团队明细
   const currentEntry = dateEntries.find((e) => e.recordDate === selectedDate);
+  const nonZeroCurrentTeams = currentEntry?.teams.filter(teamRecordHasData) ?? [];
+  const zeroCurrentTeamCount = (currentEntry?.teams.length ?? 0) - nonZeroCurrentTeams.length;
+  const visibleCurrentTeams = showZeroTeamDetails ? currentEntry?.teams ?? [] : nonZeroCurrentTeams;
+
+  const indexedFormRows = formRows.map((row, index) => ({ row, index }));
+  const zeroFormRowIndexes = new Set(indexedFormRows.filter(({ row }) => {
+    const values = [
+      row.lossOnlineCount, row.lossOnlineAvgWave,
+      row.lossOfflineCount, row.lossOfflineAvgWave,
+      row.onlineCount, row.onlineAvgWave,
+      row.offlineCount, row.offlineAvgWave,
+    ];
+    return values.every((item) => item !== "" && Number(item) === 0);
+  }).map(({ index }) => index));
+  const visibleFormRows = showZeroFormRows ? indexedFormRows : indexedFormRows.filter(({ index }) => !zeroFormRowIndexes.has(index));
+  const zeroFormRowCount = zeroFormRowIndexes.size;
   const summary: StaffTurnoverAggregated = currentEntry?.aggregated ?? {
     lossCount: 0, lossAvgWave: 0,
     lossOnlineCount: 0, lossOnlineAvgWave: 0,
@@ -290,7 +326,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
   };
 
   // 合并整体 + 最多两个对比团队数据（同一图表数据源）
-  const displayEntries = dateEntries.slice(-3);
+  const displayEntries = monthEntries;
   const combinedChartData = displayEntries.map((e) => {
     const tA = contrastTeamA ? e.teams.find((x) => x.teamOrgId === contrastTeamA) : null;
     const tB = contrastTeamB ? e.teams.find((x) => x.teamOrgId === contrastTeamB) : null;
@@ -403,6 +439,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
     setFormDay("");
     setFormRows([]);
     setSubmitProgress("");
+    setShowZeroFormRows(false);
     setModalOpen(true);
   };
 
@@ -416,6 +453,24 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             <span className="text-[14px] font-semibold text-slate-700">在职/离职人数音浪趋势</span>
           </div>
           <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">选择月份</span>
+            <select
+              value={selectedMonth}
+              onChange={(event) => {
+                const month = event.target.value;
+                setSelectedMonth(month);
+                const entries = month ? dateEntries.filter((entry) => entry.recordDate.startsWith(`${month}-`)) : dateEntries;
+                if (entries.length > 0) setSelectedDate(entries[entries.length - 1].recordDate);
+              }}
+              disabled={availableMonths.length === 0}
+              className="appearance-none rounded-md border border-slate-300 px-2 py-1 text-[12px] text-slate-700 bg-white hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer disabled:opacity-50"
+              aria-label="选择趋势月份"
+            >
+              {availableMonths.length === 0 && <option value="">暂无月份</option>}
+              {availableMonths.map((month) => (
+                <option key={month} value={month}>{month.replace("-", "年")}月</option>
+              ))}
+            </select>
             <span className="text-[11px] text-slate-400">对比团队</span>
             <select
               value={contrastTeamA}
@@ -720,16 +775,44 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
             </div>
 
             {/* 选中日期的团队明细表 */}
-            {currentEntry && currentEntry.teams.length > 0 && (
+            {currentEntry && visibleCurrentTeams.length > 0 && (
               <div className="space-y-2">
-                <button
-                  onClick={() => setTeamTableOpen((v) => !v)}
-                  className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 hover:text-slate-900"
-                >
-                  {teamTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                  {selectedDate} 团队明细
-                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
-                </button>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <button
+                    onClick={() => setTeamTableOpen((v) => !v)}
+                    className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700 hover:text-slate-900"
+                  >
+                    {teamTableOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    {selectedDate} 团队明细
+                    <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-[10px] font-medium animate-pulse shadow-sm whitespace-nowrap">点击展开详情</span>
+                    {zeroCurrentTeamCount > 0 && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => { event.stopPropagation(); setShowZeroTeamDetails((value) => !value); }}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.stopPropagation(); setShowZeroTeamDetails((value) => !value); } }}
+                        className="ml-1 text-[11px] font-normal text-slate-400 hover:text-indigo-600"
+                      >
+                        {showZeroTeamDetails ? "隐藏全0团队" : `已隐藏 ${zeroCurrentTeamCount} 个全0团队`}
+                      </span>
+                    )}
+                  </button>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                    日期
+                    <select
+                      value={selectedDate}
+                      onChange={(event) => setSelectedDate(event.target.value)}
+                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[12px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      aria-label="选择团队明细日期"
+                    >
+                      {monthEntries.map((entry) => (
+                        <option key={entry.recordDate} value={entry.recordDate}>
+                          {entry.recordDate.slice(-2).replace(/^0/, "")} 日
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 {teamTableOpen && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-[13px] border-collapse">
@@ -756,7 +839,7 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                       </tr>
                     </thead>
                     <tbody>
-                      {currentEntry.teams.map((t: StaffTurnoverTeamRecord, i: number) => (
+                      {visibleCurrentTeams.map((t: StaffTurnoverTeamRecord, i: number) => (
                         <tr key={t.teamOrgId} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
                           <td className="px-3 py-2 text-slate-700 font-medium">{t.teamOrgName}</td>
                           <td className="text-center px-3 py-2 text-slate-600 tabular-nums">{t.lossOnlineCount}</td>
@@ -867,6 +950,12 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     className="ml-auto px-3 h-8 rounded-md border border-slate-300 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
                     清空全部
                   </button>
+                  {zeroFormRowCount > 0 && (
+                    <button type="button" onClick={() => setShowZeroFormRows((value) => !value)} disabled={submitting}
+                      className="px-3 h-8 rounded-md border border-slate-300 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                      {showZeroFormRows ? "隐藏全0团队" : `显示全0团队（${zeroFormRowCount}）`}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -896,9 +985,9 @@ export function StaffTurnoverCard({ scopeOrgId, selectedBaseOrgId, needsBaseSele
                     </tr>
                   </thead>
                   <tbody>
-                    {formRows.map((r, idx) => (
-                      <tr key={r.teamOrgId} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}>
-                        <td className={`px-3 py-1.5 text-slate-700 font-medium sticky left-0 border-r border-slate-100 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>{r.teamOrgName}</td>
+                    {visibleFormRows.map(({ row: r, index: idx }, displayIndex) => (
+                      <tr key={r.teamOrgId} className={displayIndex % 2 === 0 ? "bg-white" : "bg-slate-50/40"}>
+                        <td className={`px-3 py-1.5 text-slate-700 font-medium sticky left-0 border-r border-slate-100 ${displayIndex % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>{r.teamOrgName}</td>
                         <td className="px-1 py-1 border-l border-slate-100">
                           <input type="number" value={r.lossOnlineCount} onChange={(e) => updateFormRow(idx, "lossOnlineCount", e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-[12px] text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
                         </td>
