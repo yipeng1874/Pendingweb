@@ -888,22 +888,32 @@ export function CockpitPage() {
                           {/* 悬浮浮层：团队明细 */}
                           {isHovered && hasTeams && data && (
                             <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[260px]">
-                              <p className="text-[11px] font-semibold text-slate-500 mb-2">{label} · 团队明细</p>
+                              <div className="flex items-center justify-between gap-3 whitespace-nowrap mb-2 text-[11px]">
+                                <span className="font-semibold text-slate-500">{label} · 团队明细</span>
+                                <span className="shrink-0">
+                                  <span className="text-emerald-600">完成</span> / <span className="text-blue-500">参与</span> / <span className="text-amber-500">请假</span>
+                                </span>
+                              </div>
                               {data.teams.map((team) => {
-                                const teamColor = rateColor(team.completionRate);
+                                const noAssessment = team.total > 0 && (team.exemptions ?? 0) >= team.total;
+                                const teamColor = noAssessment ? "#94a3b8" : rateColor(team.completionRate);
                                 return (
                                   <div key={team.orgId} className="flex items-center gap-2 text-[11px]">
                                     <span className="w-[64px] shrink-0 text-slate-600 font-medium truncate" title={team.orgName}>
                                       {team.orgName}
                                     </span>
-                                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                      <div className="h-full rounded-full transition-all" style={{ width: `${team.completionRate}%`, backgroundColor: teamColor }} />
+                                    <div className="flex-1 min-w-[40px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                      <div className="h-full rounded-full transition-all" style={{ width: `${noAssessment ? 0 : team.completionRate}%`, backgroundColor: teamColor }} />
                                     </div>
-                                    <span className="w-[34px] shrink-0 text-right font-bold tabular-nums" style={{ color: teamColor }}>
-                                      {team.completionRate}%
+                                    <span className="shrink-0 text-right font-bold tabular-nums" style={{ color: teamColor }}>
+                                      {noAssessment ? "无需考核" : `${team.completionRate}%`}
                                     </span>
-                                    <span className="w-[42px] shrink-0 text-right text-slate-400 tabular-nums">
-                                      {team.completed}/{team.total}
+                                    <span className="shrink-0 text-right font-semibold tabular-nums">
+                                      <span className="text-emerald-600">{team.completed}</span>
+                                      <span className="mx-1 text-slate-300">/</span>
+                                      <span className="text-blue-500">{team.total}</span>
+                                      <span className="mx-1 text-slate-300">/</span>
+                                      <span className="text-amber-500">{team.exemptions ?? 0}</span>
                                     </span>
                                   </div>
                                 );
