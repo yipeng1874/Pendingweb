@@ -1,3 +1,6 @@
+import { teamDailyRoutes } from "./modules/task/team-daily/team-daily.routes.js";
+import { teamDailyReportRoutes } from "./modules/task/team-daily/team-daily-report.routes.js";
+import { teamDailyUploadRoutes } from "./modules/task/team-daily/team-daily-upload.routes.js";
 import cors from "cors";
 import express from "express";
 import path from "path";
@@ -58,6 +61,9 @@ export function createApp() {
   app.use("/api", workflowTaskRoutes);
   app.use("/api", broadcastTaskRoutes);
   app.use("/api", hallDailyRoutes);
+  app.use("/api", teamDailyRoutes);
+  app.use("/api", teamDailyReportRoutes);
+  app.use("/api", teamDailyUploadRoutes);
   app.use("/api", anchorSummaryRoutes);
   app.use("/api", liveRoomCapacityRoutes);
   app.use("/api", anchorAvgWaveRoutes);

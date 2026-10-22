@@ -54,6 +54,10 @@ model User {
 }
 
 model OrgUnit {
+  teamTaskTemplates              TeamTaskTemplate[]         @relation("TeamTaskTemplateTeam")
+  teamTaskAssignments            TeamTaskAssignment[]       @relation("TeamTaskAssignmentTeam")
+  teamTaskAssignmentTargets      TeamTaskAssignmentTarget[] @relation("TeamTaskTarget")
+  teamTaskRecords                TeamTaskRecord[]           @relation("TeamTaskRecordHall")
   id                             String                          @id @default(uuid())
   orgCode                        String                          @unique @map("org_code")
   orgType                        OrgType                         @map("org_type")
@@ -1247,4 +1251,224 @@ enum WorkflowQuestionType {
   MULTI_CHOICE
   LINK
   ATTACHMENT
+}
+
+model TeamTaskTemplate {
+  id          String                 @id @default(uuid())
+  title       String
+  description String?                @db.Text
+  baseOrgId   String                 @map("base_org_id")
+  createdBy   String                 @map("created_by")
+  version     Int                    @default(1)
+  status      TeamTaskTemplateStatus @default(draft)
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  baseOrg     OrgUnit                @relation("TeamTaskTemplateTeam", fields: [baseOrgId], references: [id])
+  items       TeamTaskItem[]
+  assignments TeamTaskAssignment[]
+
+  @@index([baseOrgId])
+  @@index([status])
+  @@map("team_task_templates")
+}
+
+/// 团队管理日常任务模板题目
+model TeamTaskItem {
+  id          String               @id @default(uuid())
+  templateId  String               @map("template_id")
+  sortOrder   Int                  @map("sort_order")
+  itemType    TeamTaskItemType     @map("item_type")
+  title       String
+  isRequired  Boolean              @default(true) @map("is_required")
+  linkUrl     String?              @map("link_url")
+  template    TeamTaskTemplate     @relation(fields: [templateId], references: [id])
+  options     TeamTaskItemOption[]
+  itemRecords TeamTaskItemRecord[]
+
+  @@index([templateId])
+  @@map("team_task_items")
+}
+
+/// 团队管理日常任务模板题目选项
+model TeamTaskItemOption {
+  id         String       @id @default(uuid())
+  taskItemId String       @map("task_item_id")
+  sortOrder  Int          @map("sort_order")
+  label      String
+  taskItem   TeamTaskItem @relation(fields: [taskItemId], references: [id])
+
+  @@index([taskItemId])
+  @@map("team_task_item_options")
+}
+
+/// 团队管理日常任务发布（归属于基地，目标是基地下的各个 HALL 组织）
+model TeamTaskAssignment {
+  id              String                   @id @default(uuid())
+  templateId      String                   @map("template_id")
+  baseOrgId       String                   @map("base_org_id")
+  status          TeamTaskAssignmentStatus @default(draft)
+  effectMode      TeamTaskEffectMode       @default(immediate) @map("effect_mode")
+  effectiveAt     DateTime?                @map("effective_at")
+  publishedAt     DateTime?                @map("published_at")
+  endedAt         DateTime?                @map("ended_at")
+  createdBy       String                   @map("created_by")
+  createdByOrgId  String                   @map("created_by_org_id")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  template        TeamTaskTemplate         @relation(fields: [templateId], references: [id])
+  baseOrg         OrgUnit                  @relation("TeamTaskAssignmentTeam", fields: [baseOrgId], references: [id])
+  targets         TeamTaskAssignmentTarget[]
+  records         TeamTaskRecord[]
+
+  @@index([templateId])
+  @@index([baseOrgId, status])
+  @@index([createdAt])
+  @@map("team_task_assignments")
+}
+
+/// 团队管理日常任务发布目标（具体的 HALL 组织）
+model TeamTaskAssignmentTarget {
+  id              String             @id @default(uuid())
+  assignmentId    String             @map("assignment_id")
+  teamOrgId       String             @map("team_org_id")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  assignment      TeamTaskAssignment @relation(fields: [assignmentId], references: [id])
+  teamOrg         OrgUnit            @relation("TeamTaskTarget", fields: [teamOrgId], references: [id])
+
+  @@unique([assignmentId, teamOrgId])
+  @@index([assignmentId])
+  @@index([teamOrgId])
+  @@map("team_task_assignment_targets")
+}
+
+/// 团队管理日常任务执行记录（主体是 HALL 组织，每日一条）
+model TeamTaskRecord {
+  id             String               @id @default(uuid())
+  assignmentId   String               @map("assignment_id")
+  teamOrgId      String               @map("team_org_id")
+  recordDate     String               @map("record_date")
+  status         TeamTaskRecordStatus @default(pending)
+  totalItems     Int                  @default(0) @map("total_items")
+  doneItems      Int                  @default(0) @map("done_items")
+  submittedAt    DateTime?            @map("submitted_at")
+  submittedBy    String?              @map("submitted_by")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  assignment     TeamTaskAssignment   @relation(fields: [assignmentId], references: [id])
+  teamOrg        OrgUnit              @relation("TeamTaskRecordHall", fields: [teamOrgId], references: [id])
+  itemRecords    TeamTaskItemRecord[]
+  leaveRequests  TeamTaskLeaveRequest[]
+
+  @@unique([assignmentId, teamOrgId, recordDate])
+  @@index([assignmentId])
+  @@index([teamOrgId])
+  @@index([recordDate])
+  @@index([recordDate, teamOrgId])
+  @@map("team_task_records")
+}
+
+/// 团队管理日常任务请假申请
+model TeamTaskLeaveRequest {
+  id              String              @id @default(uuid())
+  taskRecordId    String              @map("task_record_id")
+  applicantUserId String              @map("applicant_user_id")
+  applicantName   String?             @map("applicant_name")
+  reason          String              @db.Text
+  status          TeamTaskLeaveStatus @default(pending)
+  reviewedBy      String?             @map("reviewed_by")
+  reviewedAt      DateTime?           @map("reviewed_at")
+  reviewComment   String?             @map("review_comment") @db.Text
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  taskRecord      TeamTaskRecord      @relation(fields: [taskRecordId], references: [id])
+
+  @@index([taskRecordId])
+  @@index([status])
+  @@index([applicantUserId])
+  @@map("team_task_leave_requests")
+}
+
+/// 团队管理日常任务题目作答记录
+model TeamTaskItemRecord {
+  id              String                 @id @default(uuid())
+  taskRecordId    String                 @map("task_record_id")
+  taskItemId      String                 @map("task_item_id")
+  status          TeamTaskItemRecordStatus @default(pending)
+  answerText      String?                @map("answer_text") @db.Text
+  answerOptions   Json?                  @map("answer_options")
+  isLinkConfirmed Boolean                @default(false) @map("is_link_confirmed")
+  doneAt          DateTime?              @map("done_at")
+  doneBy          String?                @map("done_by")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  taskRecord      TeamTaskRecord         @relation(fields: [taskRecordId], references: [id])
+  taskItem        TeamTaskItem           @relation(fields: [taskItemId], references: [id])
+  attachments     TeamTaskItemAttachment[]
+
+  @@unique([taskRecordId, taskItemId])
+  @@index([taskRecordId])
+  @@index([taskItemId])
+  @@map("team_task_item_records")
+}
+
+/// 团队管理日常任务题目附件
+model TeamTaskItemAttachment {
+  id                   String             @id @default(uuid())
+  teamTaskItemRecordId String             @map("team_task_item_record_id")
+  fileName             String             @map("file_name")
+  fileUrl              String             @map("file_url")
+  fileSize             Int                @map("file_size")
+  mimeType             String             @map("mime_type")
+  uploadedBy           String             @map("uploaded_by")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  teamTaskItemRecord   TeamTaskItemRecord @relation(fields: [teamTaskItemRecordId], references: [id])
+
+  @@index([teamTaskItemRecordId])
+  @@map("team_task_item_attachments")
+}
+
+enum TeamTaskTemplateStatus {
+  draft
+  archived
+}
+
+enum TeamTaskItemType {
+  QA
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  FILL_BLANK
+  LINK
+  ATTACHMENT
+}
+
+enum TeamTaskAssignmentStatus {
+  draft
+  scheduled
+  active
+  ended
+  deleted
+}
+
+enum TeamTaskEffectMode {
+  immediate
+  next_midnight
+}
+
+enum TeamTaskRecordStatus {
+  pending
+  in_progress
+  submitted
+  overdue
+}
+
+enum TeamTaskItemRecordStatus {
+  pending
+  done
+}
+
+enum TeamTaskLeaveStatus {
+  pending
+  approved
+  rejected
+  cancelled
 }

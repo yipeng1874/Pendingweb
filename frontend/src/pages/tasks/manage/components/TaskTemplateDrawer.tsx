@@ -6,7 +6,9 @@ import { hallDailyApi, templateApi } from "../../../../services/task";
 import { isLearningLinkValid, normalizeLearningLink } from "../../../../shared/utils/learningLink";
 
 
-type TaskCategory = "DAILY" | "TEMPORARY" | "HALL_DAILY";
+import { teamDailyApi } from "../../../../services/teamDaily";
+
+type TaskCategory = "DAILY" | "TEMPORARY" | "HALL_DAILY" | "TEAM_DAILY";
 
 type DraftItem = {
   id: string;
@@ -224,7 +226,12 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
     };
     try {
       let saved: any;
-      if (category === "HALL_DAILY") {
+      if (category === "TEAM_DAILY") {
+        const baseOrgId = scopeOrgId || currentOrgId;
+        saved = template?.status === "draft"
+          ? await teamDailyApi.updateTemplate(template.id, payload, baseOrgId)
+          : await teamDailyApi.createTemplate({ ...payload, baseOrgId });
+      } else if (category === "HALL_DAILY") {
         // 厅管日常任务走独立的 hall-daily 接口，teamOrgId = scopeOrgId
         const teamOrgId = scopeOrgId || currentOrgId;
         if (template?.status === "draft") {
@@ -261,6 +268,7 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
             <h3 className="break-words text-lg font-semibold text-slate-900">{drawerTitle}</h3>
             <p className="mt-1 break-words text-xs text-slate-400">
               {category === "DAILY" ? "用于主播日常任务三步向导的表单草稿。"
+                : category === "TEAM_DAILY" ? "用于团队管理日常任务发放的表单草稿。"
                 : category === "HALL_DAILY" ? "用于厅管日常任务发放的表单草稿。"
                 : "用于临时任务发放的表单草稿。"}
             </p>
@@ -307,7 +315,7 @@ export function TaskTemplateDrawer({ open, category, currentOrgId, scopeOrgId, t
               <div className="min-w-0 flex-1">
                 <p className="break-words text-base font-semibold text-slate-900">表单题目</p>
                 <p className="break-words text-xs text-slate-400">
-                  {category === "HALL_DAILY" ? "请尽量让厅管在同一张任务表里完成完整的工作手册动作。" : "请尽量让主播在同一张任务表里完成完整的工作手册动作。"}
+                  {category === "TEAM_DAILY" ? "团队管理员共同填写同一张每日任务表。" : category === "HALL_DAILY" ? "请尽量让厅管在同一张任务表里完成完整的工作手册动作。" : "请尽量让主播在同一张任务表里完成完整的工作手册动作。"}
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">{items.length} 项</span>

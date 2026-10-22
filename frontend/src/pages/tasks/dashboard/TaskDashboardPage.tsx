@@ -1,3 +1,5 @@
+import { teamDailyApi, type TeamTaskRecord } from "../../../services/teamDaily";
+import { TeamDailyTodoSection } from "./components/TeamDailyTodoSection";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Building2, CheckCircle2, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, GitBranch, ListTodo, Megaphone, Plus, RefreshCw, Send, UserRound, Users2, X } from "lucide-react";
@@ -294,6 +296,9 @@ export function TaskDashboardPage() {
   const [reminders, setReminders] = useState<PersonalReminder[]>([]);
   const [workflowTasks, setWorkflowTasks] = useState<WorkflowMyTask[]>([]);
   const [broadcastTasks, setBroadcastTasks] = useState<BroadcastTaskForAnchor[]>([]);
+  const [teamDailyError,setTeamDailyError] = useState("");
+  const teamRequestVersion=useRef(0);
+  const [teamDailyRecords,setTeamDailyRecords] = useState<TeamTaskRecord[]>([]);
   const [hallDailyRecords, setHallDailyRecords] = useState<HallTaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
@@ -316,6 +321,7 @@ export function TaskDashboardPage() {
 
   async function load() {
     setLoading(true);
+    const teamLoad=refreshTeamDailyOnly();
     // 厅管日常任务：HALL_MANAGER 身份必然请求；ANCHOR 身份也请求（账号可能同时有厅管身份，后端融通返回数据）
     const shouldFetchHallDaily = currentIdentity?.roleCode === "HALL_MANAGER" || currentIdentity?.roleCode === "ANCHOR";
     const [recordRows, reminderRows, workflowRows, broadcastRows, hallDailyRows] = await Promise.all([
@@ -332,7 +338,16 @@ export function TaskDashboardPage() {
     setWorkflowTasks(workflowRows);
     setBroadcastTasks(broadcastRows);
     setHallDailyRecords(hallDailyRows);
+    await teamLoad;
     setLoading(false);
+  }
+
+  async function refreshTeamDailyOnly() {
+    const version=++teamRequestVersion.current;
+    const identityId=currentIdentity?.id;
+    setTeamDailyError("");
+    try { const rows=await teamDailyApi.getMyRecords(); if(version===teamRequestVersion.current && useIdentityStore.getState().currentIdentity?.id===identityId) setTeamDailyRecords(rows); }
+    catch(e) { if(version===teamRequestVersion.current && useIdentityStore.getState().currentIdentity?.id===identityId) { setTeamDailyRecords([]);setTeamDailyError(e instanceof Error ? e.message : "团队任务加载失败"); } }
   }
 
   // 仅刷新厅管日常任务数据，不触发全局 loading，避免卡片展开状态丢失
@@ -552,6 +567,7 @@ export function TaskDashboardPage() {
         })();
         const groups = [
           { key: "daily", label: "主播日常", icon: <CheckCircle2 size={15} />, progress: calcProgress(daily), count: daily.length, color: "#3b82f6", bg: "bg-blue-50", text: "text-blue-600", bar: "from-blue-400 to-blue-600" },
+          { key: "teamDaily", label: "团队管理日常", icon: <Building2 size={15} />, progress: calcRecordProgress(teamDailyRecords), count: teamDailyRecords.length, color: "#0d9488", bg: "bg-teal-50", text: "text-teal-600", bar: "from-teal-400 to-teal-600" },
           { key: "hallDaily", label: "厅管日常", icon: <Building2 size={15} />, progress: calcRecordProgress(hallDailyTodayRecords), count: hallDailyTodayRecords.length, color: "#14b8a6", bg: "bg-teal-50", text: "text-teal-600", bar: "from-teal-400 to-teal-600" },
           { key: "account", label: "触达式", icon: <Send size={15} />, progress: calcRecordProgress(tmpAccount), count: tmpAccount.length, color: "#06b6d4", bg: "bg-sky-50", text: "text-sky-600", bar: "from-sky-400 to-sky-600" },
           { key: "anchor", label: "主播式", icon: <UserRound size={15} />, progress: calcRecordProgress(tmpAnchor), count: tmpAnchor.length, color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-600", bar: "from-emerald-400 to-emerald-500" },
@@ -654,6 +670,7 @@ export function TaskDashboardPage() {
         <div className="columns-1 gap-3 xl:columns-3 space-y-3 [&>*]:break-inside-avoid">
 
           {/* 厅管日常任务 — hideEmptyGroups 开启时，无数据则完全隐藏 */}
+          {(!hideEmptyGroups || teamDailyRecords.length > 0) && <TeamDailyTodoSection key={currentIdentity?.id} records={teamDailyRecords} error={teamDailyError} onRefresh={refreshTeamDailyOnly} isHighlighted={highlightedSection?.key === "teamDaily"} onHighlightDone={handleHighlightDone} />}
           {(!hideEmptyGroups || visibleHallDailyRecords.length > 0) && (
             <TaskDashboardSection
               icon={<Building2 size={18} />}

@@ -30,6 +30,7 @@ export function App() {
         <Route path="/publish/workflow" element={<IdentityRequiredRoute><WorkflowPublishPage /></IdentityRequiredRoute>} />
         <Route path="/publish/temporary" element={<IdentityRequiredRoute><TemporaryPublishPage /></IdentityRequiredRoute>} />
         <Route path="/publish/broadcast" element={<IdentityRequiredRoute><BroadcastPublishPage /></IdentityRequiredRoute>} />
+        <Route path="/todos/team/:id" element={<IdentityRequiredRoute><TodoDetailPage kind="team" /></IdentityRequiredRoute>} />
         <Route path="/todos/hall/:id" element={<IdentityRequiredRoute><TodoDetailPage kind="hall" /></IdentityRequiredRoute>} />
         <Route path="/todos/:id" element={<IdentityRequiredRoute><TodoDetailPage /></IdentityRequiredRoute>} />
         <Route path="/reminders" element={<IdentityRequiredRoute><ReminderPage /></IdentityRequiredRoute>} />

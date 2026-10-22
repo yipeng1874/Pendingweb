@@ -1,3 +1,4 @@
+import { activateTeamDailyScheduled, ensureTeamDailyRecordsForToday } from "./modules/task/team-daily/team-daily.service.js";
 import fs from "fs";
 import path from "path";
 import { createApp } from "./app.js";
@@ -98,6 +99,7 @@ function startTemporaryNotifyScheduler() {
 function startHallDailyActivator() {
   const intervalMs = 60 * 1000;
   const tick = async () => {
+    await activateTeamDailyScheduled().then(() => ensureTeamDailyRecordsForToday()).catch(error => console.error("[team-daily]", error));
     const activateResult = await activateHallDailyScheduled().catch((err) => {
       console.error("[hall-daily] 定时激活失败", err);
       return { activated: 0 };

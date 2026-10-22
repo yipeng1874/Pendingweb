@@ -826,3 +826,156 @@ export interface TemporaryDashboardAssignmentListResponse {
   hasMore: boolean;
   scopeOrg: { id: string; name: string; orgType: string };
 }
+
+export interface TeamDailyDashboardResponse {
+  taskDate: string;
+  phase: "in_progress" | "supplement" | "closed";
+  hall: { id: string; name: string };
+  viewer: { roleCode: string; orgId: string };
+  quickRanges: { today: string; yesterday: string; canSupplementYesterday: boolean };
+  summary: {
+    status: TeamDailyDisplayStatus | null;
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    submittedByName?: string | null;
+    completionRate: number;
+  };
+  record: {
+    id: string;
+    assignmentId: string;
+    status: TeamDailyDisplayStatus;
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    submittedByName?: string | null;
+    leaveRequest?: TeamDailyLeaveRequestSummary | null;
+    templateTitle: string | null;
+    items: Array<{
+      taskItemId: string;
+      title: string;
+      itemType: string;
+      isRequired: boolean;
+      sortOrder: number;
+      linkUrl: string | null;
+      done: boolean;
+      doneAt: string | null;
+      doneByName?: string | null;
+      answerText: string | null;
+      answerOptions: string[] | null;
+      isLinkConfirmed: boolean;
+    }>;
+  } | null;
+}
+
+// ── 团队管理日常任务看板：管理员视角 ─────────────────────────────────────────────
+
+export interface TeamDailyLeaveRequestSummary {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  applicantName?: string | null;
+  reason: string;
+  reviewComment?: string | null;
+  createdAt: string;
+  reviewedAt?: string | null;
+}
+
+export type TeamDailyDisplayStatus = "pending" | "in_progress" | "submitted" | "overdue" | "leave_pending" | "leave_approved";
+
+export interface TeamDailyAdminTeamSummary {
+  baseOrgId: string;
+  baseOrgName: string;
+  /** 是否有任务分配（false 表示未参与任务，仅展示用） */
+  hasTask: boolean;
+  /** 基地下全量 active 团队数 */
+  totalHalls: number;
+  /** 参与任务的团队数（有 Assignment target） */
+  assignedHalls: number;
+  submittedCount: number;
+  leaveApprovedCount?: number;
+  leavePendingCount?: number;
+  inProgressCount: number;
+  pendingCount: number;
+  overdueCount: number;
+  /** 有任务分配但当天记录尚未生成的团队数 */
+  noRecordCount: number;
+  /** 完成率 = submittedCount / assignedHalls */
+  completionRate: number;
+  /** 当天任务模板标题（无任务时为 null） */
+  templateTitle: string | null;
+}
+
+export interface TeamDailyAdminBaseSummary {
+  totalTeams: number;
+  assignedTeams: number;
+  totalHalls: number;
+  assignedHalls: number;
+  submittedHalls: number;
+  leaveApprovedHalls?: number;
+  leavePendingHalls?: number;
+  completionRate: number;
+}
+
+export interface TeamDailyAdminOverviewResponse {
+  taskDate: string;
+  phase: "in_progress" | "supplement" | "closed";
+  baseOrg: { id: string; name: string };
+  quickRanges: { today: string; yesterday: string; canSupplementYesterday: boolean };
+  baseSummary: TeamDailyAdminBaseSummary;
+  teams: TeamDailyAdminTeamSummary[];
+}
+
+export interface TeamDailyAdminHallRow {
+  teamOrgId: string;
+  teamOrgName: string;
+  /** 是否有任务分配（false 表示未参与任务，仅展示用） */
+  hasTask: boolean;
+  status: TeamDailyDisplayStatus | null;
+  totalItems: number;
+  doneItems: number;
+  completionRate: number;
+  submittedAt: string | null;
+    submittedByName?: string | null;
+  recordId: string | null;
+}
+
+export interface TeamDailyAdminHallDetailResponse {
+  taskDate: string;
+  phase: "in_progress" | "supplement" | "closed";
+  hall: { id: string; name: string };
+  summary: {
+    status: TeamDailyDisplayStatus | null;
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    submittedByName?: string | null;
+    leaveRequest?: TeamDailyLeaveRequestSummary | null;
+    completionRate: number;
+  };
+  record: {
+    id: string;
+    assignmentId: string;
+    status: TeamDailyDisplayStatus;
+    totalItems: number;
+    doneItems: number;
+    submittedAt: string | null;
+    submittedByName?: string | null;
+    leaveRequest?: TeamDailyLeaveRequestSummary | null;
+    templateTitle: string | null;
+    items: Array<{
+      taskItemId: string;
+      title: string;
+      itemType: string;
+      isRequired: boolean;
+      sortOrder: number;
+      linkUrl: string | null;
+      done: boolean;
+      doneAt: string | null;
+      doneByName?: string | null;
+      answerText: string | null;
+      answerOptions: string[] | null;
+      isLinkConfirmed: boolean;
+      attachments: Array<{ id: string; fileName: string; fileUrl: string; fileSize: number; mimeType: string }>;
+    }>;
+  } | null;
+}

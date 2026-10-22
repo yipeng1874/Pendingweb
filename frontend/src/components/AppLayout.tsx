@@ -27,6 +27,7 @@ const taskSubItems = [
 
 const taskBoardSubItems = [
   { to: "/tasks/dashboard/daily-board", label: "主播日常任务看板", icon: ClipboardCheck },
+  { to: "/tasks/dashboard/team-daily-board", label: "团队管理日常任务看板", icon: Building2 },
   { to: "/tasks/dashboard/hall-daily-board", label: "厅管日常任务看板", icon: Building2 },
   { to: "/tasks/dashboard/temporary-board", label: "临时任务看板", icon: CalendarClock },
   { to: "/tasks/dashboard/workflow-board", label: "协同任务看板", icon: GitBranch },
@@ -34,6 +35,7 @@ const taskBoardSubItems = [
 
 const issueSubItems = [
   { to: "/tasks/templates/daily-library", label: "主播日常任务", icon: ClipboardCheck },
+  { to: "/tasks/issue/team-daily", label: "团队管理日常任务", icon: Building2 },
   { to: "/tasks/issue/hall-daily", label: "厅管日常任务", icon: Building2 },
   { to: "/tasks/issue/temporary", label: "临时任务", icon: CalendarClock },
   { to: "/tasks/collaboration/workflow", label: "协同任务", icon: GitBranch },
@@ -244,6 +246,7 @@ function TaskBoardNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean;
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(currentRoleCode))
         && (permissions.includes("*") || permissions.includes("task:report:view"));
     }
+    if (item.to === "/tasks/dashboard/team-daily-board") return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"].includes(currentRoleCode ?? "") && (permissions.includes("*") || permissions.includes("task:report:view"));
     if (item.to === "/tasks/dashboard/hall-daily-board") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(currentRoleCode))
         && (permissions.includes("*") || permissions.includes("task:report:view"));
@@ -313,6 +316,7 @@ function TaskIssueNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean;
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))
         && (permissions.includes("*") || permissions.includes("task:template:manage") || permissions.includes("task:assignment:manage"));
     }
+    if (item.to === "/tasks/issue/team-daily") return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode ?? "");
     if (item.to === "/tasks/issue/hall-daily") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"].includes(currentRoleCode));
     }

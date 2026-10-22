@@ -1,3 +1,5 @@
+import { TeamDailyIssuePage } from "./pages/tasks/manage/TeamDailyIssuePage";
+import { TeamDailyDashboardPage } from "./pages/tasks/dashboard/TeamDailyDashboardPage";
 import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
@@ -84,6 +86,8 @@ export default function App() {
           <Route path="/tasks/templates/daily-library" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"]} permissions={["task:template:manage"]}><DailyIssuePage /></RoleProtected>} />
           <Route path="/tasks/issue/daily" element={<Navigate to="/tasks/templates/daily-library" replace />} />
           <Route path="/tasks/issue/temporary" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]}><TemporaryIssuePage /></RoleProtected>} />
+          <Route path="/tasks/issue/team-daily" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"]}><TeamDailyIssuePage /></RoleProtected>} />
+          <Route path="/tasks/dashboard/team-daily-board" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]} permissions={["task:report:view"]}><TeamDailyDashboardPage /></RoleProtected>} />
           <Route path="/tasks/issue/hall-daily" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]}><HallDailyIssuePage /></RoleProtected>} />
           <Route path="/tasks/collaboration/workflow" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"]}><WorkflowTaskPage /></RoleProtected>} />
           <Route path="/tasks/issue" element={<Navigate to="/tasks/issue/daily" replace />} />

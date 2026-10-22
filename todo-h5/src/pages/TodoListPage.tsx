@@ -7,10 +7,11 @@ import { WorkflowCard, BroadcastCard } from "../components/CollaborationTaskCard
 import { MobileBottomNav } from "../components/MobileBottomNav";
 import type { BroadcastTask, HallDailyRecord, TaskRecord, WorkflowTask } from "../types";
 
-type CategoryKey = "daily" | "hall" | "account" | "anchor" | "manager" | "workflow" | "broadcast";
+type CategoryKey = "team" | "daily" | "hall" | "account" | "anchor" | "manager" | "workflow" | "broadcast";
 
 const categories: Array<{ key: CategoryKey; label: string; icon: ReactNode; tone: string }> = [
   { key: "daily", label: "主播日常", icon: <CheckCircle2 size={20} />, tone: "blue" },
+  { key: "team", label: "团队管理日常", icon: <Building2 size={20} />, tone: "teal" },
   { key: "hall", label: "厅管日常", icon: <Building2 size={20} />, tone: "teal" },
   { key: "account", label: "触达式", icon: <Send size={20} />, tone: "sky" },
   { key: "anchor", label: "主播式", icon: <UserRound size={20} />, tone: "green" },
@@ -85,9 +86,9 @@ function RecordCard({ record, daily, onOpen }: { record: TaskRecord; daily: bool
   return <button className="todo-card-button" onClick={onOpen}><div className="dashboard-task-card"><div className="dashboard-card-topline"><div className="dashboard-tags"><span className={`tag ${daily ? "tag-blue" : mode?.badge}`}>{daily ? "主播日常" : mode?.label}</span>{daily && record.recordDate ? <span className="tag tag-slate">{record.recordDate}</span> : null}</div><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{record.assignment?.template?.title ?? record.subjectName ?? record.subjectKey}</p>{record.assignment?.template?.description?.trim() ? <p className="dashboard-description">{record.assignment.template.description.trim()}</p> : null}<div className="dashboard-meta"><span>进度 {record.doneItems}/{record.totalItems}</span><span>截止 {formatDeadline(record.deadlineAt)}</span><span>{record.subjectName ?? record.subjectKey}</span></div><div className="dashboard-progress"><span style={{ width: `${record.totalItems ? Math.round(record.doneItems / record.totalItems * 100) : 0}%` }} /></div></div></button>;
 }
 
-function HallCard({ record }: { record: HallDailyRecord }) {
+function HallCard({ record, team = false }: { record: HallDailyRecord; team?: boolean }) {
   const status = taskStatusMeta(record.status);
-  return <div className="dashboard-task-card"><div className="dashboard-card-topline"><div className="dashboard-tags"><span className="tag tag-teal">厅管日常</span><span className="tag tag-slate">{record.recordDate}</span></div><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{record.assignment?.template?.title ?? "厅管日常任务"}</p><div className="dashboard-meta"><span>{record.hallOrg?.name ?? "当前厅"}</span><span>进度 {record.doneItems}/{record.totalItems}</span></div><div className="dashboard-progress dashboard-progress-teal"><span style={{ width: `${record.totalItems ? Math.round(record.doneItems / record.totalItems * 100) : 0}%` }} /></div></div>;
+  return <div className="dashboard-task-card"><div className="dashboard-card-topline"><div className="dashboard-tags"><span className="tag tag-teal">{team ? "团队管理日常" : "厅管日常"}</span><span className="tag tag-slate">{record.recordDate}</span></div><span className={`tag ${status.cls}`}>{status.text}</span></div><p className="todo-title">{record.assignment?.template?.title ?? "厅管日常任务"}</p><div className="dashboard-meta"><span>{record.hallOrg?.name ?? "当前厅"}</span><span>进度 {record.doneItems}/{record.totalItems}</span></div><div className="dashboard-progress dashboard-progress-teal"><span style={{ width: `${record.totalItems ? Math.round(record.doneItems / record.totalItems * 100) : 0}%` }} /></div></div>;
 }
 
 export function TodoListPage() {
@@ -98,6 +99,7 @@ export function TodoListPage() {
   const logout = useAuthStore((state) => state.logout);
   const currentIdentity = useAuthStore((state) => state.currentIdentity);
   const [records, setRecords] = useState<TaskRecord[]>([]);
+  const [teamRecords, setTeamRecords] = useState<HallDailyRecord[]>([]);
   const [hallRecords, setHallRecords] = useState<HallDailyRecord[]>([]);
   const [workflowTasks, setWorkflowTasks] = useState<WorkflowTask[]>([]);
   const [broadcastTasks, setBroadcastTasks] = useState<BroadcastTask[]>([]);
@@ -111,14 +113,16 @@ export function TodoListPage() {
     setLoading(true);
     setError("");
     try {
-      const [taskData, hallData, workflowData, broadcastData] = await Promise.allSettled([
+      const [taskData, hallData, workflowData, broadcastData, teamData] = await Promise.allSettled([
         taskApi.getMyRecords(),
         taskApi.getHallDailyRecords(),
         taskApi.getWorkflowTasks(),
         taskApi.getBroadcastTasks(),
+        taskApi.getTeamDailyRecords(),
       ]);
       if (id !== requestId.current) return;
       setRecords(taskData.status === "fulfilled" ? taskData.value : []);
+      setTeamRecords(teamData.status === "fulfilled" ? teamData.value : []);
       setHallRecords(hallData.status === "fulfilled" ? hallData.value : []);
       setWorkflowTasks(workflowData.status === "fulfilled" ? workflowData.value : []);
       setBroadcastTasks(broadcastData.status === "fulfilled" ? broadcastData.value : []);
@@ -126,6 +130,7 @@ export function TodoListPage() {
       for (const key of ["daily", "account", "anchor", "manager"] as const) {
         if (taskData.status === "rejected") errors[key] = "任务加载失败，请刷新重试";
       }
+      if (teamData.status === "rejected") errors.team = "团队管理日常加载失败，请刷新重试";
       if (hallData.status === "rejected") errors.hall = "厅管日常加载失败，请刷新重试";
       if (workflowData.status === "rejected") errors.workflow = "流转任务加载失败，请刷新重试";
       if (broadcastData.status === "rejected") errors.broadcast = "厅内直达加载失败，请刷新重试";
@@ -160,7 +165,7 @@ export function TodoListPage() {
     const rows = recordGroups[item.key] ?? [];
     let total = rows.length;
     let pending = rows.filter((row) => !isComplete(row.status)).length;
-    if (item.key === "hall") {
+    if (item.key === "team") { total = teamRecords.length; pending = teamRecords.filter(row=>!isComplete(row.status)).length; } else if (item.key === "hall") {
       total = hallRecords.length;
       pending = hallRecords.filter((row) => !isComplete(row.status)).length;
     } else if (item.key === "workflow") {
@@ -179,6 +184,7 @@ export function TodoListPage() {
 
   function categoryEntries(): CategoryEntry[] {
     if (!category) return [];
+    if (category.key === "team") return teamRecords.map(record=>({id:record.id,completed:isComplete(record.status),content:<button className="todo-card-button" onClick={()=>navigate(`/todos/team/${record.id}`)}><HallCard record={record} team /></button>}));
     if (category.key === "hall") return hallRecords.map((record) => ({ id: record.id, completed: isComplete(record.status), content: <button className="todo-card-button" onClick={() => navigate(`/todos/hall/${record.id}`)}><HallCard record={record} /></button> }));
     if (category.key === "workflow") return workflowTasks.map((task) => ({ id: task.id, completed: workflowComplete(task, currentIdentity?.userId), content: <WorkflowCard task={task} currentUserId={currentIdentity?.userId} onUpdate={(updated) => setWorkflowTasks((rows) => rows.map((row) => row.id === updated.id ? updated : row))} /> }));
     if (category.key === "broadcast") return broadcastTasks.map((task) => ({ id: task.id, completed: isComplete(task.myRecord.status), content: <BroadcastCard task={task} onUpdate={(updated) => setBroadcastTasks((rows) => rows.map((row) => row.id === updated.id ? updated : row))} /> }));

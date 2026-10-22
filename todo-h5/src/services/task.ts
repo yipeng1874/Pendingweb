@@ -4,6 +4,10 @@ import type { CollaborationAnswer, TaskItemAttachment } from "../types";
 import type { AnchorTrendResponse, BroadcastTask, DailyDashboardResponse, DailyRangeStatsResponse, HallDailyRecord, LiveRoomCapacity, OrgUnit, PersonalReminder, ProcessMetricByDateResponse, ProcessMetricConfigResponse, RetentionByMonthResponse, StaffTurnoverByDateResponse, TaskItemRecord, TaskRecord, WorkflowTask } from "../types";
 
 export const taskApi = {
+  getTeamDailyRecords: async () => (await api.get<Array<HallDailyRecord & {teamOrg:{id:string;name:string}}>>("/team-daily/my-records")).map(r=>({...r,hallOrg:r.teamOrg})),
+  submitTeamItem: (data: { taskRecordId: string; taskItemId: string; answerText?: string; answerOptions?: string[]; isLinkConfirmed?: boolean; done: boolean }) => api.post<TaskItemRecord>("/team-daily/item-records", data),
+  submitTeamRecord: (id:string) => api.post<HallDailyRecord>(`/team-daily/my-records/${id}/submit`),
+  uploadTeamAttachment: (itemRecordId:string,file:File) => { const form=new FormData(); form.append("file",file);form.append("teamTaskItemRecordId",itemRecordId);return api.postForm<TaskItemAttachment>("/tasks/team-daily/upload",form); },
   saveWorkflowAnswer: (taskId: string, stepId: string, answer: CollaborationAnswer) => api.post<{ task: WorkflowTask; stepCompleted: boolean }>(`/tasks/collaboration/workflows/${taskId}/steps/${stepId}/answer`, answer),
   submitWorkflowStep: (taskId: string, stepId: string) => api.post<WorkflowTask>(`/tasks/collaboration/workflows/${taskId}/steps/${stepId}/submit`, { answers: [] }),
   saveBroadcastAnswer: (taskId: string, answer: CollaborationAnswer) => api.post<{ task: BroadcastTask; recordCompleted: boolean }>(`/tasks/collaboration/broadcast/${taskId}/answer`, answer),

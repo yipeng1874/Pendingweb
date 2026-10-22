@@ -83,7 +83,7 @@ function getLatestHallDailyLeaveStatus(record?: HallDailyRecordForStatus | null)
   return null;
 }
 
-function resolveHallDailyReportStatus(
+export function resolveHallDailyReportStatus(
   record: HallDailyRecordForStatus | null | undefined,
   taskDate: string,
   now = new Date()
@@ -97,7 +97,7 @@ function resolveHallDailyReportStatus(
   return record.doneItems > 0 ? "in_progress" : "pending";
 }
 
-function serializeHallDailyLeaveRequest(record?: { leaveRequests?: Array<any> } | null) {
+export function serializeHallDailyLeaveRequest(record?: { leaveRequests?: Array<any> } | null) {
   const leave = record?.leaveRequests?.find((item) => item.status === "approved")
     ?? record?.leaveRequests?.find((item) => item.status === "pending")
     ?? record?.leaveRequests?.find((item) => item.status === "rejected")
@@ -114,7 +114,7 @@ function serializeHallDailyLeaveRequest(record?: { leaveRequests?: Array<any> } 
   };
 }
 
-function canViewDailyDashboard(roleCode?: string) {
+export function canViewDailyDashboard(roleCode?: string) {
   return ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN", "HALL_MANAGER"].includes(roleCode ?? "");
 }
 
@@ -349,7 +349,7 @@ function resolveDailyDashboardStatus(record: { requiredDoneItems: number; requir
   return "pending" as const;
 }
 
-function calculateCompletionRate(completed: number, total: number, approvedExemptions: number) {
+export function calculateCompletionRate(completed: number, total: number, approvedExemptions: number) {
   const assessedTotal = Math.max(0, total - approvedExemptions);
   return assessedTotal > 0 ? Math.round((completed / assessedTotal) * 100) : 0;
 }
@@ -489,7 +489,7 @@ async function loadDailyDashboardAudience(taskDate: string, baseOrg: { id: strin
   return { refs, recordMap, taskItemMetaMap };
 }
 
-async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any) {
+export async function resolveBaseScopeOrg(scopeOrgId: string | undefined, identity: any) {
   const roleCode = identity?.roleCode;
   const scopePath = identity?.scopePath;
   const identityOrgId = identity?.orgId;

@@ -46,10 +46,10 @@ function formatDeadline(value?: string | null) {
   return `${month}-${day} ${hour}:${minute}`;
 }
 
-function ItemEditor({ item, itemRecord, record, kind, onRefresh, orderLabel }: { item: TaskItem; itemRecord?: TaskItemRecord; record: TaskRecord; kind: "record" | "hall"; onRefresh: (itemSaved?: boolean) => Promise<void>; orderLabel: string }) {
+function ItemEditor({ item, itemRecord, record, kind, onRefresh, orderLabel }: { item: TaskItem; itemRecord?: TaskItemRecord; record: TaskRecord; kind: "record" | "hall" | "team"; onRefresh: (itemSaved?: boolean) => Promise<void>; orderLabel: string }) {
   const recordId = record.id;
   const lockedReason = recordEditingReason(record);
-  const saveItem = kind === "hall" ? taskApi.submitHallItem : taskApi.submitItemRecord;
+  const saveItem = kind === "team" ? taskApi.submitTeamItem : kind === "hall" ? taskApi.submitHallItem : taskApi.submitItemRecord;
   const [answerText, setAnswerText] = useState(itemRecord?.answerText ?? "");
   const [selectedOptions, setSelectedOptions] = useState<string[]>(itemRecord?.answerOptions ?? []);
   const [linkConfirmed, setLinkConfirmed] = useState(Boolean(itemRecord?.isLinkConfirmed));
@@ -131,7 +131,7 @@ function ItemEditor({ item, itemRecord, record, kind, onRefresh, orderLabel }: {
       }
       if (!target?.id) throw new Error("未获取到附件关联记录，请刷新后重试");
       if (operation !== imageOperation.current) return;
-      await (kind === "hall" ? taskApi.uploadHallAttachment(target.id, file) : taskApi.upload(target.id, file));
+      await (kind === "team" ? taskApi.uploadTeamAttachment(target.id, file) : kind === "hall" ? taskApi.uploadHallAttachment(target.id, file) : taskApi.upload(target.id, file));
       if (operation !== imageOperation.current) return;
       setImagePreview(null);
       await onRefresh();
@@ -252,7 +252,7 @@ function ItemEditor({ item, itemRecord, record, kind, onRefresh, orderLabel }: {
   );
 }
 
-export function TodoDetailPage({ kind = "record" }: { kind?: "record" | "hall" }) {
+export function TodoDetailPage({ kind = "record" }: { kind?: "record" | "hall" | "team" }) {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [record, setRecord] = useState<TaskRecord | null>(null);
@@ -270,9 +270,9 @@ export function TodoDetailPage({ kind = "record" }: { kind?: "record" | "hall" }
     setError("");
     try {
       let data: TaskRecord;
-      if (kind === "hall") {
-        const found = (await taskApi.getHallDailyRecords()).find((entry) => entry.id === id);
-        if (!found) throw new Error("该厅管任务已不在当前身份的可查看范围，请返回列表刷新");
+      if (kind === "hall" || kind === "team") {
+        const found = (await (kind === "team" ? taskApi.getTeamDailyRecords() : taskApi.getHallDailyRecords())).find((entry) => entry.id === id);
+        if (!found) throw new Error("该任务已不在当前身份的可查看范围，请返回列表刷新");
         data = hallRecordForDetail(found);
       } else data = await taskApi.getRecord(id);
       if (request !== requestId.current) return;
@@ -312,7 +312,7 @@ export function TodoDetailPage({ kind = "record" }: { kind?: "record" | "hall" }
     setSubmittingRecord(true);
     setSubmitHint("");
     try {
-      await (kind === "hall" ? taskApi.submitHallRecord(record.id) : taskApi.submitRecord(record.id));
+      await (kind === "team" ? taskApi.submitTeamRecord(record.id) : kind === "hall" ? taskApi.submitHallRecord(record.id) : taskApi.submitRecord(record.id));
       await loadRecord();
       setSubmitHint("任务已提交成功");
     } catch (err) {
