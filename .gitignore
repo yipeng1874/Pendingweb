@@ -7,10 +7,14 @@ dist/
 .DS_Store
 coverage/
 .cache/
+*.tsbuildinfo
 uploads/
 backend/uploads/
 frontend/dist/
 todo-h5/dist/
+
+# 本地发布前回退快照（仅用于当前机器快速回滚）
+/releases/pre-*/
 
 # 内网穿透配置（含服务器地址和认证 token）
 内网穿透/
