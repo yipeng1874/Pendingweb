@@ -927,7 +927,10 @@ export const HallDailyRecordService = {
       where: {
         hallOrgId: { in: hallOrgIds },
         recordDate: { in: datesToQuery },
-        assignment: { status: "active" },
+        OR: [
+          { recordDate: today, assignment: { status: "active" } },
+          { recordDate: yesterday, assignment: { status: { in: ["active", "ended"] } } },
+        ],
       },
       include: {
         hallOrg: { select: { id: true, name: true } },
@@ -950,18 +953,19 @@ export const HallDailyRecordService = {
           orderBy: { createdAt: "desc" },
         },
       },
-      orderBy: { recordDate: "desc" },
+      orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }],
     });
 
-    // 同步更新 overdue 状态
+    // 同一厅同一天可能因任务换版产生新旧两条记录，只返回最新一条。
+    // 逾期状态只在响应中动态呈现，避免读取请求覆盖同时发生的提交。
     const now = new Date();
     const updated: typeof records = [];
+    const seen = new Set<string>();
     for (const record of records) {
+      const key = record.hallOrgId + record.recordDate;
+      if (seen.has(key)) continue;
+      seen.add(key);
       if (record.status !== "submitted" && isDailyRecordOverdue(record.recordDate, now)) {
-        await prisma.hallTaskRecord.update({
-          where: { id: record.id },
-          data: { status: "overdue" },
-        });
         updated.push({ ...record, status: "overdue" as any });
       } else {
         updated.push(record);
