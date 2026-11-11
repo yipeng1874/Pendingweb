@@ -1532,8 +1532,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
   }
 
   const scopeFilteredHallIdsArr = Array.from(scopeFilteredHallIds);
-  const total = scopeFilteredHallIdsArr.length * dates.length;
-  if (total === 0) {
+  if (scopeFilteredHallIdsArr.length === 0) {
     return ok(res, {
       startDate, endDate, effectiveDays: dates.length,
       baseOrg: { id: baseOrg.id, name: baseOrg.name },
@@ -1587,8 +1586,10 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
   }
 
   // 统计：与 resolveHallDailyReportStatus 优先级一致 — submitted > leave_approved
-  type TeamStat = { teamOrgId: string; teamOrgName: string; completed: number; exemptions: number };
+  type TeamStat = { teamOrgId: string; teamOrgName: string; total: number; completed: number; exemptions: number };
   const teamStatMap = new Map<string, TeamStat>();
+  // 每个实际生成任务的厅每天计一次；未完成也计入，停发空档不补算。
+  const total = recordDedupeMap.size;
   let totalCompleted = 0;
   let totalExemptions = 0;
 
@@ -1596,9 +1597,10 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
     const teamInfo = hallTeamMap.get(record.hallOrgId) ?? { teamOrgId: baseOrg.id, teamOrgName: baseOrg.name };
 
     if (!teamStatMap.has(teamInfo.teamOrgId)) {
-      teamStatMap.set(teamInfo.teamOrgId, { teamOrgId: teamInfo.teamOrgId, teamOrgName: teamInfo.teamOrgName, completed: 0, exemptions: 0 });
+      teamStatMap.set(teamInfo.teamOrgId, { teamOrgId: teamInfo.teamOrgId, teamOrgName: teamInfo.teamOrgName, total: 0, completed: 0, exemptions: 0 });
     }
     const stat = teamStatMap.get(teamInfo.teamOrgId)!;
+    stat.total++;
 
     const isSubmitted = record.status === "submitted";
     const hasApprovedLeave = record.leaveRequests?.some((l) => l.status === "approved") ?? false;
@@ -1613,17 +1615,10 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
     }
   }
 
-  // 计算各团队分母（该团队下有 scope 权限的厅数 × 天数）
-  const teamHallCount = new Map<string, number>();
-  for (const hallId of scopeFilteredHallIdsArr) {
-    const ti = hallTeamMap.get(hallId) ?? { teamOrgId: baseOrg.id, teamOrgName: baseOrg.name };
-    teamHallCount.set(ti.teamOrgId, (teamHallCount.get(ti.teamOrgId) ?? 0) + 1);
-  }
-
+  // 团队分母与完成、请假共用同一批按“厅＋日期”去重的执行记录。
   const teams = Array.from(teamStatMap.entries())
-    .filter(([, stat]) => (teamHallCount.get(stat.teamOrgId) ?? 0) > 0)
     .map(([, stat]) => {
-      const teamTotal = (teamHallCount.get(stat.teamOrgId) ?? 0) * dates.length;
+      const teamTotal = stat.total;
       return {
         orgId: stat.teamOrgId,
         orgName: stat.teamOrgName,
