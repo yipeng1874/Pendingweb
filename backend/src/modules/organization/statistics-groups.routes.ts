@@ -8,8 +8,8 @@ import { fail, ok } from "../../shared/response.js";
 import { readStatisticsGroups } from "./statistics-groups.js";
 
 export const statisticsGroupRoutes = Router();
-statisticsGroupRoutes.use(authRequired, identityRequired, permissionRequired("org:update"));
-statisticsGroupRoutes.use((req, res, next) => {
+statisticsGroupRoutes.use("/organization-statistics-groups", authRequired, identityRequired, permissionRequired("org:update"));
+statisticsGroupRoutes.use("/organization-statistics-groups", (req, res, next) => {
   if (!["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(req.identity?.roleCode ?? "")) return fail(res, "FORBIDDEN", "仅基地及以上管理员可以设置合并统计", 403);
   next();
 });

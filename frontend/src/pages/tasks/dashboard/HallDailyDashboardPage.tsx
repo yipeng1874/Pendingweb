@@ -880,9 +880,10 @@ function AdminView() {
 
 export function HallDailyDashboardPage() {
   const roleCode = useIdentityStore((state) => state.currentIdentity?.roleCode);
+  const identityId = useIdentityStore((state) => state.currentIdentity?.id);
 
   if (roleCode === "HALL_MANAGER") {
-    return <HallManagerView />;
+    return <HallManagerView key={identityId} />;
   }
-  return <AdminView />;
+  return <AdminView key={identityId} />;
 }

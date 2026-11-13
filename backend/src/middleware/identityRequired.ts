@@ -11,9 +11,14 @@ declare global {
   }
 }
 
+const verifiedIdentities = new WeakMap<Request, Identity>();
+
 export async function identityRequired(req: Request, res: Response, next: NextFunction) {
   try {
-    const identityId = req.header("X-Identity-Id") ?? String(req.body.identityId ?? "");
+    const identityId = req.header("X-Identity-Id") ?? String(req.body?.identityId ?? "");
+    if (!req.userId) return fail(res, "UNAUTHORIZED", "请先登录", 401);
+    const verified = verifiedIdentities.get(req);
+    if (verified && verified === req.identity && verified.id === identityId && verified.userId === req.userId) return next();
     const identity = await prisma.userIdentity.findFirst({
       where: { id: identityId, userId: req.userId, status: "active" },
       include: { org: { select: { status: true, name: true } } },
@@ -38,6 +43,7 @@ export async function identityRequired(req: Request, res: Response, next: NextFu
       scopePath: identity.scopePath ?? undefined,
       status: identity.status,
     };
+    verifiedIdentities.set(req, req.identity);
     return next();
   } catch (error) {
     console.error("身份校验失败", error);
