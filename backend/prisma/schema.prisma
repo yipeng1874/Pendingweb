@@ -7,6 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model OrganizationStatisticsGroups {
+  baseOrgId String @id @map("base_org_id") @db.VarChar(191)
+  groupsJson Json @map("groups_json")
+  revision Int @default(1)
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("organization_statistics_groups")
+}
+
 model AnchorRegistrationApplication {
   id              String            @id @default(uuid())
   userId          String            @map("user_id")

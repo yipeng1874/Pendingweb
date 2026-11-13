@@ -11,6 +11,7 @@ import { isInFeishuApp } from "../shared/utils/feishu";
 const orgSubItems = [
   { to: "/organization", label: "组织设立变更", icon: Building2 },
   { to: "/organization/data-transfer", label: "组织数据转移", icon: ArrowRightLeft },
+  { to: "/organization/statistics-groups", label: "合并统计", icon: LayoutDashboard },
   { to: "/accounts", label: "组织账号管理", icon: Users },
   { to: "/organization/feishu-configs", label: "飞书企业配置", icon: Settings2 },
 ];
@@ -55,6 +56,10 @@ function OrgNavGroup({ collapsed, onExpandRequest }: { collapsed: boolean; onExp
     if (item.to === "/organization/data-transfer") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))
         && (permissions.includes("*") || permissions.includes("org:data-transfer"));
+    }
+    if (item.to === "/organization/statistics-groups") {
+      return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))
+        && (permissions.includes("*") || permissions.includes("org:update"));
     }
     if (item.to === "/organization/feishu-configs") {
       return Boolean(currentRoleCode && ["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"].includes(currentRoleCode))

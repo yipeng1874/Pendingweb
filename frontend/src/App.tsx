@@ -10,6 +10,7 @@ const LoginPage = lazy(() => import("./pages/login/LoginPage").then((m) => ({ de
 const IdentityPage = lazy(() => import("./pages/identity/IdentityPage").then((m) => ({ default: m.IdentityPage })));
 const OrganizationPage = lazy(() => import("./pages/organization/OrganizationPage").then((m) => ({ default: m.OrganizationPage })));
 const OrganizationDataTransferPage = lazy(() => import("./pages/organization/OrganizationDataTransferPage").then((m) => ({ default: m.OrganizationDataTransferPage })));
+const StatisticsGroupsPage = lazy(() => import("./pages/organization/StatisticsGroupsPage").then((m) => ({ default: m.StatisticsGroupsPage })));
 const FeishuConfigPage = lazy(() => import("./pages/organization/FeishuConfigPage").then((m) => ({ default: m.FeishuConfigPage })));
 const AccountsPage = lazy(() => import("./pages/accounts/AccountsPage").then((m) => ({ default: m.AccountsPage })));
 const AnchorAccountsPage = lazy(() => import("./pages/anchors/AnchorAccountsPage").then((m) => ({ default: m.AnchorAccountsPage })));
@@ -68,6 +69,7 @@ export default function App() {
         <Route element={<Protected />}>
           <Route path="/organization" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]} permissions={["org:view"]}><OrganizationPage /></RoleProtected>} />
           <Route path="/organization/data-transfer" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"]} permissions={["org:data-transfer"]}><OrganizationDataTransferPage /></RoleProtected>} />
+          <Route path="/organization/statistics-groups" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"]} permissions={["org:update"]}><StatisticsGroupsPage /></RoleProtected>} />
           <Route path="/organization/feishu-configs" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN"]} permissions={["org:view"]}><FeishuConfigPage /></RoleProtected>} />
           <Route path="/accounts" element={<RoleProtected roles={["DEV_ADMIN", "HQ_ADMIN", "BASE_ADMIN", "TEAM_ADMIN"]} permissions={["account:view"]}><AccountsPage /></RoleProtected>} />
           <Route path="/settings" element={<SettingsPage />} />

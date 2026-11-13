@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { groupedTeamStatistics } from "../../organization/statistics-groups.js";
 import { Prisma } from "@prisma/client";
 import * as xlsx from "xlsx";
 import { authRequired } from "../../../middleware/authRequired.js";
@@ -1410,7 +1411,7 @@ reportRoutes.get("/tasks/report/daily-range-stats", permissionRequired("task:rep
       completionRate: calculateCompletionRate(totalCompleted, total, totalExemptions),
       exemptionRate: total > 0 ? Math.round((totalExemptions / total) * 100) : 0,
     },
-    teams,
+    teams: await groupedTeamStatistics(baseOrg.id, teams, req.identity?.roleCode ?? ""),
   });
 });
 
@@ -1643,7 +1644,7 @@ reportRoutes.get("/tasks/report/hall-daily-range-stats", permissionRequired("tas
       completionRate: calculateCompletionRate(totalCompleted, total, totalExemptions),
       exemptionRate: total > 0 ? Math.round((totalExemptions / total) * 100) : 0,
     },
-    teams,
+    teams: await groupedTeamStatistics(baseOrg.id, teams, req.identity?.roleCode ?? ""),
   });
 });
 

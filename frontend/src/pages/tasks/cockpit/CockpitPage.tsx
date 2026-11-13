@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { StatisticsGroupMembers } from "./StatisticsGroupMembers";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Sparkles, AlertCircle, RefreshCw, TrendingUp, Users, CheckCircle2, Clock, Circle, ShieldOff, ChevronDown, Calendar, X, Building2, Upload, FileSpreadsheet } from "lucide-react";
 import { AnchorSummaryCard } from "./AnchorSummaryCard";
@@ -771,7 +772,7 @@ export function CockpitPage() {
 
                       {/* 悬浮浮层：团队明细（不推动布局） */}
                       {isHovered && hasTeams && data && (
-                        <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[260px]">
+                        <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[340px]">
                           <div className="flex items-center justify-between gap-3 whitespace-nowrap mb-2 text-[11px]">
                             <span className="font-semibold text-slate-500">{label} · 团队明细</span>
                             <span className="shrink-0">
@@ -782,9 +783,11 @@ export function CockpitPage() {
                             const noAssessment = team.total > 0 && (team.exemptions ?? 0) >= team.total;
                             const teamColor = noAssessment ? "#94a3b8" : rateColor(team.completionRate);
                             return (
-                              <div key={team.orgId} className="flex items-center gap-2 text-[11px]">
-                                <span className="w-[64px] shrink-0 text-slate-600 font-medium truncate" title={team.orgName}>
-                                  {team.orgName}
+                              <div key={team.orgId}>
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <span className="w-[100px] shrink-0 flex items-center gap-1 text-slate-600 font-medium" title={team.orgName}>
+                                  <span className="truncate">{team.orgName}</span>
+                                  {!!team.members?.length && <span className="shrink-0 rounded bg-blue-50 px-1 py-0.5 text-[10px] leading-none text-blue-600 ring-1 ring-inset ring-blue-200">合并</span>}
                                 </span>
                                 <div className="flex-1 min-w-[40px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                   <div
@@ -802,6 +805,8 @@ export function CockpitPage() {
                                   <span className="mx-1 text-slate-300">/</span>
                                   <span className="text-amber-500">{team.exemptions ?? 0}</span>
                                 </span>
+                              </div>
+                              <StatisticsGroupMembers members={team.members} />
                               </div>
                             );
                           })}
@@ -904,7 +909,7 @@ export function CockpitPage() {
                           <SummaryDonut data={data} label={label} size={100} color="blue" />
                           {/* 悬浮浮层：团队明细 */}
                           {isHovered && hasTeams && data && (
-                            <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[260px]">
+                            <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-slate-200 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-3 space-y-1.5 min-w-[340px]">
                               <div className="flex items-center justify-between gap-3 whitespace-nowrap mb-2 text-[11px]">
                                 <span className="font-semibold text-slate-500">{label} · 团队明细</span>
                                 <span className="shrink-0">
@@ -915,9 +920,11 @@ export function CockpitPage() {
                                 const noAssessment = team.total > 0 && (team.exemptions ?? 0) >= team.total;
                                 const teamColor = noAssessment ? "#94a3b8" : rateColor(team.completionRate);
                                 return (
-                                  <div key={team.orgId} className="flex items-center gap-2 text-[11px]">
-                                    <span className="w-[64px] shrink-0 text-slate-600 font-medium truncate" title={team.orgName}>
-                                      {team.orgName}
+                                  <div key={team.orgId}>
+                                  <div className="flex items-center gap-2 text-[11px]">
+                                    <span className="w-[100px] shrink-0 flex items-center gap-1 text-slate-600 font-medium" title={team.orgName}>
+                                      <span className="truncate">{team.orgName}</span>
+                                      {!!team.members?.length && <span className="shrink-0 rounded bg-blue-50 px-1 py-0.5 text-[10px] leading-none text-blue-600 ring-1 ring-inset ring-blue-200">合并</span>}
                                     </span>
                                     <div className="flex-1 min-w-[40px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                       <div className="h-full rounded-full transition-all" style={{ width: `${noAssessment ? 0 : team.completionRate}%`, backgroundColor: teamColor }} />
@@ -932,6 +939,8 @@ export function CockpitPage() {
                                       <span className="mx-1 text-slate-300">/</span>
                                       <span className="text-amber-500">{team.exemptions ?? 0}</span>
                                     </span>
+                                  </div>
+                                  <StatisticsGroupMembers members={team.members} />
                                   </div>
                                 );
                               })}

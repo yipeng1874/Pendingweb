@@ -485,6 +485,7 @@ export interface DirectExemptionDisableResult {
 
 // ── 基地看板：历史待办完成率 ─────────────────────────────
 export interface DailyRangeStatsTeam {
+  members?: DailyRangeStatsTeam[];
   orgId: string;
   orgName: string;
   total: number;

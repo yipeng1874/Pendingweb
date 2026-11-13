@@ -1,6 +1,7 @@
 import { teamDailyRoutes } from "./modules/task/team-daily/team-daily.routes.js";
 import { teamDailyReportRoutes } from "./modules/task/team-daily/team-daily-report.routes.js";
 import { teamDailyUploadRoutes } from "./modules/task/team-daily/team-daily-upload.routes.js";
+import { statisticsGroupRoutes } from "./modules/organization/statistics-groups.routes.js";
 import cors from "cors";
 import express from "express";
 import path from "path";
@@ -46,6 +47,7 @@ export function createApp() {
   app.use("/api", identityRoutes);
   app.use("/api", organizationRoutes);
   app.use("/api", organizationDataTransferRoutes);
+  app.use("/api", statisticsGroupRoutes);
   app.use("/api", accountRoutes);
   app.use("/api", auditRoutes);
 
